@@ -1,0 +1,16 @@
+private/
+.venv/
+__pycache__/
+.pytest_cache/
+.env
+.env.*
+!.env.example
+frontend/node_modules/
+frontend/dist/
+qa/
+*.log
+
+research/artifacts/
+artifacts/
+tmp/
+*.tsbuildinfo
