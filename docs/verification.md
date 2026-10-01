@@ -8,6 +8,8 @@
 
 圖表建立／繪製不是逐筆報價時效測試；本系統不能讀取外部圖表價格或確認每筆延遲，市場狀態依 widget 顯示。尚未接入行情 API、即時下單、Pi 或訂閱 OAuth。
 
+上述即時 7 組與回放 11 組檢查也已在 https://kuan35.github.io/Gold-Trading-Project/ 全數通過。功能 commit baae37c；Pages Actions run 36879407505 completed/success。
+
 - 後端：`python -m pytest -q backend/tests`，24 項通過；有一項 Starlette 對 httpx 相容層的棄用警告，不影響目前結果。
 - 前端：TypeScript 與 Vite production build 成功。
 - 資料：刷新分類、行為分類與 Myfxbook parser 合計 17 項通過；全量刷新 221 檔 SHA-256 一致，分類總數核對、CSV 保留、識別碼唯一性、時區未知及不刪跨來源候選均通過。
