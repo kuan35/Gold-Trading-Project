@@ -4,7 +4,7 @@ import Chart from './Chart';
 import type {Audit,BarsResponse,Case,Draft,Retrieval,Side,State} from './types';
 
 const actionName = (action:string) => ({FIRST:'首筆進場',ADD:'同向加倉',OPPOSITE:'反向部位',CLOSE:'平倉',SL:'停損',TP:'停利'}[action] || action);
-const sourceName = (source:string) => /synthetic|合成/.test(source)?'合成示範資料':source==='trader_history'?'交易員歷史紀錄':source==='private_audit'?'本機真實資料稽核':source==='private_market'?'第三方歷史行情':source;
+const sourceName = (source:string) => source==='synthetic_demo'?'合成示範資料':source==='trader_history'?'交易員歷史紀錄':source==='private_audit'?'本機真實資料稽核':source==='private_market'?'第三方歷史行情':source;
 const sideName = (side:Side) => side==='BUY'?'買進':'賣出';
 const gainClass = (value:string|null|undefined) => value?.startsWith('-')?'negative':'positive';
 const EMPTY_BARS:BarsResponse = {bars:[],markers:[],source:'',interval:'5m'};

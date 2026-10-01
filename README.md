@@ -1,5 +1,11 @@
 # Gold Trading Project
 
+線上展示：https://kuan35.github.io/Gold-Trading-Project/
+
+GitHub Pages 版本可在瀏覽器獨立操作，全部使用合成行情與案例；每位訪客工作階段獨立，重新整理會清空模擬持倉。首筆、加倉、平倉、案例與本地中文助手均可使用。它沒有 Python 後端、私人交易員資料、外部 LLM 或券商連線；本機版本則保留 FastAPI 與私人資料匯入。
+
+Pages 部署由 `.github/workflows/pages.yml` 在 main 的前端更新後自動執行，先跑四項瀏覽器引擎測試再建置。
+
 黃金交易案例與下單前風險輔助平台。React + TypeScript + Vite 前端、TradingView Lightweight Charts、FastAPI 後端。
 
 首筆進場或加倉前，先看相似歷史操作、持倉變化與價格情境損失，再由人確認。這是本機歷史回放產品原型；券商 DEMO 與外部 LLM 尚未完成實際連線驗收。
