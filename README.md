@@ -48,6 +48,8 @@ cd ..
 
 ## 本機私人資料
 
+同學交接的完整真實資料另放在私人 [Gold-Trading-Project-Data](https://github.com/kuan35/Gold-Trading-Project-Data)。需要權限後才能讀取，下載、校驗、還原及重跑流程見 [資料交接說明](docs/data-handoff.md)。
+
 原始交易檔、帳號、來源檔名、逐筆資料、行情下載檔與私人案例不在公開版本。資料提供者須確認匯入與使用權利。
 
 資料稽核工具在 `research/`，見該資料夾 README。完成稽核後：
