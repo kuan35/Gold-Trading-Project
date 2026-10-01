@@ -2,6 +2,12 @@
 
 日期 2026-10-01。本記錄評估功能與資料邊界，不是策略績效或使用者研究。
 
+## TradingView 即時看盤新增驗證
+
+前端核心測試 4 通過，Pages 與本機 production 建置通過。Edge 實際載入外部 OANDA:XAUUSD 並確認 K 線 canvas 繪製；7 組檢查涵蓋延遲載入、商品、沒有即時下單／對話執行、明暗主題、390px 無水平溢出、回放隔離與外部 script 阻擋後可重試。0 JavaScript 頁面錯誤。既有回放 11 組流程也重新通過，回放頁 0 後端請求。221 原始來源 SHA-256 與既有 inventory 全數相符。
+
+圖表建立／繪製不是逐筆報價時效測試；本系統不能讀取外部圖表價格或確認每筆延遲，市場狀態依 widget 顯示。尚未接入行情 API、即時下單、Pi 或訂閱 OAuth。
+
 - 後端：`python -m pytest -q backend/tests`，24 項通過；有一項 Starlette 對 httpx 相容層的棄用警告，不影響目前結果。
 - 前端：TypeScript 與 Vite production build 成功。
 - 資料：刷新分類、行為分類與 Myfxbook parser 合計 17 項通過；全量刷新 221 檔 SHA-256 一致，分類總數核對、CSV 保留、識別碼唯一性、時區未知及不刪跨來源候選均通過。
