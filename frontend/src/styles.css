@@ -209,3 +209,50 @@ footer {padding:6px 16px;font-size:10px;min-height:26px;flex-shrink:0}
 .chart-toolbar>.replay-toolbar .replay-title {display:none}
 @media(min-width:981px) { .chart-toolbar {height:40px;gap:12px} .chart-toolbar .legend {margin-left:auto} }
 @media(max-width:980px) { .chart-toolbar {height:auto;min-height:40px;flex-wrap:wrap;padding-top:6px;padding-bottom:6px} .chart-toolbar>.replay-toolbar {width:100%;border-top:1px solid var(--line);padding-top:6px} .chart-toolbar .replay-buttons {width:100%;justify-content:space-between} }
+
+/* Compact trading desk: the external widget owns only the space actually available. */
+.terminal {max-width:1600px}
+.feedback.toast {position:fixed;top:12px;right:16px;z-index:30;width:min(390px,calc(100vw - 32px));padding:11px 14px;border:1px solid var(--line);border-left:3px solid var(--primary);border-radius:4px;background:var(--raised);box-shadow:0 10px 28px #0006;color:var(--ink)}
+.feedback.toast.error {border-left-color:var(--negative)}
+.feedback.toast.success {border-left-color:var(--positive)}
+.order-type {display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:12px;padding:3px;background:var(--surface);border:1px solid var(--line);border-radius:4px}
+.order-type button {border:0;background:transparent;color:var(--muted);padding:7px 8px;font-size:12px}
+.order-type button.active {background:var(--raised);color:var(--ink)}
+.limit-field {margin-top:12px}
+.limit-field input {width:100%}
+.assistant-dock {display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:12px;padding-top:9px;border-top:1px solid var(--line);font-size:11px;color:var(--muted)}
+.assistant-dock button {font-size:11px;padding:5px 8px;white-space:nowrap}
+.assistant-dock {display:block}
+.assistant-dock label {display:block;margin:0 0 5px}
+.assistant-dock>div {display:flex;gap:5px}
+.assistant-dock input {min-width:0;flex:1;height:32px;font-size:11px}
+.assistant-dock button {height:32px}
+.live-market {display:flex;flex-direction:column;min-height:0;height:100%;width:100%}
+.live-market .instrument-header,.live-market .live-status,.live-market .live-attribution,.live-market .limitations {flex-shrink:0}
+.live-market .limitations {padding:4px 16px 7px;font-size:10px}
+.live-market .limitations p {display:inline;margin-right:14px}
+.live-chart {flex:1 1 auto;min-height:0;height:auto;overflow:hidden}
+.live-chart .tradingview-widget-container,.live-chart .tradingview-widget-container__widget,.live-chart iframe {height:100%!important;max-height:100%;width:100%}
+@media(min-width:981px) {
+  .workspace {grid-template-rows:minmax(0,1fr) 116px}
+  .workspace.live-layout {grid-template-rows:minmax(0,1fr)}
+  .market-panel.live-panel {overflow:hidden}
+  .order-panel.live-guide {overflow:visible}
+  .order-form {padding:10px 14px;scrollbar-width:thin}
+  .order-form .section-caption {margin-bottom:8px}
+  .order-form .side-switch {margin-bottom:10px}
+  .order-form .two-fields {margin-top:9px}
+  .order-form .ticket-comparison {margin-top:9px}
+  .order-form .order-explainer {padding:6px 0}
+  .order-form .order-explainer {display:none}
+  .order-form>.fine {display:none}
+  .order-form .side-switch button {padding:6px 9px}
+  .order-form .side-switch button span {margin-top:2px;font-size:16px}
+  .order-form .assistant-dock {margin-top:6px;padding-top:6px}
+  .bottom-panel>.table-scroll {scrollbar-width:thin}
+}
+@media(max-width:980px) {
+  .live-market {height:auto}
+  .live-chart {height:min(70dvh,620px);min-height:340px;flex:none}
+  .live-market .limitations p {display:block;margin:3px 0}
+}

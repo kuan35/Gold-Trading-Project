@@ -56,3 +56,18 @@ def test_reset_invalidates_confirmation_keys(client):
     client.post('/api/replay/reset',json={})
     response=client.post(f'/api/drafts/{d["id"]}/confirm',json={'revision':d['revision'],'idempotency_key':'gone'})
     assert response.status_code==409
+
+
+def test_limit_api_places_pending_order_then_can_cancel(client):
+    quote=client.get('/api/state').json()['quote']
+    from decimal import Decimal
+    limit=str(Decimal(quote['ask'])-Decimal('2.00'))
+    draft=client.post('/api/drafts',json={'side':'BUY','lot':'0.10','order_type':'LIMIT','limit_price':limit}).json()
+    assert draft['order_type']=='LIMIT'
+    placed=client.post(f'/api/drafts/{draft["id"]}/confirm',json={'revision':draft['revision'],'idempotency_key':'limit-api'}).json()
+    assert placed['status']=='PENDING'
+    assert placed['state']['positions']==[]
+    assert placed['state']['pending_orders'][0]['limit_price']==limit
+    cancelled=client.post(f'/api/pending/{placed["order_id"]}/cancel',json={}).json()
+    assert cancelled['status']=='CANCELLED'
+    assert cancelled['state']['pending_orders']==[]

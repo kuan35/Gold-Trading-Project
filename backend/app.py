@@ -27,6 +27,8 @@ class DraftInput(Body):
     sl:str|None=None
     tp:str|None=None
     typical_lot:str|None=Field(default=None,max_length=30)
+    order_type:Literal['MARKET','LIMIT']='MARKET'
+    limit_price:str|None=None
     personal_rules:list[dict]=Field(default_factory=list,max_length=50)
 
 
@@ -112,7 +114,7 @@ def mode(body:ModeInput):
 def draft(body:DraftInput):
     rules=checked_rules(body.personal_rules)
     with engine.lock:
-        value=engine.create_draft(body.side,body.lot,body.sl,body.tp,body.typical_lot)
+        value=engine.create_draft(body.side,body.lot,body.sl,body.tp,body.typical_lot,body.order_type,body.limit_price)
         reading=technical_analysis(engine.bars[:engine.cursor],300,engine.clock).get('reading')
         value['personal_rules']=evaluate_rules(rules,engine.state(),value,reading)
         engine.drafts[value['id']]['_rule_snapshot']=rules
@@ -132,6 +134,11 @@ def confirm(draft_id:str,body:ConfirmInput):
 @app.post('/api/drafts/{draft_id}/cancel')
 def cancel(draft_id:str):
     return engine.cancel(draft_id)
+
+
+@app.post('/api/pending/{order_id}/cancel')
+def cancel_pending(order_id:str):
+    return engine.cancel_pending(order_id)
 
 
 @app.post('/api/positions/{position_id}/close')

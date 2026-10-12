@@ -52,6 +52,7 @@ class Engine:
             self.balance = D('10000')
             self.positions: list[dict] = []
             self.orders: list[dict] = []
+            self.pending_orders: list[dict] = []
             self.drafts: dict[str,dict] = {}
             self.confirmations: dict[str,dict] = {}
             self.close_results: dict[str,dict] = {}
@@ -78,6 +79,7 @@ class Engine:
                     broker_connected=False,llm_enabled=False,quote=quote,
                     account=dict(balance=money(self.balance),equity=money(self.balance+pnl)),
                     positions=[dict(p,pnl=money(self.position_pnl(p))) for p in self.positions],orders=list(reversed(self.orders)),
+                    pending_orders=[dict(p) for p in self.pending_orders],
                     market=dict(change_pct=money((close-D(recent[0]['open']))/D(recent[0]['open'])*100),
                                 range_pct=money((high-low)/close*100),high=money(high),low=money(low),
                                 ma20=money(sum(D(b['close']) for b in recent[-20:])/20),
@@ -151,7 +153,8 @@ class Engine:
         return self.cases.retrieve(side,action,lot,self.clock,prior_count=len(same),prior_lot=total,signed_distance=distance,typical_lot=typical_lot,
                                    query_market=market_snapshot(self.bars[:self.cursor],self.clock))
 
-    def create_draft(self, side: str, lot: str, sl: str | None, tp: str | None, typical_lot: str | None = None) -> dict:
+    def create_draft(self, side: str, lot: str, sl: str | None, tp: str | None, typical_lot: str | None = None,
+                     order_type: str = 'MARKET', limit_price: str | None = None) -> dict:
         with self.lock:
             if self.mode != 'replay':
                 raise DomainError('券商模擬帳戶未連線，不能送單；請切回歷史回放',503)
@@ -161,7 +164,23 @@ class Engine:
             if qty>D(100) or qty%D('.01')!=0:
                 raise DomainError('手數範圍0.01至100，間隔0.01')
             quote = self.quote()
-            price = D(quote['ask' if side=='BUY' else 'bid'])
+            current = D(quote['ask' if side=='BUY' else 'bid'])
+            if order_type not in ('MARKET','LIMIT'):
+                raise DomainError('不支援的委託類型')
+            if order_type == 'LIMIT':
+                if limit_price in (None,''):
+                    raise DomainError('限價單必須輸入限價')
+                price = amount(limit_price,'限價')
+                if price % D('.01'):
+                    raise DomainError('限價須以0.01為單位')
+                if side == 'BUY' and price >= current:
+                    raise DomainError('買進限價須低於目前買進價')
+                if side == 'SELL' and price <= current:
+                    raise DomainError('賣出限價須高於目前賣出價')
+            else:
+                if limit_price not in (None,''):
+                    raise DomainError('市價單不接受限價')
+                price = current
             stop = amount(sl,'停損') if sl not in (None,'') else None
             target = amount(tp,'停利') if tp not in (None,'') else None
             sign = 1 if side=='BUY' else -1
@@ -183,6 +202,9 @@ class Engine:
             warnings = []
             if stop is None:
                 warnings.append('未設定停損；價格情境不是損失上限')
+            if order_type == 'LIMIT':
+                warnings.append('限價單確認後先待成交；情境依指定限價試算，觸價前市場與持倉可能改變')
+                warnings.append('回放以已收K棒高低價判斷觸價；無逐筆先後、排隊、滑價或同棒停損停利重建')
             if self.positions:
                 warnings.append('加單增加總部位；均價改善不代表風險降低')
                 if any(p.get('sl') is None for p in self.positions):
@@ -194,6 +216,7 @@ class Engine:
             retrieval = self.retrieve(side,self.action(side),qty,amount(typical_lot,'平常手數') if typical_lot else None)
             draft = dict(id=uuid4().hex,revision=self.version,side=side,lot=str(qty),sl=str(stop) if stop else None,
                          tp=str(target) if target else None,price=money(price),action=self.action(side),status='REVIEW',
+                         order_type=order_type,limit_price=money(price) if order_type=='LIMIT' else None,
                          risk=dict(before_lot=str(before),after_lot=str(before+qty),average_entry=money(average),
                                    stop_loss_usd=money(stop_loss) if stop_loss is not None else None,
                                    reward_risk=money(rr) if rr is not None else None,scenarios=scenarios,warnings=warnings),
@@ -217,14 +240,30 @@ class Engine:
             if revision != self.version or draft['revision']!=self.version:
                 raise DomainError('價格或帳戶已更新，請重新檢查訂單',409)
             ident = uuid4().hex[:10]
-            pos = dict(id=ident,side=draft['side'],lot=draft['lot'],entry=draft['price'],sl=draft['sl'],tp=draft['tp'],opened_at=self.clock)
-            self.positions.append(pos)
-            self.orders.append(dict(id=ident,position_id=ident,side=pos['side'],lot=pos['lot'],price=pos['entry'],status='FILLED',time=self.clock,action=draft['action'],pnl=None))
-            draft['status']='FILLED'
+            if draft.get('order_type') == 'LIMIT':
+                self.pending_orders.append(dict(id=ident,side=draft['side'],lot=draft['lot'],limit_price=draft['limit_price'],
+                                                sl=draft['sl'],tp=draft['tp'],created_at=self.clock,action=draft['action'],status='PENDING'))
+                draft['status']='PENDING'
+                status='PENDING'
+            else:
+                pos = dict(id=ident,side=draft['side'],lot=draft['lot'],entry=draft['price'],sl=draft['sl'],tp=draft['tp'],opened_at=self.clock)
+                self.positions.append(pos)
+                self.orders.append(dict(id=ident,position_id=ident,side=pos['side'],lot=pos['lot'],price=pos['entry'],status='FILLED',time=self.clock,action=draft['action'],order_type='MARKET',pnl=None))
+                draft['status']='FILLED'
+                status='FILLED'
             self.version += 1
-            result = dict(status='FILLED',order_id=ident,state=self.state())
+            result = dict(status=status,order_id=ident,state=self.state())
             self.confirmations[cache_key]=result
             return result
+
+    def cancel_pending(self, order_id: str) -> dict:
+        with self.lock:
+            pending = next((p for p in self.pending_orders if p['id']==order_id),None)
+            if not pending:
+                raise DomainError('待成交限價單不存在或已觸價',409)
+            self.pending_orders.remove(pending)
+            self.version += 1
+            return dict(status='CANCELLED',order_id=order_id,state=self.state())
 
     def cancel(self, draft_id: str) -> dict:
         with self.lock:
@@ -283,5 +322,19 @@ class Engine:
                         self._close_at(p,px,'STOP_LOSS_CONSERVATIVE')
                     elif target is not None and (hi>=target if buy else lo<=target):
                         self._close_at(p,target,'TAKE_PROFIT')
+                for pending in list(self.pending_orders):
+                    limit = D(pending['limit_price'])
+                    touched = D(bar['low'])+D('.30') <= limit if pending['side']=='BUY' else D(bar['high']) >= limit
+                    if not touched:
+                        continue
+                    self.pending_orders.remove(pending)
+                    ident = pending['id']
+                    action = self.action(pending['side'])
+                    pos = dict(id=ident,side=pending['side'],lot=pending['lot'],entry=pending['limit_price'],
+                               sl=pending['sl'],tp=pending['tp'],opened_at=self.clock)
+                    self.positions.append(pos)
+                    self.orders.append(dict(id=ident,position_id=ident,side=pos['side'],lot=pos['lot'],price=pos['entry'],
+                                            requested_price=pending['limit_price'],status='FILLED',time=self.clock,action=action,
+                                            order_type='LIMIT',pnl=None))
                 self.version+=1
             return self.state()

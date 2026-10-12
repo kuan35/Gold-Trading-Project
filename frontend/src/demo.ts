@@ -4,7 +4,7 @@ import {validateRules,evaluateRules,parseRuleMessage,type PersonalRule} from './
 import {tradeChart} from './tradeChart';
 import fixtures from './demo-data.json';
 import {attachDemoProfiles,rankCases,summarizeCases} from './similarity';
-import type {Action,Audit,Bar,BarsResponse,Case,Draft,Order,Position,Retrieval,Side,State} from './types';
+import type {Action,Audit,Bar,BarsResponse,Case,Draft,Order,OrderType,PendingOrder,Position,Retrieval,Side,State} from './types';
 Decimal.set({precision:28,rounding:Decimal.ROUND_HALF_EVEN});
 const d=(v:Decimal.Value)=>new Decimal(v);
 const money=(v:Decimal.Value)=>d(v).toFixed(2);
@@ -24,11 +24,11 @@ export class DemoEngine {
  readonly bars=structuredClone(fixtures.bars) as SourceBar[];
  readonly cases=structuredClone(fixtures.cases) as unknown as DemoCase[];
  mode:State['mode']='replay';cursor=360;version=0;balance=d(10000);
- positions:Position[]=[];orders:Order[]=[];drafts=new Map<string,Draft>();
+ positions:Position[]=[];orders:Order[]=[];pendingOrders:PendingOrder[]=[];drafts=new Map<string,Draft>();
  private confirmations=new Map<string,Receipt>();private closes=new Map<string,Receipt>();
  constructor(){this.reset();this.cases.forEach(c=>{c.currency='USD';});attachDemoProfiles(this.cases);}
  get clock(){return this.bars[this.cursor-1].time+300;}
- reset():State{this.cursor=360;this.balance=d(10000);this.positions=[];this.orders=[];this.drafts.clear();this.confirmations.clear();this.closes.clear();this.version++;return this.state();}
+ reset():State{this.cursor=360;this.balance=d(10000);this.positions=[];this.orders=[];this.pendingOrders=[];this.drafts.clear();this.confirmations.clear();this.closes.clear();this.version++;return this.state();}
  private connected(){if(this.mode!=='replay')throw Error('券商模擬帳戶未連線；GitHub Pages 僅提供瀏覽器示範，請切回歷史回放');}
  quote(){const bid=d(this.bars[this.cursor-1].close);return {bid:money(bid),ask:money(bid.plus('.30')),time:this.clock};}
  private pnl(p:Position):Decimal{return d(this.quote()[p.side==='BUY'?'bid':'ask']).minus(p.entry).times(p.lot).times(100).times(p.side==='BUY'?1:-1);}
@@ -37,7 +37,7 @@ export class DemoEngine {
   const high=Decimal.max(...recent.map(b=>b.high)),low=Decimal.min(...recent.map(b=>b.low));
   return {mode:this.mode,version:this.version,clock:this.clock,data_source:source,broker_connected:false,llm_enabled:false,quote:this.quote(),
    account:{balance:money(this.balance),equity:money(this.balance.plus(sum(this.positions.map(p=>this.pnl(p)))))},
-   positions:this.positions.map(p=>({...p,pnl:money(this.pnl(p))})),orders:structuredClone(this.orders).reverse(),
+   positions:this.positions.map(p=>({...p,pnl:money(this.pnl(p))})),orders:structuredClone(this.orders).reverse(),pending_orders:structuredClone(this.pendingOrders),
    market:{high:money(high),low:money(low),change_pct:money(close.minus(recent[0].open).div(recent[0].open).times(100)),range_pct:money(high.minus(low).div(close).times(100)),
     ma20:money(sum(recent.slice(-20).map(b=>b.close)).div(20)),ma60:money(sum(recent.map(b=>b.close)).div(60))},
    data_quality:['GitHub Pages 公開展示：行情與案例全部合成，非交易員歷史績效',
@@ -67,10 +67,20 @@ export class DemoEngine {
   const excluded=typical_lot?this.cases.filter(c=>c.side===side&&c.action===action&&c.available_at<=this.clock&&!c.typical_lot).length:0;
   return summarizeCases(this.rank(side,action,lot,typical_lot),typical_lot,excluded);
  }
- draft(side:Side,lot:string,sl?:string|null,tp?:string|null,typical_lot?:string|null):Draft{
+ draft(side:Side,lot:string,sl?:string|null,tp?:string|null,typical_lot?:string|null,orderType:OrderType='MARKET',limitPrice?:string|null):Draft{
   this.connected();if(!['BUY','SELL'].includes(side))throw Error('請選 BUY 或 SELL');
   const qty=quantity(lot);if(qty.gt(100)||!qty.mod('.01').isZero())throw Error('手數範圍0.01至100，間隔0.01');
-  const price=d(this.quote()[side==='BUY'?'ask':'bid']),stop=sl?quantity(sl):null,target=tp?quantity(tp):null,sign=side==='BUY'?1:-1;
+  const current=d(this.quote()[side==='BUY'?'ask':'bid']);
+  if(!['MARKET','LIMIT'].includes(orderType))throw Error('不支援的委託類型');
+  if(orderType==='LIMIT'&&!limitPrice)throw Error('限價單必須輸入限價');
+  if(orderType==='MARKET'&&limitPrice)throw Error('市價單不接受限價');
+  const price=orderType==='LIMIT'?quantity(limitPrice!):current;
+  if(orderType==='LIMIT'){
+   if(!price.mod('.01').isZero())throw Error('限價須以0.01為單位');
+   if(side==='BUY'&&price.gte(current))throw Error('買進限價須低於目前買進價');
+   if(side==='SELL'&&price.lte(current))throw Error('賣出限價須高於目前賣出價');
+  }
+  const stop=sl?quantity(sl):null,target=tp?quantity(tp):null,sign=side==='BUY'?1:-1;
   if(stop&&stop.minus(price).times(sign).gte(0))throw Error('停損必須在下單價格的不利方向');
   if(target&&target.minus(price).times(sign).lte(0))throw Error('停利必須在下單價格的有利方向');
   const before=sum(this.positions.map(p=>p.lot)),same=this.positions.filter(p=>p.side===side);
@@ -81,9 +91,10 @@ export class DemoEngine {
    return {move:money(move),loss:money(value.negated())};
   });
   const warnings=stop?[]:['未設定停損；價格情境不是損失上限'];
+  if(orderType==='LIMIT')warnings.push('確認後先待成交；情境依限價試算。回放以K棒高低價判斷觸價，沒有逐筆先後、排隊或同棒停損停利重建。');
   if(this.positions.length){warnings.push('加單增加總部位；均價改善不代表風險降低');if(this.positions.some(p=>!p.sl))warnings.push('既有部位含未設定停損的訂單');}
   if(this.action(side)==='OPPOSITE')warnings.push('反向／混合持倉：回放採逐筆持倉，不能當券商淨額模式');
-  const result:Draft={id:id(),revision:this.version,side,lot:qty.toString(),sl:stop?.toString()||null,tp:target?.toString()||null,price:money(price),action:this.action(side),status:'REVIEW',
+  const result:Draft={id:id(),revision:this.version,side,lot:qty.toString(),sl:stop?.toString()||null,tp:target?.toString()||null,price:money(price),order_type:orderType,limit_price:orderType==='LIMIT'?money(price):null,action:this.action(side),status:'REVIEW',
    risk:{before_lot:before.toString(),after_lot:before.plus(qty).toString(),average_entry:money(avg),stop_loss_usd:stop?money(price.minus(stop).abs().times(qty).times(100)):null,
     reward_risk:stop&&target?money(target.minus(price).abs().div(stop.minus(price).abs())):null,scenarios,warnings},
    retrieval:this.retrieve(side,this.action(side),lot,typical_lot),explanation:'合成案例與瀏覽器情境試算；請自行核對後確認，尚未成交。'};
@@ -94,11 +105,18 @@ export class DemoEngine {
   this.connected();if(!key||key.length>128)throw Error('缺少有效確認識別碼');
   const draft=this.drafts.get(draftId);if(!draft||draft.status!=='REVIEW')throw Error('訂單已取消或確認');
   if(revision!==this.version||draft.revision!==this.version)throw Error('價格或帳戶已更新，請重新檢查訂單');
-  const p:Position={id:id(),side:draft.side,lot:draft.lot,entry:draft.price,sl:draft.sl,tp:draft.tp,opened_at:this.clock,pnl:'0.00'};
-  this.positions.push(p);this.orders.push({id:p.id,position_id:p.id,side:p.side,lot:p.lot,price:p.entry,status:'FILLED',time:this.clock,action:draft.action});
-  draft.status='FILLED';this.version++;const result={status:'FILLED',order_id:p.id,state:this.state()};this.confirmations.set(cache,result);return result;
+  const orderId=id();let status='FILLED';
+  if(draft.order_type==='LIMIT'){
+   this.pendingOrders.push({id:orderId,side:draft.side,lot:draft.lot,limit_price:draft.limit_price!,sl:draft.sl,tp:draft.tp,created_at:this.clock,action:draft.action,status:'PENDING'});
+   status='PENDING';
+  }else{
+   const p:Position={id:orderId,side:draft.side,lot:draft.lot,entry:draft.price,sl:draft.sl,tp:draft.tp,opened_at:this.clock,pnl:'0.00'};
+   this.positions.push(p);this.orders.push({id:p.id,position_id:p.id,side:p.side,lot:p.lot,price:p.entry,status:'FILLED',time:this.clock,action:draft.action});
+  }
+  draft.status=status;this.version++;const result={status,order_id:orderId,state:this.state()};this.confirmations.set(cache,result);return result;
  }
  cancel(draftId:string){const draft=this.drafts.get(draftId);if(!draft||draft.status!=='REVIEW')throw Error('草稿已失效');draft.status='CANCELLED';return {status:'CANCELLED'};}
+ cancelPending(orderId:string){this.connected();const pending=this.pendingOrders.find(p=>p.id===orderId);if(!pending)throw Error('待成交限價單不存在或已觸價');this.pendingOrders=this.pendingOrders.filter(p=>p.id!==orderId);this.version++;return {status:'CANCELLED',order_id:orderId,state:this.state()};}
  private closeAt(p:Position,price:Decimal,reason="MANUAL"):Receipt{
   const pnl=price.minus(p.entry).times(p.lot).times(100).times(p.side==='BUY'?1:-1);this.balance=this.balance.plus(pnl);this.positions=this.positions.filter(x=>x.id!==p.id);
   const orderId=id();this.orders.push({id:orderId,position_id:p.id,reason,side:p.side==='BUY'?'SELL':'BUY',lot:p.lot,price:money(price),status:'FILLED',time:this.clock,action:'CLOSE',pnl:money(pnl)});this.version++;
@@ -117,7 +135,17 @@ export class DemoEngine {
     const buy=p.side==='BUY',adjust=buy?d(0):d('.30'),lo=d(bar.low).plus(adjust),hi=d(bar.high).plus(adjust),opening=d(bar.open).plus(adjust),stop=p.sl?d(p.sl):null,target=p.tp?d(p.tp):null;
     if(stop&&(buy?lo.lte(stop):hi.gte(stop)))this.closeAt(p,buy?Decimal.min(stop,opening):Decimal.max(stop,opening),"STOP_LOSS_CONSERVATIVE");
     else if(target&&(buy?hi.gte(target):lo.lte(target)))this.closeAt(p,target,"TAKE_PROFIT");
-   }this.version++;
+   }
+   for(const pending of [...this.pendingOrders]){
+    const limit=d(pending.limit_price);
+    const touched=pending.side==='BUY'?d(bar.low).plus('.30').lte(limit):d(bar.high).gte(limit);
+    if(!touched)continue;
+    this.pendingOrders=this.pendingOrders.filter(p=>p.id!==pending.id);
+    const p:Position={id:pending.id,side:pending.side,lot:pending.lot,entry:pending.limit_price,sl:pending.sl,tp:pending.tp,opened_at:this.clock,pnl:'0.00'};
+    const action=this.action(p.side);
+    this.positions.push(p);this.orders.push({id:p.id,position_id:p.id,side:p.side,lot:p.lot,price:p.entry,status:'FILLED',time:this.clock,action});
+   }
+   this.version++;
   }return this.state();
  }
  caseDetail(caseId:string):Case{
@@ -151,7 +179,7 @@ export async function browserAPI(path:string,body?:unknown):Promise<unknown>{
  else if(route==='/replay/reset')result=session.reset();
  else if(route==='/replay/step')result=session.step(Number(input.bars));
  else if(route==='/mode'){if(!['replay','broker_demo'].includes(String(input.mode)))throw Error('不支援的模式');session.mode=input.mode as State['mode'];session.version++;result=session.state();}
- else if(route==='/drafts')result=session.draft(input.side as Side,String(input.lot),input.sl as string|null,input.tp as string|null,input.typical_lot as string|null);
+ else if(route==='/drafts')result=session.draft(input.side as Side,String(input.lot),input.sl as string|null,input.tp as string|null,input.typical_lot as string|null,(input.order_type||'MARKET') as OrderType,input.limit_price as string|null);
  else if(/^\/drafts\/[^/]+\/confirm$/.test(route)){
   const saved=session.drafts.get(route.split('/')[2]) as (Draft & {rule_snapshot?:PersonalRule[]})|undefined;
   const rules=validateRules(input.personal_rules||[]);
@@ -159,6 +187,7 @@ export async function browserAPI(path:string,body?:unknown):Promise<unknown>{
   result=session.confirm(route.split('/')[2],Number(input.revision),String(input.idempotency_key||''));
  }
  else if(/^\/drafts\/[^/]+\/cancel$/.test(route))result=session.cancel(route.split('/')[2]);
+ else if(/^\/pending\/[^/]+\/cancel$/.test(route))result=session.cancelPending(route.split('/')[2]);
  else if(/^\/positions\/[^/]+\/close$/.test(route)){if(input.confirmed!==true)throw Error('需要使用者確認平倉');result=session.close(route.split('/')[2],String(input.idempotency_key||''));}
  else if(route==='/chat')result=session.chat(String(input.message||''),input.side as Side,input.typical_lot as string|null);
  else throw Error('公開示範不支援此操作');
