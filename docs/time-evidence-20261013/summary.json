@@ -1,0 +1,109 @@
+{
+  "check_date": "2026-10-13",
+  "gold_sources": 166,
+  "source_year_rows": 185,
+  "source_year_screen_winners": {
+    "UNRESOLVED": 178,
+    "US_2_3": 5,
+    "EU_2_3": 2
+  },
+  "sources_with_screen_winner": 7,
+  "product_cases_on_sources_with_screen_winner": 1415,
+  "broker_header_coverage": {
+    "Hantec Global Ltd": {
+      "sources": 1,
+      "product_cases": 0
+    },
+    "Hantec Markets": {
+      "sources": 4,
+      "product_cases": 9
+    },
+    "INFINOX Capital": {
+      "sources": 7,
+      "product_cases": 0
+    },
+    "Lirunex": {
+      "sources": 1,
+      "product_cases": 0
+    },
+    "RoboForex": {
+      "sources": 41,
+      "product_cases": 106
+    },
+    "UNMAPPED_CSV": {
+      "sources": 61,
+      "product_cases": 6770
+    },
+    "UNMAPPED_XLSX": {
+      "sources": 38,
+      "product_cases": 4935
+    },
+    "XM": {
+      "sources": 12,
+      "product_cases": 82
+    },
+    "intertrader": {
+      "sources": 1,
+      "product_cases": 0
+    }
+  },
+  "previously_unmapped_sources_with_broker_link_candidate": 55,
+  "previously_unmapped_product_cases_with_broker_link_candidate": 5549,
+  "conflicting_candidate_broker_sources": 0,
+  "utc_exception_candidate_broker_headers": [
+    "intertrader"
+  ],
+  "sources_without_broker_header": 99,
+  "product_cases_without_broker_header": 11705,
+  "economic_clock_candidate_links": 62,
+  "multi_day_economic_clock_candidate_links": 61,
+  "exact_identity_clock_bridges": 0,
+  "requested_m1_minutes": 2193,
+  "available_m1_minutes": 2120,
+  "m1_market_clock": "INFERRED_EMPIRICAL_EU_SHIFT",
+  "utc_exception": {
+    "raw_rows": 236,
+    "gold_trade_observations": 208,
+    "strong_utc0_observations": 208,
+    "strong_utc0_days": 29,
+    "product_cases": 110,
+    "raw_ticket_present_rows": 236,
+    "provenance_class": "MYFXBOOK_CSV_HEADER_BROKER_UNMAPPED",
+    "batch_events": 137,
+    "scores": {
+      "FIXED:0": {
+        "n": 137,
+        "missing": 2,
+        "hits": 129
+      },
+      "EU_2_3": {
+        "n": 137,
+        "missing": 2,
+        "hits": 12
+      },
+      "US_2_3": {
+        "n": 137,
+        "missing": 2,
+        "hits": 12
+      },
+      "FIXED:480": {
+        "n": 137,
+        "missing": 18,
+        "hits": 3
+      }
+    }
+  },
+  "utc_exception_candidate_links": 1,
+  "top10_product_cases": 4409,
+  "top20_product_cases": 6564,
+  "product_cases": 11902,
+  "new_formally_confirmed_cases": 0,
+  "production_enabled": false,
+  "limitations": [
+    "economic signatures are candidate overlaps, not identity",
+    "calendar dates do not specify server transition instant",
+    "all price screening is retrospective and not fresh validation",
+    "market clock is unconfirmed",
+    "filename and creation metadata are not time evidence"
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "source_year_accounting": true,
+  "common_m1_denominators": true,
+  "missing_not_filled_zero": true,
+  "candidate_identity_kept_unconfirmed": true,
+  "calendar_dates_verified": true,
+  "public_summary_identifiers_absent": true,
+  "original_files_unchanged": 239,
+  "production_inputs_unchanged": 3,
+  "audit_inputs_unchanged": 17,
+  "python_sources_parsed": 5
+}

@@ -9,7 +9,9 @@ from pydantic import BaseModel, Field, ConfigDict
 from .engine import Engine, DomainError, amount
 from .market import ROOT
 from .cases import LABELS
-from .assistant import respond, llm_enabled
+from .assistant import respond, llm_enabled, explain_draft
+from .personal_rules import validate_rules, evaluate_rules
+from .technical import analyze as technical_analysis
 
 app=FastAPI(title='Gold Trading Project',version='0.1.0')
 engine=Engine()
@@ -24,11 +26,14 @@ class DraftInput(Body):
     lot:str=Field(max_length=30)
     sl:str|None=None
     tp:str|None=None
+    typical_lot:str|None=Field(default=None,max_length=30)
+    personal_rules:list[dict]=Field(default_factory=list,max_length=50)
 
 
 class ConfirmInput(Body):
     revision:int
     idempotency_key:str=Field(min_length=1,max_length=128)
+    personal_rules:list[dict]=Field(default_factory=list,max_length=50)
 
 
 class CloseInput(Body):
@@ -48,6 +53,13 @@ class ChatInput(Body):
     message:str=Field(max_length=1500)
     side:Literal['BUY','SELL']|None=None
     lot:str|None=None
+    typical_lot:str|None=Field(default=None,max_length=30)
+    personal_rules:list[dict]=Field(default_factory=list,max_length=50)
+
+
+def checked_rules(raw:list[dict]) -> list[dict]:
+    try:return validate_rules(raw)
+    except (ValueError,TypeError):raise DomainError('個人規則格式或門檻無效')
 
 
 @app.exception_handler(DomainError)
@@ -73,9 +85,9 @@ def state():
 
 
 @app.get('/api/bars')
-def bars(interval:Literal['5m','15m','1h']='5m'):
+def bars(interval:Literal['5m','15m','1h']='5m',focus:str|None=None):
     with engine.lock:
-        return engine.chart(interval)
+        return engine.chart(interval,focus)
 
 
 @app.post('/api/replay/step')
@@ -98,12 +110,23 @@ def mode(body:ModeInput):
 
 @app.post('/api/drafts')
 def draft(body:DraftInput):
-    return engine.create_draft(body.side,body.lot,body.sl,body.tp)
+    rules=checked_rules(body.personal_rules)
+    with engine.lock:
+        value=engine.create_draft(body.side,body.lot,body.sl,body.tp,body.typical_lot)
+        reading=technical_analysis(engine.bars[:engine.cursor],300,engine.clock).get('reading')
+        value['personal_rules']=evaluate_rules(rules,engine.state(),value,reading)
+        engine.drafts[value['id']]['_rule_snapshot']=rules
+    return explain_draft(engine,value)
 
 
 @app.post('/api/drafts/{draft_id}/confirm')
 def confirm(draft_id:str,body:ConfirmInput):
-    return engine.confirm(draft_id,body.revision,body.idempotency_key)
+    rules=checked_rules(body.personal_rules)
+    with engine.lock:
+        saved=engine.drafts.get(draft_id)
+        if saved and saved['status']=='REVIEW' and saved.get('_rule_snapshot',[])!=rules:
+            raise DomainError('個人規則已更新，請重新檢查訂單',409)
+        return engine.confirm(draft_id,body.revision,body.idempotency_key)
 
 
 @app.post('/api/drafts/{draft_id}/cancel')
@@ -120,14 +143,14 @@ def close(position_id:str,body:CloseInput):
 
 @app.post('/api/chat')
 def chat(body:ChatInput):
-    with engine.lock:
-        return respond(engine,body.message,body.side,body.lot)
+    rules=checked_rules(body.personal_rules)
+    return respond(engine,body.message,body.side,body.lot,body.typical_lot,rules)
 
 
 @app.get('/api/cases')
-def cases(side:Literal['BUY','SELL']='BUY',action:Literal['FIRST','ADD','OPPOSITE']='FIRST',lot:str='0.1'):
+def cases(side:Literal['BUY','SELL']='BUY',action:Literal['FIRST','ADD','OPPOSITE']='FIRST',lot:str='0.1',typical_lot:str|None=None):
     with engine.lock:
-        return engine.retrieve(side,action,amount(lot,'手數'))
+        return engine.retrieve(side,action,amount(lot,'手數'),amount(typical_lot,'平常手數') if typical_lot else None)
 
 
 @app.get('/api/cases/{case_id}')

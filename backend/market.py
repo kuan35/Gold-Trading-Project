@@ -33,7 +33,7 @@ def load_bars() -> tuple[list[dict], str]:
     return bars, '合成行情示範・非即時報價'
 
 
-def aggregate(bars: list[dict], seconds: int, clock: int) -> list[dict]:
+def aggregate(bars: list[dict], seconds: int, clock: int, limit: int | None = 250) -> list[dict]:
     groups: dict[int, list[dict]] = {}
     for b in bars:
         if b['time']+300 > clock:
@@ -50,4 +50,4 @@ def aggregate(bars: list[dict], seconds: int, clock: int) -> list[dict]:
                            low=float(min(D(b['low']) for b in group)),
                            close=float(group[-1]['close']),
                            volume=float(sum((D(str(b.get('volume',0))) for b in group),D(0)))))
-    return result[-250:]
+    return result[-limit:] if limit is not None else result

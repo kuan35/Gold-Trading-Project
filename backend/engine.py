@@ -6,6 +6,8 @@ from decimal import Decimal, InvalidOperation
 from uuid import uuid4
 from .market import load_bars, aggregate
 from .cases import CaseStore
+from .technical import analyze as technical_analysis
+from .market_similarity import snapshot as market_snapshot
 
 D = Decimal
 
@@ -84,30 +86,61 @@ class Engine:
                                   '目前案例依操作條件檢索；盤面對齊未核實',
                                   '成交不代表券商回報，demo API未連線'])
 
-    def chart(self, interval: str = '5m') -> dict:
+    def chart(self, interval: str = '5m', focus: str | None = None) -> dict:
         seconds = {'5m':300,'15m':900,'1h':3600}.get(interval)
         if seconds is None:
             raise DomainError('不支援的K線週期')
-        bars = aggregate(self.bars[:self.cursor],seconds,self.clock)
+        bars = aggregate(self.bars[:self.cursor],seconds,self.clock,limit=None)
+        last_complete = bars[-1]['time'] if bars else None
+        selected = next((o for o in self.orders if o['id'] == focus),None) if focus else None
+        if focus and selected is None:
+            raise DomainError('成交紀錄不存在，請重新選擇',404)
+        navigation = None
+        if selected:
+            position_id = selected.get('position_id') or (selected['id'] if selected['action'] != 'CLOSE' else None)
+            related = [o for o in self.orders if o['id'] == selected['id'] or
+                       (position_id and (o['id'] == position_id or o.get('position_id') == position_id))]
+            indices = [i for i,b in enumerate(bars) if b['time'] <= min(o['time'] for o in related)-1]
+            start = max(0,(indices[-1] if indices else 0)-100)
+            indices = [i for i,b in enumerate(bars) if b['time'] <= max(o['time'] for o in related)-1]
+            end = min(len(bars),(indices[-1] if indices else 0)+41)
+            bars = bars[start:end]
+            navigation = dict(selected_id=focus,order_ids=[o['id'] for o in related],
+                              pairing='linked' if len(related)>1 else 'open' if selected['action']!='CLOSE' else 'unavailable',
+                              orders=related,
+                              note='箭頭標示買賣方向與時間，成交價看標籤與價格線；時間貼齊當時最後已收完的K棒。停損／停利只知道觸發K棒，並非精確成交秒。')
+        else:
+            bars = bars[-250:]
         times = {b['time'] for b in bars}
         markers = []
         for o in self.orders:
-            # Trade happens at the start of the next bar: show only after it is closed.
-            t = o['time']//seconds*seconds
+            # Boundary fills are visible immediately on the just-closed candle.
+            # Higher frames may still be forming: anchor to the last CLOSED candle.
+            eligible = [t for t in times if t <= (o['time']-1)//seconds*seconds]
+            t = max(eligible) if eligible else -1
+            if bars and o['time'] < bars[0]['time']:
+                continue
+            if bars and bars[-1]['time'] != last_complete and o['time'] > bars[-1]['time']+seconds:
+                continue
             if t not in times:
                 continue
             buy = o['side']=='BUY'
-            markers.append(dict(time=t,position='belowBar' if buy else 'aboveBar',color='#44c4b0' if buy else '#e47c80',
-                                shape='circle' if o['action']=='CLOSE' else ('arrowUp' if buy else 'arrowDown'),
+            markers.append(dict(id=o['id'],position_id=o.get('position_id'),action=o['action'],
+                                price=o['price'],executed_at=o['time'],
+                                time_precision='bar' if o.get('reason','').startswith(('STOP_', 'TAKE_')) else 'snapshot',
+                                time=t,position='belowBar' if buy else 'aboveBar',color='#44c4b0' if buy else '#e47c80',
+                                shape='arrowUp' if buy else 'arrowDown',
                                 text=('平倉' if o['action']=='CLOSE' else '首筆' if o['action']=='FIRST' else '加單')+' '+o['lot']))
-        return dict(bars=bars,markers=sorted(markers,key=lambda x:x['time']),source=self.data_source,interval=interval)
+        return dict(bars=bars,markers=sorted(markers,key=lambda x:(x['time'],x['executed_at'],x['id'])),
+                    source=self.data_source,interval=interval,focus=navigation,
+                    analysis=technical_analysis(self.bars[:self.cursor],seconds,self.clock))
 
     def action(self, side: str) -> str:
         if not self.positions:
             return 'FIRST'
         return 'ADD' if all(p['side']==side for p in self.positions) else 'OPPOSITE'
 
-    def retrieve(self, side: str, action: str, lot: D) -> dict:
+    def retrieve(self, side: str, action: str, lot: D, typical_lot: D | None = None) -> dict:
         same = [p for p in self.positions if p['side']==side]
         total = sum((D(p['lot']) for p in same),D(0))
         distance = None
@@ -115,9 +148,10 @@ class Engine:
             avg = sum(D(p['lot'])*D(p['entry']) for p in same)/total
             price = D(self.quote()['ask' if side=='BUY' else 'bid'])
             distance = (price-avg)/avg*100*(1 if side=='BUY' else -1)
-        return self.cases.retrieve(side,action,lot,self.clock,prior_count=len(same),prior_lot=total,signed_distance=distance)
+        return self.cases.retrieve(side,action,lot,self.clock,prior_count=len(same),prior_lot=total,signed_distance=distance,typical_lot=typical_lot,
+                                   query_market=market_snapshot(self.bars[:self.cursor],self.clock))
 
-    def create_draft(self, side: str, lot: str, sl: str | None, tp: str | None) -> dict:
+    def create_draft(self, side: str, lot: str, sl: str | None, tp: str | None, typical_lot: str | None = None) -> dict:
         with self.lock:
             if self.mode != 'replay':
                 raise DomainError('券商模擬帳戶未連線，不能送單；請切回歷史回放',503)
@@ -157,14 +191,14 @@ class Engine:
                 warnings.append('反向／混合持倉：此回放採逐筆持倉，不能當券商淨額模式')
             stop_loss = abs(price-stop)*qty*100 if stop is not None else None
             rr = abs(target-price)/abs(stop-price) if target is not None and stop is not None else None
-            retrieval = self.retrieve(side,self.action(side),qty)
+            retrieval = self.retrieve(side,self.action(side),qty,amount(typical_lot,'平常手數') if typical_lot else None)
             draft = dict(id=uuid4().hex,revision=self.version,side=side,lot=str(qty),sl=str(stop) if stop else None,
                          tp=str(target) if target else None,price=money(price),action=self.action(side),status='REVIEW',
                          risk=dict(before_lot=str(before),after_lot=str(before+qty),average_entry=money(average),
                                    stop_loss_usd=money(stop_loss) if stop_loss is not None else None,
                                    reward_risk=money(rr) if rr is not None else None,scenarios=scenarios,warnings=warnings),
                          retrieval=retrieval,
-                         explanation=f'已找到 {retrieval["total"]} 個相似操作候選。比較方向、操作種類與手數；盤面相似度尚未核實。新增後總部位為 {before+qty} 手。請核對下列風險後自行確認。')
+                         explanation=f'已找到 {retrieval["total"]} 個相似操作候選。比較方向、操作種類、手數基準與加倉條件；盤面相似度尚未核實。新增後總部位為 {before+qty} 手。請核對下列風險後自行確認。')
             self.drafts[draft['id']] = draft
             return draft
 
@@ -185,7 +219,7 @@ class Engine:
             ident = uuid4().hex[:10]
             pos = dict(id=ident,side=draft['side'],lot=draft['lot'],entry=draft['price'],sl=draft['sl'],tp=draft['tp'],opened_at=self.clock)
             self.positions.append(pos)
-            self.orders.append(dict(id=ident,side=pos['side'],lot=pos['lot'],price=pos['entry'],status='FILLED',time=self.clock,action=draft['action'],pnl=None))
+            self.orders.append(dict(id=ident,position_id=ident,side=pos['side'],lot=pos['lot'],price=pos['entry'],status='FILLED',time=self.clock,action=draft['action'],pnl=None))
             draft['status']='FILLED'
             self.version += 1
             result = dict(status='FILLED',order_id=ident,state=self.state())
@@ -205,7 +239,7 @@ class Engine:
         self.balance+=pnl
         self.positions.remove(p)
         order=dict(id=uuid4().hex[:10],side='SELL' if p['side']=='BUY' else 'BUY',lot=p['lot'],price=money(price),
-                   status='FILLED',time=self.clock,action='CLOSE',pnl=money(pnl),reason=reason)
+                   position_id=p['id'],status='FILLED',time=self.clock,action='CLOSE',pnl=money(pnl),reason=reason)
         self.orders.append(order)
         self.version+=1
         return dict(status='FILLED',order_id=order['id'],state=self.state())

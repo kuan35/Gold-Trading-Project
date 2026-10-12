@@ -3,7 +3,12 @@
 All amounts/prices/lots are decimal strings. OHLC plotting is numeric. REST base /api. Errors JSON {detail: string}. Modes replay and broker_demo. Synthetic demo is clearly named, private imported data source is labelled.
 
 - GET /api/state → {mode,version,clock,data_source,broker_connected:false,llm_enabled:false,quote:{bid,ask,time},account:{balance,equity},positions:[{id,side,lot,entry,sl,tp,pnl,opened_at}],orders:[{id,side,lot,price,status,time,action,pnl}],market:{change_pct,range_pct,high,low,ma20,ma60},data_quality:[string]}
-- GET /api/bars?interval=5m|15m|1h → {bars:[{time:unix seconds,open,high,low,close,volume}],markers:[{time,position:'belowBar'|'aboveBar',color,shape:'arrowUp'|'arrowDown'|'circle',text}],source,interval}
+- GET /api/bars?interval=5m|15m|1h&focus=optional_order_id → {bars,markers,source,interval,focus,analysis}. Unknown focus returns 404. GET does not advance time or alter positions.
+  - bars: complete closed OHLCV only. Default latest250; focused view includes selected entry/exit plus100 bars before (enough for MA60) and40 after if already known, possibly more than250 for long holds.
+  - new markers: {id,position_id,action,time,executed_at,price:decimal_string,time_precision:'snapshot'|'bar',position:'belowBar'|'aboveBar',color,shape,text}. price is execution price; time anchors to last available CLOSED candle at the event (boundary uses just-closed candle). executed_at is original replay timestamp. Higher frame forming candles are never fabricated. time_precision=bar for OHLC stop/target triggers, not precise execution seconds. Legacy case markers without price may retain aboveBar/belowBar.
+  - focus: null or {selected_id,order_ids,orders,pairing:'linked'|'open'|'unavailable',note}. New fills and exits carry position_id. Old exits missing this key are not guessed. Other orders inside the visible window can still appear, selected prices have reference lines.
+  - analysis: current replay snapshot, even when focusing OLD trades: {interval,count,last_closed_at,rsi14,macd_line,macd_signal,macd_histogram,atr14,boll_lower,boll_middle,boll_upper,source_volume_ratio,levels,definitions}. Financial values are decimal strings, missing values null. Wilder14 RSI/ATR; SMA-seeded EMA12/26/9 MACD; population-SD Bollinger20×2. Source volume ratio is latest source volume / prior20 average, not global volume.
+  - levels: candidate supports/resistances from120 closed bars, strict local pivots with2 closed bars on each side; same-kind pivots merged within max(ATR14/4,0.20), nearest2 per side of last close. Each {price,pivot_count,confirmed_at}. This is not a trader-drawn line, validated reversal probability or historical decision-time signal.
 - POST /api/replay/step {bars:1|6|12} → state; POST /api/replay/reset {} → state; POST /api/mode {mode:'replay'|'broker_demo'} → state. Switching mode to unconfigured demo clearly disables submitting; no synthetic broker response.
 - POST /api/drafts {side:'BUY'|'SELL',lot:'0.10',sl:null|string,tp:null|string} → {id,revision,side,lot,sl,tp,price,action:'FIRST'|'ADD'|'OPPOSITE',status:'REVIEW',risk:{before_lot,after_lot,average_entry,stop_loss_usd:null|string,reward_risk:null|string,scenarios:[{move,loss}],warnings:[string]},retrieval:{total,wins,losses,flat,unknown,win_rate:null|string,cases:[Case],limitations:[string]},explanation:string}
 - POST /api/drafts/{id}/confirm {revision:number,idempotency_key:string} → {status:'FILLED',order_id:string,state}; 409 stale/repeated other-version, 503 unconnected broker. POST /api/drafts/{id}/cancel {} → {status:'CANCELLED'}.
@@ -14,3 +19,97 @@ All amounts/prices/lots are decimal strings. OHLC plotting is numeric. REST base
 - GET /api/audit → {source_files,total_gold_records,period,groups:[{code,label,count,description}],limitations:[string],refreshed_at,source:'synthetic_demo'|'private_audit'}.
 
 Case = {id,label,side,action,lot,entry,exit,opened_at,closed_at,profit,distance,match_reasons:[string],differences:[string],group,source_kind:'synthetic_demo'|'trader_history',time_alignment:'confirmed'|'unknown',behavior,sequence:[{index,side,lot,entry,exit,profit,role}]}. Historical outcomes are available only before query clock. UI must show source and limitations; never call win_rate a forecast.
+
+
+## Operation similarity extension (2026-10-12)
+
+`POST /api/drafts`, `POST /api/chat` accept optional `typical_lot: null|string`;
+`GET /api/cases` accepts optional `typical_lot` query string. Empty/null means absolute-lot comparison;
+a supplied non-positive/non-finite value returns 400. It is the user's declared usual order lot,
+not account equity or a broker lot conversion. Chat and form share the same retrieval.
+
+Retrieval additionally returns:
+- `profit_cases`, `loss_cases`: closest six of each outcome, selected AFTER full matching/group deduplication.
+- `cases`: up to three profit and three loss cases, shortages filled by nearest remaining candidates.
+- `comparison`: `{method,basis:'relative_lot'|'absolute_lot',max_distance:0.65,excluded_missing_profile,market_features_enabled:false,parameters_validated:false}`.
+- `sufficiency`: `{status:'usable'|'limited'|'insufficient',label,reasons:string[],matched_groups,is_success_probability:false}`.
+- Each ranked Case has `comparison_basis`, `missing_features`, `components:[{feature,label,query:null|string,case:null|string,weight,distance,missing}]`.
+
+The full matched pool statistics do not change when displaying profits/losses. Distance is not
+a forecast probability. FIRST relative-lot matching requires a past-only profile for the historical case;
+missing-profile cases are excluded from that mode, never silently compared with another distance basis.
+Historical profiles use the previous 20 completed local 5m order batches per source, with at least
+10 batches across 3 dates. Source is not a verified account; ordering and completeness remain provisional.
+ADD dimensions: lot scale .35, same-side count .20, new/prior lot .25, signed distance-to-average .20.
+Missing ADD dimensions retain their weight with distance 1. Hard guards: lot/exposure scale <=2x,
+signed-price gap <=0.5 percentage points, opposite favorable/adverse signs beyond +/-0.02% rejected.
+FIRST distance uses only the lot scale. Maximum weighted distance .65; unvalidated engineering defaults.
+No P/L, holding duration, close price, future sequence or market shape enters distance.
+
+Evidence: fewer than 5 matched groups is insufficient; 5-29 or missing information is limited.
+Unverified clocks, absolute-only comparison, incomplete fields or unverified independent sources cap
+the result at limited. At present all private sources remain unverified, so usable is not emitted.
+Case detail still returns no unverified historical candles. Private profiles live in
+`private/case_size_profiles.json`; stale case-file hashes disable profiles and disclose the reason,
+while absolute comparison and the rest of the app remain available. No private source identifiers
+or profile metadata are returned in Case responses.
+
+
+### 2026-10-12 LLM explanation contract
+
+- `POST /drafts` and `POST /chat` use the same anonymized, closed-bar market and retrieval summary when external LLM use is enabled. No-match is valid and never forces a looser match.
+- Drafts add optional `llm: {status, model, provider?}`; chat adds `llm_status` and `model`. `configured_llm` is returned only after a complete, nonempty response. Disabled, expired-key, timeout and provider failures preserve deterministic summaries and pending drafts.
+- `state.llm_enabled` means configured, not verified connectivity or valid credit. The model receives no original identifiers, files, account numbers or access tokens. Examples use request-local H1/H2 labels.
+- Explanations include mode/time, completed 5m/15m/1h bar statistics, operation-based matches/differences, matured outcomes and known gaps. Live TradingView contents are not available to this API. Volume, confirmed trendlines and validated support/resistance remain unavailable.
+- Network waits occur after the snapshot is captured, without holding the global engine lock. Confirming still checks the original draft revision; explanations cannot execute orders. No LLM output determines retrieval distance, financial arithmetic or rule triggers.
+
+### Grounded explanation card (2026-10-12)
+
+Draft and chat responses add optional `explanation_card`:
+`{version:1,as_of_utc,origin:'model_selection'|'program',status,model,sections:[{id,title,facts:[{id,text,source,evidence}]}]}`.
+Four sections: `market`, `history`, `risk`, `limits`. `evidence` contains anonymized program-produced values only.
+Chat also returns `intro` (draft/instruction notice). Existing `message` and `explanation` remain text equivalents for older clients.
+
+The production chat/draft path asks the model ONLY for a JSON selection of fact IDs. All displayed sentences and numbers are generated from the decision snapshot, not model prose.
+Unknown, duplicate, missing, or cross-section IDs reject the entire selection (`invalid_selection`) and use deterministic defaults. Required context, evidence caveats, risk facts and profit/loss examples when present cannot be hidden by model selection.
+`ok` / `configured_llm` now means validated model selection, not free-form financial reasoning. Disabled/failure responses return the same card with program origin and honest status.
+The low-level legacy free-text helper is retained for compatibility tests; product routes do not use that mode. Model selection is not a truth verifier or a validated recommendation engine.
+The scenario values are total floating P/L of all positions including the hypothetical order, NOT incremental loss from now. The existing replay assumes 100 oz/lot and a 0.30 quote spread; scenarios do not execute stops or include slippage, fees or overnight financing. No broker specifications are inferred.
+Cards are immutable snapshots. Existing revision checks and user confirmation still control execution.
+
+
+### Descriptive market reading / arrow markers (2026-10-12)
+
+Bar analysis adds optional `reading: {bias,label,reasons,indicators:{rsi,macd,atr,bollinger,volume},method}`.
+`bias` is bullish, bearish, bullish_pullback, bearish_rebound, mixed or insufficient.
+The server describes close/MA20/MA60 structure; RSI45–55 is an explicit neutral buffer and MACD zero/signal positions are explained separately. No fitted accuracy, probability or forecast is implied. ATR and source volume never determine direction. Missing MA60 warmup returns insufficient.
+Market explanation catalog adds `{interval}.reading`; 5m reading is mandatory so model ID selection cannot hide the direction's numerical basis. Current-frame UI uses the same program-owned text. Other frames require that frame's complete candles.
+All execution markers use BUY arrowUp/belowBar and SELL arrowDown/aboveBar, including close orders. `price` remains the exact executed-price string for labels and focused price lines; the arrow's Y location is deliberately outside the candle, not the executed price. Order record linkage, timestamps and conservative closed-candle anchoring are unchanged.
+
+
+## 個人提醒規則（2026-10-12）
+
+POST `/api/drafts`、`/api/chat`、`/api/drafts/{id}/confirm` 可帶 `personal_rules`，預設空清單。規則保存於前端此origin的localStorage `gold-personal-rules-v1`，不在後端共用帳戶保存，沒有跨裝置同步或登入隔離的宣稱。
+
+每條固定欄位：`{id,kind,value,op,enabled,side}`，最多50條、id唯一。kind為 `order_lot/after_lot/same_side_count/missing_sl/stop_loss_usd/market_bias`。前三種與stop_loss_usd的value為正有限十進位字串，op為gt/gte，筆數必須整數。missing_sl為value=null/op=is。market_bias為value=bullish/bearish/bullish_pullback/bearish_rebound/mixed、op=is。side為ANY/BUY/SELL；其他欄位拒絕。
+
+草稿與一般聊天回應新增 `personal_rules:{source:"program",reminder_only:true,results:[{id,text,status,actual,reason}]}`。status為triggered/clear/unknown，停用規則不參與。沒有草稿時，訂單條件unknown；market_bias限定方向也需草稿。after_lot為所有多空部位手數絕對值總和加新單，same_side_count為下單前同方向筆數，不含新單。
+
+提醒不阻止使用者確認成交，但確認時規則清單須與草稿快照相同，不同回409要求重建草稿。行情／帳戶變更仍依既有revision檢查。重送已成功確認維持冪等。規則設定、假設或否定語句先隔離，不可走訂單解析。
+
+口語設定採本地明確語句解析，不呼叫LLM猜規則；支援「單筆超過0.1手提醒我」「沒設定停損就提醒我」「把第1條改成0.2手」「暫停第1條」「列出我的規則」。複合條件、含糊單位及不支援週期要求使用管理表單。新增／修改／暫停／啟用／刪除均先預覽並由使用者確認。無法保存報錯，既有壞儲存不覆蓋。
+
+頁面開啟且使用回放時，5m任何方向分類會隨已收棒更新；持續觸發不重複新增對話。不是背景24小時監控。Pages使用合成資料與decimal.js檢查；缺乏技術判讀會回unknown，不借用iframe即時行情。
+
+
+## Operation / market evidence axes (2026-10-12)
+
+Retrieval `comparison` adds `mode:operation_only|market_and_operation`, `operation_candidates`, `verified_market_candidates`, `excluded_unverified_market`, `query_market_ready`, `market_matches`, and a program-generated `reason`. Counts of market-eligible rows are distinct from deduplicated operation candidate groups. `market_features_enabled` indicates this query's actual filtering mode, including a zero-match strict result; it is not a global coverage claim.
+
+Ranked cases add `operation_distance`, `operation_comparison:{distance,label,strength:weak|limited,reason}`, and `market_comparison:{status:matched|unavailable,label,reason,distance,coverage,components}`. Market components have the same decimal-string query/case values and dimensionless distance/weight fields as operation components. Private profiles, evidence paths and hashes are not returned.
+
+Operation-only mode preserves the original matcher and labels market comparison unavailable. If a ready query and eligible historical market profiles exist, only independently passing operation (<=0.65) and market (<=0.40) candidates are ranked by 0.4*operation + 0.6*market. Missing optional market fields retain cost1; known feature weights must cover >=0.8, and all three timeframe price/MA gaps must exist. No fallback to weaker examples when strict mode returns zero. A lack of verified historical profiles or incomplete current data is explicitly disclosed as operation-only.
+
+`parameters_validated` remains false in production; sufficiency always discloses this and cannot upgrade solely because many candidates exist. Source/independence limitations are conditional on actual metadata, not hard-coded permanent claims. No probability is inferred from distances, coverage or historical outcomes. Profit/loss grouping occurs only after matching.
+
+Chat facts include actual comparison scope and use the same snapshots as form drafts. New snapshots use closed candles only; no external market API, embeddings, LLM ranking, broker connection or automatic order execution is introduced. Public Pages returns operation-only with market_matches=0; it does not fake historical market evidence.
