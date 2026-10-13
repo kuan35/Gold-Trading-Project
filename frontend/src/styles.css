@@ -272,3 +272,24 @@ footer {padding:6px 16px;font-size:10px;min-height:26px;flex-shrink:0}
   .live-chart {height:min(70dvh,620px);min-height:340px;flex:none}
   .live-market .limitations p {display:block;margin:3px 0}
 }
+
+/* In the chat view, the document owns vertical scrolling; the assistant does not. */
+.chat-workspace .order-panel,.chat-workspace .chat-panel,.chat-workspace .chat-log {overflow:visible}
+.chat-workspace .chat-panel {height:auto;min-height:610px}
+.chat-workspace .chat-log {flex:1 0 auto;min-height:260px;overscroll-behavior:auto}
+.chat-workspace .chat-input {padding-top:12px;border-top:1px solid var(--line)}
+.chat-workspace .chat-input textarea {min-height:112px;max-height:none;font-size:13px;line-height:1.65}
+.chat-workspace .chat-message>p {font-size:13px;line-height:1.7}
+@media(min-width:981px) {
+  .terminal.chat-workspace {height:auto;min-height:100dvh;display:block}
+  .chat-workspace .workspace {min-height:calc(100dvh - 165px);flex:none;grid-template-rows:auto auto}
+  .chat-workspace .market-panel {align-self:start;overflow:visible}
+  .chat-workspace .market-panel .chart-area {height:clamp(380px,54dvh,620px);flex:none}
+  .chat-workspace .order-panel {height:auto;min-height:calc(100dvh - 280px)}
+  .chat-workspace .order-panel .chat-panel {min-height:max(680px,calc(100dvh - 240px))}
+  .chat-workspace .chat-input {position:sticky;bottom:0;background:var(--bg);z-index:2;padding-bottom:12px}
+  .chat-workspace .bottom-panel {min-height:116px;overflow:visible}
+}
+@media(max-width:980px) {
+  .chat-workspace .order-panel .chat-panel {height:auto;min-height:610px}
+}
