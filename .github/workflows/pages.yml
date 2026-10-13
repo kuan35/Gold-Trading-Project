@@ -27,6 +27,9 @@ jobs:
         working-directory: frontend
       - run: npm run build:pages
         working-directory: frontend
+        env:
+          VITE_GROQ_PROXY_URL: ${{ vars.GROQ_PROXY_URL }}
+          VITE_TURNSTILE_SITE_KEY: ${{ vars.TURNSTILE_SITE_KEY }}
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v4
         with:

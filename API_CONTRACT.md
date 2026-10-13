@@ -1,5 +1,9 @@
 # Frontend API contract v1
 
+## Optional public Groq explanation proxy (2026-10-13)
+
+This Cloudflare Worker is separate from the local `/api` contract. When configured, Pages may POST `/explain` with `{message,facts,token}` after explicit visitor opt-in and Turnstile verification. It returns `{message,provider:"groq_explanation"}`. `facts` contain only the synthetic replay snapshot and program-produced summary. The Worker validates the Turnstile token with Siteverify, checks hostname/action, and keeps `GROQ_API_KEY` / `TURNSTILE_SECRET_KEY` in Worker secrets. The response is display-only: it cannot create or confirm drafts, change similarity results, or execute orders. If absent or unavailable, `/chat` remains the local deterministic browser implementation. See `groq-proxy/README.md`.
+
 All amounts/prices/lots are decimal strings. OHLC plotting is numeric. REST base /api. Errors JSON {detail: string}. Modes replay and broker_demo. Synthetic demo is clearly named, private imported data source is labelled.
 
 - GET /api/state → {mode,version,clock,data_source,broker_connected:false,llm_enabled:false,quote:{bid,ask,time},account:{balance,equity},positions:[{id,side,lot,entry,sl,tp,pnl,opened_at}],pending_orders:[{id,side,lot,limit_price,sl,tp,created_at,action,status:'PENDING'}],orders:[{id,side,lot,price,status,time,action,pnl}],market:{change_pct,range_pct,high,low,ma20,ma60},data_quality:[string]}

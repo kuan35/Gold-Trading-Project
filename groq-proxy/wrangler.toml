@@ -1,0 +1,14 @@
+name = "gold-desk-groq-proxy"
+main = "worker.mjs"
+compatibility_date = "2026-10-13"
+
+[[ratelimits]]
+name = "GROQ_LIMITER"
+namespace_id = "1001"
+
+[ratelimits.simple]
+limit = 3
+period = 60
+
+# Set GROQ_API_KEY and TURNSTILE_SECRET_KEY with `wrangler secret put`.
+# Never put their values in this file or the public Pages build.

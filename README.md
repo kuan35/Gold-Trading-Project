@@ -2,9 +2,11 @@
 
 線上展示：https://kuan35.github.io/Gold-Trading-Project/
 
-GitHub Pages 回放演練可在瀏覽器獨立操作，使用合成行情與案例；每位訪客工作階段獨立，重新整理會清空模擬持倉。首筆、加倉、平倉、案例與本地中文助手均可使用；另有 TradingView 外部即時看盤頁。它沒有 Python 後端、私人交易員資料、外部 LLM 或券商連線；本機版本則保留 FastAPI 與私人資料匯入。
+GitHub Pages 回放演練可在瀏覽器獨立操作，使用合成行情與案例；每位訪客工作階段獨立，重新整理會清空模擬持倉。首筆、加倉、平倉、案例與本地中文助手均可使用；另有 TradingView 外部即時看盤頁。它沒有 Python 後端、私人交易員資料或券商連線；Groq 說明代理部署後可由訪客主動啟用，未設定時維持本地助手。本機版本則保留 FastAPI 與私人資料匯入。
 
 Pages 部署由 `.github/workflows/pages.yml` 在 main 的前端更新後自動執行，先跑前端測試再建置。
+
+公開 Groq 代理的 Worker 程式與部署設定見 [groq-proxy](groq-proxy/README.md)。金鑰只存 Cloudflare Worker secret，Pages 不含金鑰；目前是否已連線，以網站「對話助手」狀態為準。歷史案例 K 線比對仍因來源時間及行情時鐘未完成核實而停用，現只提供操作條件檢索。
 
 黃金交易案例與下單前風險輔助平台。React + TypeScript + Vite 前端、TradingView Lightweight Charts、FastAPI 後端。
 
