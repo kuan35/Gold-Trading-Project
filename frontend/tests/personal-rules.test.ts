@@ -14,6 +14,10 @@ test('parse settings before order intent; unsupported compound is not accepted',
  assert.equal(parseRuleMessage('買進0.2手',[]),null);
  assert.equal(parseRuleMessage('手數超過0.1而且沒停損提醒我',[])?.proposal,undefined);
 });
+test('a request for explanation without trading advice is not a rule change',()=>{
+ assert.equal(parseRuleMessage('請只根據目前合成回放資料，說明價格情境風險與資料限制；不要給下單建議。',[]),null);
+ assert.notEqual(parseRuleMessage('不要買進就提醒我',[]),null);
+});
 test('edit and pause identify saved rule; no immediate mutation',()=>{
  const result=parseRuleMessage('把第1條改成0.2手',[rule]);
  assert.equal(result?.proposal?.rule?.value,'0.2');assert.equal(rule.value,'0.10');

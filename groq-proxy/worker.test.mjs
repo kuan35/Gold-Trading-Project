@@ -40,7 +40,18 @@ test('forwards only bounded explanation request after Turnstile validation',asyn
   const sent=JSON.parse(calls[1].options.body);
   assert.equal(sent.messages.length,2);
   assert.match(sent.messages[0].content,/不能聲稱歷史K線相似/);
+  assert.ok(sent.max_completion_tokens>=512);
+  assert.equal(sent.reasoning_effort,'low');
   assert.equal(result.headers.get('Cache-Control'),'no-store');
+});
+
+test('does not display a Groq reply cut off by the completion limit',async()=>{
+  const fetcher=async url=>url.includes('siteverify')
+    ?Response.json({success:true,hostname:'kuan35.github.io',action:'gold_desk_chat'})
+    :Response.json({choices:[{finish_reason:'length',message:{content:'這段說明還沒寫完，接下來'}}]});
+  const result=await handleRequest(request(),env,fetcher);
+  assert.equal(result.status,502);
+  assert.match((await result.json()).error,/回答未完整/);
 });
 
 test('rate limit prevents Groq call',async()=>{

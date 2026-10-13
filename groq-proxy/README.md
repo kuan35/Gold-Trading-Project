@@ -9,6 +9,6 @@ GitHub Pages 仍以瀏覽器程式處理合成回放、案例、草稿、確認�
 3. 在 GitHub 倉庫的 Actions variables 設 `GROQ_PROXY_URL` 為部署後的 Worker HTTPS 根網址，`TURNSTILE_SITE_KEY` 為公開 site key。重新執行 Pages workflow。這兩個是公開設定，不是金鑰。
 4. 在 Pages 開啟「對話助手」，主動啟用 Groq、完成驗證並送出非敏感示範問題；確認回應標示 `Groq 說明`，確認草稿仍須使用者手動審查，且不會因模型回答成交。失敗時應顯示本地助手。
 
-Worker 只接受 `https://kuan35.github.io` 的 POST；Turnstile token 由 Worker 向 Siteverify 驗證 hostname 與 action，單次使用。Cloudflare Workers rate limiting binding 對同 IP 最多每分鐘 3 次；缺綁定時代理拒絕服務。每次 Groq 回答最多 320 completion tokens；服務端限制長度、遮罩常見金鑰／email／長數字，且不記錄請求。Origin 檢查本身不能作為驗證，公開服務仍應在 Cloudflare 設每日預算／監控。Turnstile 與頻率限制不能保證不產生費用。部署需 Wrangler 4.36.0 以上。
+Worker 只接受 `https://kuan35.github.io` 的 POST；Turnstile token 由 Worker 向 Siteverify 驗證 hostname 與 action，單次使用。Cloudflare Workers rate limiting binding 對同 IP 最多每分鐘 3 次；缺綁定時代理拒絕服務。每次 Groq 請求最多 768 completion tokens；若 Groq 回報截斷或說明超過服務端長度上限，就回退本地結果，不展示半句回答。服務端遮罩常見金鑰／email／長數字，且不記錄請求。Origin 檢查本身不能作為驗證，公開服務仍應在 Cloudflare 設每日預算／監控。Turnstile 與頻率限制不能保證不產生費用。部署需 Wrangler 4.36.0 以上。
 
-測試：`node --test worker.test.mjs`。Worker 未部署前，不應宣稱公開站已接 Groq。
+測試：`node --test worker.test.mjs`。2026-10-13 已在 Cloudflare Dashboard 建立代理與金鑰 Secret，並以公開 Pages 的合成問題確認可連線；後續更新 Worker 程式須重新部署。
