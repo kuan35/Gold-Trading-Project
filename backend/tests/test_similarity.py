@@ -14,7 +14,7 @@ def case(i, lot='0.1', action='FIRST', **extra):
 
 def store(items):
     s = CaseStore.__new__(CaseStore)
-    s.items, s.source = items, 'trader_history'
+    s.items, s.source = items, 'legacy_fixture'
     return s
 
 
@@ -128,5 +128,5 @@ def test_stale_profile_file_disables_relative_comparison_without_breaking_app(tm
     (folder/'case_size_profiles.json').write_text(json.dumps({'input_cases_sha256':'stale','profiles':{'a':{'typical_lot':'.1','status':'READY'}}}),encoding='utf-8')
     monkeypatch.setattr(module,'ROOT',tmp_path)
     s=CaseStore()
-    assert s.retrieve('BUY','FIRST',D('.1'),100)['total']==1
-    assert s.retrieve('BUY','FIRST',D('.1'),100,typical_lot=D('.1'))['total']==0
+    assert s.retrieve('BUY','FIRST',D('.1'),100)['total']==0
+    assert s.retrieve('BUY','FIRST',D('.1'),100)['candidate_market_unavailable_reason']

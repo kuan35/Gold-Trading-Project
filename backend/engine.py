@@ -8,6 +8,10 @@ from .market import load_bars, aggregate
 from .cases import CaseStore
 from .technical import analyze as technical_analysis
 from .market_similarity import snapshot as market_snapshot
+from .candidate_bars import classify_coverage
+from .candidate_profile import profile_before_entry
+from pathlib import Path
+import json
 
 D = Decimal
 
@@ -37,6 +41,7 @@ class Engine:
         self.lock = threading.RLock()
         self.bars,self.data_source = load_bars()
         self.cases = CaseStore()
+        self.candidate_session_gaps = None
         self.mode = 'replay'
         self.initial_cursor = min(360,len(self.bars)-1)
         self.version = 0
@@ -150,8 +155,22 @@ class Engine:
             avg = sum(D(p['lot'])*D(p['entry']) for p in same)/total
             price = D(self.quote()['ask' if side=='BUY' else 'bid'])
             distance = (price-avg)/avg*100*(1 if side=='BUY' else -1)
+        query_candidate = None
+        if self.cases.source == 'trader_history' and '合成' not in self.data_source:
+            self.cases.ensure_candidate_profiles()
+            if self.candidate_session_gaps is None:
+                self.candidate_session_gaps=set()
+                if self.cases.candidate_profile_status == 'READY':
+                    evidence=Path(__file__).resolve().parents[1]/'private'/'price_only_probe_20261013'/'candidate_session_evidence_PRIVATE.json'
+                    if evidence.exists():
+                        data=json.loads(evidence.read_text(encoding='utf-8'))
+                        if data.get('method') == 'two_cache_scheduled_gap_candidate_v1' and data.get('production_enabled') is False:
+                            self.candidate_session_gaps={(row['start_utc'],row['end_utc']) for row in data['intervals']}
+            visible = self.bars[:self.cursor]
+            coverage = classify_coverage(visible,self.clock,self.candidate_session_gaps)
+            query_candidate = profile_before_entry(visible,self.clock,coverage)
         return self.cases.retrieve(side,action,lot,self.clock,prior_count=len(same),prior_lot=total,signed_distance=distance,typical_lot=typical_lot,
-                                   query_market=market_snapshot(self.bars[:self.cursor],self.clock))
+                                   query_market=market_snapshot(self.bars[:self.cursor],self.clock),query_candidate=query_candidate)
 
     def create_draft(self, side: str, lot: str, sl: str | None, tp: str | None, typical_lot: str | None = None,
                      order_type: str = 'MARKET', limit_price: str | None = None) -> dict:

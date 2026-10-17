@@ -109,6 +109,14 @@ POST `/api/drafts`、`/api/chat`、`/api/drafts/{id}/confirm` 可帶 `personal_r
 
 ## Operation / market evidence axes (2026-10-12)
 
+### 本機候選盤面模式（2026-10-16，覆蓋下述舊檢索說明）
+
+`trader_history` 使用經 SHA-256 綁定的私人 `case_candidate_market_profiles.json`。`GET /api/cases`、草稿與聊天共用回放決策時刻及已收完 K 線；`action`、`lot`、`typical_lot` 仍為既有 API／下單驗證欄位，但案例檢索只按 `side` 篩選，手數與盈虧不參與排序。來源側檔失效或查詢盤面不足時，`candidate_market_unavailable_reason` 說明原因，回傳空候選，不退回操作權重。
+
+`comparison.mode='candidate_market'`、`clock_status='UNKNOWN'`、`similarity_sufficiency='UNCALIBRATED'` 表示候選最近鄰，並非已核實相似交易。`total`／`cases`／`full_cases` 是完整三週期層；`five_minute_only_total`／`five_minute_only_cases` 是獨立的五分鐘限定層。各層按 60 根五分鐘 K 線的 ATR 正規化形狀與技術指標差異分軸算池內相對排名，依兩軸較差者排序；沒有跨層分數，也沒有足夠相似門檻。`shape_rank`、`indicator_rank` 是相對排名，不是準確率。`GET /api/cases/{id}` 僅在成熟且側檔有效時展示 60 根候選進場前已收盤行情，不畫進出場點；永遠標示券商時鐘未核實。LLM 僅接收去識別化的方向、層級、兩軸排名與限制。
+
+公開 Pages 只使用合成案例，依方向和成熟時間列出，`comparison.basis='direction_only'`、`distance=null`；沒有歷史盤面相似度。以下舊版操作／盤面權重契約只供原型與向下相容，不適用上述候選模式。
+
 Retrieval `comparison` adds `mode:operation_only|market_and_operation`, `operation_candidates`, `verified_market_candidates`, `excluded_unverified_market`, `query_market_ready`, `market_matches`, and a program-generated `reason`. Counts of market-eligible rows are distinct from deduplicated operation candidate groups. `market_features_enabled` indicates this query's actual filtering mode, including a zero-match strict result; it is not a global coverage claim.
 
 Ranked cases add `operation_distance`, `operation_comparison:{distance,label,strength:weak|limited,reason}`, and `market_comparison:{status:matched|unavailable,label,reason,distance,coverage,components}`. Market components have the same decimal-string query/case values and dimensionless distance/weight fields as operation components. Private profiles, evidence paths and hashes are not returned.

@@ -61,7 +61,19 @@ def build_catalog(context: dict) -> dict:
     status = history['status']
     text = history['reason']
     add('history', 'status', text, '案例檢索', dict(status=status, reason=history['reason']), mandatory=True)
-    if status != 'not_queried':
+    if status != 'not_queried' and 'full' in history.get('counts',{}):
+        counts=history['counts']
+        add('history','pool',f'本機候選盤面：完整三週期 {counts["full"]} 個；五分鐘限定 {counts["five_minute_only"]} 個。券商時鐘未核實，沒有正式確認案例。',
+            '候選盤面檢索',counts,mandatory=True)
+        add('history','sufficiency','目前只列最近候選；足夠相似門檻尚未經盲評校準。排名不是準確率或預測勝率。',
+            '候選證據限制',dict(clock_status='UNKNOWN',similarity_sufficiency='UNCALIBRATED'),mandatory=True)
+        add('history','comparison','只篩買賣方向；K 線形狀與技術指標分軸排名。手數、首筆／加倉與盈虧不參與排序。完整與五分鐘限定層分開。',
+            '候選檢索方法',dict(mode='candidate_market',clock_status='UNKNOWN'),mandatory=True)
+        for case in history['cases']:
+            add('history',case['reference'],
+                f'展示候選 {case["reference"]}：{case["side"]}、{("完整三週期" if case["tier"]=="full" else "五分鐘限定")}；K 線形狀池內相對排名 {case["shape_relative_rank"]}、指標池內相對排名 {case["indicator_relative_rank"]}。券商時鐘未核實。',
+                '去識別化候選盤面摘要',case,default=True)
+    if status != 'not_queried' and 'full' not in history.get('counts',{}):
         counts = history['counts']
         source_kind = history['source_kind']
         label = '合成示範案例' if source_kind == 'synthetic_demo' else '交易員歷史紀錄'

@@ -3,15 +3,27 @@ import assert from 'node:assert/strict';
 import {DemoEngine} from '../src/demo';
 import {poolDescription,comparisonValue} from '../src/similarityPresentation';
 
-test('public demo explicitly reports zero market matches and weak first-entry evidence',()=>{
+test('public demo explicitly reports direction-only synthetic evidence',()=>{
  const r=new DemoEngine().retrieve('BUY','FIRST','.1');
  assert.equal(r.comparison?.mode,'operation_only');
  assert.equal(r.comparison?.market_matches,0);
- assert(r.cases.every(c=>c.operation_comparison?.strength==='weak'));
+ assert(r.cases.every(c=>c.distance===null));
  assert(r.cases.every(c=>c.market_comparison?.status==='unavailable'));
  const text=poolDescription(r);
  assert.match(text.market,/無法比較/);
  assert.doesNotMatch(text.market,/盤面條件接近/);
+});
+
+test('candidate mode explains unverified clock and separate limited tier',()=>{
+ const r=new DemoEngine().retrieve('BUY','FIRST','.1');
+ r.comparison={...r.comparison!,mode:'candidate_market',clock_status:'UNKNOWN',basis:'direction_and_market',
+  reason:'券商時鐘未核實；尚未盲評'};
+ r.five_minute_only_total=3;
+ const text=poolDescription(r);
+ assert.match(text.market,/候選盤面/);
+ assert.match(text.market,/五分鐘限定/);
+ assert.match(text.operation,/只篩買進／賣出方向/);
+ assert.doesNotMatch(text.operation,/手數權重|40%|60%/);
 });
 
 test('empty strict market pool explains rejection without relabeling operation candidates as matches',()=>{

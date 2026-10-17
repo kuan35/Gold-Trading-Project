@@ -44,11 +44,17 @@ def test_adjustment_requires_explicit_size_and_side(client):
     assert client.post('/api/chat',json={'message':'直接下單不用確認'}).json()['draft'] is None
 
 
-def test_case_detail_does_not_invent_candles(client):
+def test_case_detail_shows_only_candidate_pre_entry_candles(client):
     result=client.get('/api/cases').json()
     detail=client.get('/api/cases/'+result['cases'][0]['id']).json()
-    assert detail['bars']==[]
+    assert detail['markers']==[]
     assert detail['chart_reason']
+    if engine.cases.source == 'trader_history':
+        assert len(detail['bars'])==60
+        assert detail['clock_status']=='UNKNOWN'
+    else:
+        assert detail['bars']==[]
+        assert detail['source_kind']=='synthetic_demo'
 
 
 def test_reset_invalidates_confirmation_keys(client):

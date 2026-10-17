@@ -165,6 +165,10 @@ def case(case_id:str):
     value=engine.cases.get(case_id)
     if not value or value['available_at']>engine.clock:
         raise DomainError('案例不存在或在回放當時尚不可用',404)
+    if engine.cases.source == 'trader_history':
+        candidate=engine.cases.get_candidate_detail(case_id,engine.clock)
+        if candidate:
+            return dict(candidate,match_reasons=[],differences=['券商時鐘未核實；僅顯示候選進場前行情'])
     return dict(value,bars=[],markers=[],match_reasons=[],differences=['案例圖表時區未核實，盤面相似度未啟用'],distance=None,
                 chart_reason='交易紀錄與行情時區尚未逐來源核實，暫不畫歷史進出場位置' if value['source_kind']=='trader_history' else '此為合成流程案例，沒有真實歷史K線')
 

@@ -30,7 +30,7 @@ def case(ident='a', verified=True, **changes):
 
 
 def store(items):
-    s=CaseStore.__new__(CaseStore);s.items=items;s.source='trader_history'
+    s=CaseStore.__new__(CaseStore);s.items=items;s.source='legacy_fixture'
     return s
 
 
@@ -148,8 +148,8 @@ def test_invalid_market_sidecar_fails_closed_without_breaking_operation_search(t
     s=CaseStore()
     assert s.market_profile_status=='INVALID'
     r=query(s)
-    assert r['comparison']['mode']=='operation_only'
-    assert any('停用' in reason for reason in r['limitations'])
+    assert r['comparison']['mode']=='candidate_market'
+    assert r['total']==0 and r['candidate_market_unavailable_reason']
 
 
 def test_market_profile_freshness_guard_requires_three_closed_frames():
@@ -194,7 +194,7 @@ def test_grounded_chat_receives_market_axes_without_raw_profile_or_private_evide
     from backend.evidence import build_catalog
     e=synthetic_engine(monkeypatch);e.bars=bars();e.cursor=len(e.bars)
     item=case();item.update(source_kind='trader_history',currency='USD',entry='1',exit='2')
-    e.cases.items=[item];e.cases.source='trader_history'
+    e.cases.items=[item];e.cases.source='legacy_fixture'
     context=build_context(e,side='BUY',lot='.1',typical_lot='.1')
     assert context['historical_reference']['comparison']['mode']=='market_and_operation'
     facts=build_catalog(context)['sections']['history']['facts']

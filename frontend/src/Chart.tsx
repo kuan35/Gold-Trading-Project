@@ -25,10 +25,16 @@ export default function Chart({bars,markers=[],light,averages=true,focusIds=[]}:
       const line=chart.addSeries(LineSeries,{color,lineWidth:1,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false});
       line.setData(bars.flatMap((b,index)=>index<period-1?[]:[{time:b.time as UTCTimestamp,value:bars.slice(index-period+1,index+1).reduce((sum,c)=>sum+c.close,0)/period}]));
     }
-    chart.timeScale().fitContent();
-    // Leave room after the last candle for arrows and their execution labels.
-    if(bars.length)chart.timeScale().setVisibleLogicalRange({from:0,to:bars.length+10});
-    return ()=>chart.remove();
+    const fitBars=()=>{
+      if(!host.current?.clientWidth||!host.current.clientHeight)return;
+      chart.timeScale().fitContent();
+      // Leave room after the last candle for arrows and their execution labels.
+      if(bars.length)chart.timeScale().setVisibleLogicalRange({from:0,to:bars.length+10});
+    };
+    const resize=new ResizeObserver(fitBars);
+    resize.observe(host.current);
+    fitBars();
+    return ()=>{resize.disconnect();chart.remove();};
   },[bars,markers,light,averages,focusIds]);
   return <div ref={host} className="chart-canvas" role="img" aria-label="黃金 K 線與操作標記，時間依回放行情來源顯示"/>;
 }

@@ -93,22 +93,35 @@ def build_context(engine: Engine, draft: dict | None = None, side: str | None = 
                 pass
         history: dict = dict(status='not_queried', reason='未提供有效方向及手數，尚未檢索', cases=[])
         if retrieval is not None:
-            examples=[]
-            for index,c in enumerate(retrieval['cases']):
-                examples.append(dict(reference=f'H{index+1}',side=c['side'],action=c['action'],lot=c['lot'],
-                                     historical_profit=c.get('profit'),currency=c.get('currency','UNKNOWN'),
-                                     distance=c['distance'],conditions=c.get('components',[]),
-                                     operation_comparison=c.get('operation_comparison'),market_comparison=c.get('market_comparison'),
-                                     similarities=c.get('match_reasons',[]),differences=c.get('differences',[])))
-            history=dict(status='matched' if retrieval['total'] else 'no_matches',
-                         source_kind=engine.cases.source,
-                         counts={k:retrieval[k] for k in ('total','wins','losses','flat','unknown')},
-                         count_labels={'total':'完整匹配池候選群','wins':'獲利候選群','losses':'虧損候選群','flat':'持平候選群','unknown':'盈虧未知候選群'},
-                         displayed_case_count=len(examples),pool_extrema_provided=False,
-                         reason=(retrieval['comparison'].get('reason') if retrieval['comparison'].get('mode')=='market_and_operation' else
-                                 '符合操作條件的候選群，盤面尚無法比較' if retrieval['total'] else '沒有符合目前操作條件且在查詢時間前已成熟的案例；不放寬條件硬湊'),
-                         sufficiency=retrieval['sufficiency'],comparison=retrieval['comparison'],
-                         limitations=retrieval['limitations'],cases=examples)
+            if retrieval.get('comparison',{}).get('mode') == 'candidate_market':
+                rows=(retrieval.get('full_cases') or [])+(retrieval.get('five_minute_only_cases') or [])
+                examples=[dict(reference=f'H{index+1}',side=c['side'],tier=c['candidate_tier'],
+                               shape_relative_rank=c['shape_rank'],indicator_relative_rank=c['indicator_rank'],
+                               clock_status='UNKNOWN') for index,c in enumerate(rows)]
+                history=dict(status='candidate_nearest' if rows else 'no_matches',
+                             source_kind='trader_history',
+                             counts=dict(full=retrieval['total'],five_minute_only=retrieval['five_minute_only_total']),
+                             displayed_case_count=len(examples),cases=examples,
+                             reason=retrieval.get('candidate_market_unavailable_reason') or
+                             '候選盤面最近鄰；券商時鐘未核實，足夠相似門檻尚未盲評校準',
+                             limitations=['相對排序不是相似機率或獲利預測','不傳送原始案例、時間、價格、手數與行情側檔'])
+            else:
+                examples=[]
+                for index,c in enumerate(retrieval['cases']):
+                    examples.append(dict(reference=f'H{index+1}',side=c['side'],action=c['action'],lot=c['lot'],
+                                         historical_profit=c.get('profit'),currency=c.get('currency','UNKNOWN'),
+                                         distance=c['distance'],conditions=c.get('components',[]),
+                                         operation_comparison=c.get('operation_comparison'),market_comparison=c.get('market_comparison'),
+                                         similarities=c.get('match_reasons',[]),differences=c.get('differences',[])))
+                history=dict(status='matched' if retrieval['total'] else 'no_matches',
+                             source_kind=engine.cases.source,
+                             counts={k:retrieval[k] for k in ('total','wins','losses','flat','unknown')},
+                             count_labels={'total':'完整匹配池候選群','wins':'獲利候選群','losses':'虧損候選群','flat':'持平候選群','unknown':'盈虧未知候選群'},
+                             displayed_case_count=len(examples),pool_extrema_provided=False,
+                             reason=(retrieval['comparison'].get('reason') if retrieval['comparison'].get('mode')=='market_and_operation' else
+                                     '符合操作條件的候選群，盤面尚無法比較' if retrieval['total'] else '沒有符合目前操作條件且在查詢時間前已成熟的案例；不放寬條件硬湊'),
+                             sufficiency=retrieval['sufficiency'],comparison=retrieval['comparison'],
+                             limitations=retrieval['limitations'],cases=examples)
         context=dict(market=dict(mode=state['mode'],is_live=False,as_of_utc=utc(state['clock']),
                      source_type='synthetic' if '合成' in state['data_source'] else 'local_historical',
                      quote=state['quote'],summary_5m=state['market'],

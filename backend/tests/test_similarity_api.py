@@ -2,15 +2,17 @@ from fastapi.testclient import TestClient
 from backend.app import app, engine
 
 
-def test_typical_size_is_used_consistently_in_list_and_draft():
+def test_order_size_does_not_change_local_candidate_case_order():
     engine.mode='replay'
     engine.reset()
     with TestClient(app) as client:
         q=client.get('/api/cases',params={'lot':'.1','typical_lot':'.1'}).json()
         draft=client.post('/api/drafts',json={'side':'BUY','lot':'.1','typical_lot':'.1'}).json()
-        assert draft['retrieval']['comparison']['basis']=='relative_lot'
-        assert q['comparison']['basis']=='relative_lot'
+        expected='direction_and_market' if engine.cases.source == 'trader_history' else 'relative_lot'
+        assert draft['retrieval']['comparison']['basis']==expected
+        assert q['comparison']['basis']==expected
         assert q['total']==draft['retrieval']['total']
+        assert [row['id'] for row in q['cases']]==[row['id'] for row in draft['retrieval']['cases']]
         assert not engine.positions
 
 

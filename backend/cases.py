@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from .similarity import build_size_profiles, compare, positive, summarize
 from .market_similarity import valid_profile, compare_market, load_sidecar, METHOD as MARKET_METHOD
+from .candidate_sidecar import load_candidate_sidecar
+from .candidate_retrieval import rank_candidates, summarize_candidate_tier
 from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -38,6 +40,14 @@ class CaseStore:
         profiles,self.market_profile_status=load_sidecar(path,ROOT/'private'/'case_market_profiles.json',ROOT/'private') if path.exists() else ({},'MISSING')
         for item in self.items:
             item['market_profile']=profiles.get(item['id'])
+        self.candidate_profiles={}
+        self.candidate_profile_status='NOT_LOADED' if path.exists() else 'MISSING'
+
+    def ensure_candidate_profiles(self) -> None:
+        if self.candidate_profile_status == 'NOT_LOADED':
+            private=ROOT/'private'
+            self.candidate_profiles,self.candidate_profile_status=load_candidate_sidecar(
+                private/'cases.json',private/'case_candidate_market_profiles.json',private)
 
     def market_context(self, side: str, action: str, clock: int, query_market: dict | None) -> dict:
         available=[c for c in self.available(clock) if c['side']==side and c['action']==action]
@@ -123,6 +133,17 @@ class CaseStore:
 
     def retrieve(self, side: str, action: str, lot: D, clock: int, **kwargs) -> dict:
         self.clock = clock
+        if self.source == 'trader_history':
+            self.ensure_candidate_profiles()
+            if positive(lot) is None or (kwargs.get('typical_lot') is not None and positive(kwargs['typical_lot']) is None):
+                raise ValueError('手數與平常手數必須大於零且有限')
+            query = kwargs.get('query_candidate')
+            status = getattr(self,'candidate_profile_status','MISSING')
+            if status != 'READY' or not query or query.get('status') != 'candidate_only' or query.get('as_of') != clock:
+                return candidate_unavailable(status if status != 'READY' else 'QUERY_UNAVAILABLE')
+            tiers = rank_candidates(self.items,self.candidate_profiles,query,side,clock)
+            return candidate_response(tiers,self.items)
+        kwargs.pop('query_candidate',None)
         ranked = self.rank(side,action,lot,clock,**kwargs)
         context=self.market_context(side,action,clock,kwargs.get('query_market'))
         operation_count=len(self.rank(side,action,lot,clock,**{k:v for k,v in kwargs.items() if k!='query_market'}))
@@ -145,3 +166,78 @@ class CaseStore:
         c=next((c for c in self.items if c['id']==case_id),None)
         safe = {k:v for k,v in c.items() if k not in ('size_profile','scope_private','market_profile')} if c else None
         return dict(safe,sequence=self.group_sequences.get(c['group'],c.get('sequence',[]))) if c else None
+
+    def get_candidate_detail(self, case_id: str, clock: int) -> dict | None:
+        self.ensure_candidate_profiles()
+        if self.source != 'trader_history' or getattr(self,'candidate_profile_status','MISSING') != 'READY':
+            return None
+        value = self.get(case_id)
+        profile = self.candidate_profiles.get(case_id)
+        if not value or value['available_at'] > clock or not profile or profile['as_of'] > clock:
+            return None
+        bars = profile['pre_entry_bars']['5m'][-60:]
+        if not bars or any(bar['time'] + 300 > profile['as_of'] for bar in bars):
+            return None
+        chart_bars=[dict(time=bar['time'],**{key:float(bar[key]) for key in ('open','high','low','close')},volume=0) for bar in bars]
+        return dict(value,bars=chart_bars,markers=[],distance=None,
+                    candidate_tier=profile['tier'],clock_status='UNKNOWN',
+                    chart_reason='參考行情＋候選 UTC，券商時鐘未核實；只顯示進場前已收盤 K 線')
+
+
+def candidate_unavailable(status: str) -> dict:
+    reason = f'候選盤面無法比較（{status}）；請檢查本機側檔與回放行情。沒有改用舊版操作權重。'
+    return dict(total=0,wins=0,losses=0,flat=0,unknown=0,win_rate=None,cases=[],
+                profit_cases=[],loss_cases=[],full_cases=[],five_minute_only_cases=[],
+                five_minute_only_total=0,candidate_market_unavailable_reason=reason,
+                similarity_sufficiency='NO_MATCH',
+                comparison=dict(mode='candidate_market',clock_status='UNKNOWN',method='candidate_market_v1',
+                                basis='direction_and_market',market_features_enabled=False,reason=reason),
+                sufficiency=dict(status='insufficient',label='資料不足',reasons=[reason],matched_groups=0,
+                                 is_success_probability=False),limitations=[reason,'券商時鐘尚未逐帳戶核實'])
+
+
+def candidate_response(tiers: dict, cases: list[dict]) -> dict:
+    lookup = {case['id']: case for case in cases}
+    def make_rows(rows):
+        result = []
+        for row in rows:
+            case = lookup[row['case_id']]
+            safe = {key: value for key,value in case.items() if key not in (
+                'size_profile','scope_private','market_profile','market','source_format','market_alignment_reason')}
+            result.append(dict(safe,distance=None,candidate_tier=row['tier'],
+                               shape_rank=round(row['shape_percentile'],4),
+                               indicator_rank=round(row['indicator_percentile'],4),
+                               indicator_differences={key:round(value,4) for key,value in row['indicator_differences'].items()},
+                               clock_status='UNKNOWN',
+                               match_reasons=['方向相同','候選盤面雙軸近鄰；尚未校準足夠相似門檻'],
+                               differences=['券商時鐘未核實；只用於本機候選檢索']))
+        return result
+    summary = summarize_candidate_tier(tiers['full'],lookup)
+    full = make_rows(tiers['full'][:6])
+    limited = make_rows(tiers['five_minute_only'][:6])
+    counts = summary['counts']
+    known = counts['win']+counts['loss']+counts['flat']
+    reason = tiers['reason']
+    def profit_sign(row):
+        try:
+            value=D(str(row['profit']))
+            return (1 if value>0 else -1 if value<0 else 0) if value.is_finite() else 0
+        except Exception:
+            return 0
+    return dict(total=summary['total'],wins=counts['win'],losses=counts['loss'],flat=counts['flat'],
+                unknown=counts['unknown'],win_rate=(str(round(100*counts['win']/known,1)) if known else None),
+                cases=full,profit_cases=[row for row in full if profit_sign(row)>0],
+                loss_cases=[row for row in full if profit_sign(row)<0],
+                full_cases=full,five_minute_only_cases=limited,
+                five_minute_only_total=len(tiers['five_minute_only']),candidate_market_unavailable_reason=None,
+                similarity_sufficiency=tiers['similarity_sufficiency'],
+                comparison=dict(mode='candidate_market',clock_status='UNKNOWN',method='candidate_market_v1',
+                                basis='direction_and_market',market_features_enabled=True,
+                                full_pool=tiers['counts']['full_pool'],
+                                five_minute_only_pool=tiers['counts']['five_minute_only_pool'],reason=reason),
+                sufficiency=dict(status='limited' if full or limited else 'insufficient',
+                                 label='候選近鄰／未校準' if full or limited else '資料不足',
+                                 reasons=[reason],matched_groups=len(full)+len(limited),is_success_probability=False),
+                limitations=['候選 UTC 與券商時鐘未核實；案例 K 線不是已確認的交易盤面',
+                             '雙軸分位只在各自候選池內排序，不是相似機率或預測勝率',
+                             '獲利比例僅為完整三週期池的歷史結果分布；盈虧不參與排序'])
