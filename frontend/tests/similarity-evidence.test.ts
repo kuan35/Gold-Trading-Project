@@ -2,6 +2,9 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {DemoEngine} from '../src/demo';
 import {poolDescription,comparisonValue} from '../src/similarityPresentation';
+import {createElement} from 'react';
+import {renderToStaticMarkup} from 'react-dom/server';
+import {PoolEvidence,CaseEvidence} from '../src/SimilarityEvidence';
 
 test('public demo explicitly reports direction-only synthetic evidence',()=>{
  const r=new DemoEngine().retrieve('BUY','FIRST','.1');
@@ -12,6 +15,15 @@ test('public demo explicitly reports direction-only synthetic evidence',()=>{
  const text=poolDescription(r);
  assert.match(text.market,/無法比較/);
  assert.doesNotMatch(text.market,/盤面條件接近/);
+});
+
+test('rendered synthetic evidence does not reuse lot-weighted or verified-market copy',()=>{
+ const pool=new DemoEngine().retrieve('BUY','FIRST','.1');
+ const poolText=renderToStaticMarkup(createElement(PoolEvidence,{pool}));
+ const caseText=renderToStaticMarkup(createElement(CaseEvidence,{item:pool.cases[0]}));
+ assert.doesNotMatch(poolText,/同方向／操作類型中|40%|60%/);
+ assert.doesNotMatch(caseText,/操作距離|比較方向、首筆／加倉與手數/);
+ assert.match(caseText,/合成示範 · 僅依買賣方向列出/);
 });
 
 test('candidate mode explains unverified clock and separate limited tier',()=>{

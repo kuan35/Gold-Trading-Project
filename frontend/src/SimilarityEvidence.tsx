@@ -12,7 +12,7 @@ export function PoolEvidence({pool}:{pool:Retrieval}){
  return <section className="similarity-evidence" aria-label="相似案例比較範圍">
   <div className="similarity-axes"><div><span className="fine">操作條件</span><strong>{c?.basis==='direction_only'?'只比較方向':c?.basis==='relative_lot'?'比較相對平常手數':'比較絕對手數'}</strong><p>{text.operation}</p></div>
   <div><span className="fine">盤面條件</span><strong>{text.market}</strong><p>{text.reason}</p></div></div>
-  {c?.verified_market_candidates!==undefined&&<p className="fine">同方向／操作類型中，有 {c.verified_market_candidates} 個已成熟案例具可用盤面資料；{c.excluded_unverified_market??0} 個尚無可用盤面資料。候選群不是獨立交易。</p>}
+  {c?.basis!=='direction_only'&&c?.verified_market_candidates!==undefined&&<p className="fine">同方向／操作類型中，有 {c.verified_market_candidates} 個已成熟案例具可用盤面資料；{c.excluded_unverified_market??0} 個尚無可用盤面資料。候選群不是獨立交易。</p>}
   <details><summary>如何判斷相似</summary>{c?.basis==='direction_only'?<p>公開版只用合成案例展示流程，依相同買賣方向與已成熟時間列出。沒有歷史盤面、手數或勝率模型。</p>:<><p>先篩方向、首筆／加倉與已成熟案例。操作距離上限0.65；有可用時間證據及完整盤面資料時，再比較5分／15分／1小時趨勢、相對位置與波動，盤面距離上限0.40。兩個門檻必須各自通過，再按操作40%、盤面60%排序。</p><p>權重與門檻尚待評測；不是準確率或預測勝率。</p></>}</details>
  </section>;
 }
@@ -24,6 +24,10 @@ export function CaseEvidence({item}:{item:Case}){
   <div className="similarity-axes"><div><span className="fine">K 線形狀</span><p>同層相對排名 {item.shape_rank==null?'資料不足':`${(item.shape_rank*100).toFixed(1)}%`}；越低表示在本次候選池中越靠近。</p></div>
   <div><span className="fine">技術指標</span><p>同層相對排名 {item.indicator_rank==null?'資料不足':`${(item.indicator_rank*100).toFixed(1)}%`}；不是準確率。</p></div></div>
   {item.indicator_differences&&<details><summary>指標差異</summary><div className="table-scroll"><table><tbody>{Object.entries(item.indicator_differences).map(([name,value])=><tr key={name}><th>{name}</th><td>{value.toFixed(4)}</td></tr>)}</tbody></table></div></details>}
+ </section>;
+ if(item.comparison_basis==='direction_only')return <section className="similarity-evidence" aria-label="合成案例比對範圍">
+  <strong>合成示範 · 僅依買賣方向列出</strong>
+  <p>手數、首筆或加倉及事後損益都不參與排序；此案例沒有歷史 K 線相似度。</p>
  </section>;
  return <section className="similarity-evidence" aria-label="案例分項比對">
   <div className="similarity-axes"><div><span className="fine">操作條件</span><strong>{op?.label||'操作條件比較'}{op?.strength==='weak'?' · 辨識力有限':''}</strong><p>{op?.reason||'比較方向、首筆／加倉與手數等條件。'}</p><small>操作距離 {op?.distance??item.operation_distance??item.distance??'未提供'}（越小越接近）</small></div>
