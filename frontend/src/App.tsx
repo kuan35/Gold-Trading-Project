@@ -36,7 +36,7 @@ function Pool({pool}:{pool:Retrieval}) {
 }
 function CaseComparison({pool,onOpen}:{pool:Retrieval;onOpen:(id:string)=>void}) {
   const [filter,setFilter]=useState('all');
-  if(pool.comparison?.mode==='candidate_market')return <div className="candidate-tiers"><h3>完整三週期 · 最接近候選</h3><CaseRows cases={pool.full_cases??[]} onOpen={onOpen}/><h3>五分鐘限定 · 高週期候選資料不足</h3><CaseRows cases={pool.five_minute_only_cases??[]} onOpen={onOpen}/></div>;
+  if(pool.comparison?.mode==='candidate_market')return <div className="candidate-tiers"><h3>完整三週期 · 最接近案例</h3><CaseRows cases={pool.full_cases??[]} onOpen={onOpen}/><h3>五分鐘限定 · 高週期資料不足</h3><CaseRows cases={pool.five_minute_only_cases??[]} onOpen={onOpen}/></div>;
   const cases=filter==='profit'?(pool.profit_cases||[]):filter==='loss'?(pool.loss_cases||[]):pool.cases;
   return <><div className="segments" aria-label="案例結果篩選">{[['all','獲利／虧損並列'],['profit','獲利案例'],['loss','虧損案例']].map(([v,l])=><button key={v} className={filter===v?'active':''} aria-pressed={filter===v} onClick={()=>setFilter(v)}>{l}</button>)}</div><p className="fine">{pool.comparison?.basis==='direction_only'?'篩選只改變合成案例展示；方向排列不變。':'篩選只改變展示結果；完整匹配池與相似度不變。'}各清單最多顯示六筆。</p><CaseRows cases={cases} onOpen={onOpen}/></>;
 }

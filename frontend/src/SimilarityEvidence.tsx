@@ -1,13 +1,22 @@
 import {comparisonValue,poolDescription} from './similarityPresentation';
 import type {Case,Retrieval} from './types';
 
+const indicatorNames:Record<string,string>={
+ '5m_ma_gap':'5 分｜價格距 MA20（ATR 倍）','5m_atr_pct':'5 分｜ATR 波動比例',
+ '5m_rsi14':'5 分｜RSI14','5m_macd_hist':'5 分｜MACD 柱（ATR 倍）',
+ '5m_slope':'5 分｜均線斜率（ATR 倍）','range_position':'5 分｜近 60 根區間位置',
+ '15m_ma_gap':'15 分｜價格距 MA20（ATR 倍）','15m_atr_pct':'15 分｜ATR 波動比例',
+ '15m_rsi14':'15 分｜RSI14','15m_macd_hist':'15 分｜MACD 柱（ATR 倍）',
+ '1h_ma_gap':'1 小時｜價格距 MA20（ATR 倍）','1h_atr_pct':'1 小時｜ATR 波動比例',
+};
+
 export function PoolEvidence({pool}:{pool:Retrieval}){
  const text=poolDescription(pool),c=pool.comparison;
- if(c?.mode==='candidate_market')return <section className="similarity-evidence" aria-label="候選盤面比較範圍">
-  <strong>候選盤面 · 券商時鐘未核實</strong>
+ if(c?.mode==='candidate_market')return <section className="similarity-evidence" aria-label="參考盤面比較範圍">
+  <strong>歷史案例 · 參考盤面比對</strong>
   <div className="similarity-axes"><div><span className="fine">篩選條件</span><p>{text.operation}</p></div>
   <div><span className="fine">K 線形狀＋技術指標</span><p>{text.market}</p><p>{text.reason}</p></div></div>
-  <details><summary>如何判斷相似</summary><p>只用相同買賣方向、查詢前已成熟的候選案例。K 線形狀與指標各自計算距離，再在同一資料層轉成相對排名；按兩軸中較差的排名排序。完整三週期與五分鐘限定分開，不跨層比較分數。</p><p>尚未完成盲評，沒有足夠相似門檻。排名不是準確率、獲利機率或交易建議。</p></details>
+  <details><summary>如何判斷相似與行情來源</summary><p>只用相同買賣方向、查詢前已平倉且具可用參考盤面的案例。K 線形狀與指標各自計算距離，再在同一資料層轉成相對排名；按兩軸中較差的排名排序。完整三週期與五分鐘限定分開，不跨層比較分數。</p><p>參考行情依來源時間模型定位進出場棒；券商原始時鐘尚未獨立核實。尚未完成盲評，沒有足夠相似門檻；排名不是準確率、獲利機率或交易建議。</p></details>
  </section>;
  return <section className="similarity-evidence" aria-label="相似案例比較範圍">
   <div className="similarity-axes"><div><span className="fine">操作條件</span><strong>{c?.basis==='direction_only'?'只比較方向':c?.basis==='relative_lot'?'比較相對平常手數':'比較絕對手數'}</strong><p>{text.operation}</p></div>
@@ -19,11 +28,12 @@ export function PoolEvidence({pool}:{pool:Retrieval}){
 
 export function CaseEvidence({item}:{item:Case}){
  const op=item.operation_comparison,market=item.market_comparison;
- if(item.candidate_tier)return <section className="similarity-evidence" aria-label="候選案例雙軸比對">
-  <strong>候選盤面 · 時鐘未核實 · {item.candidate_tier==='full'?'完整三週期':'五分鐘限定'}</strong>
-  <div className="similarity-axes"><div><span className="fine">K 線形狀</span><p>同層相對排名 {item.shape_rank==null?'資料不足':`${(item.shape_rank*100).toFixed(1)}%`}；越低表示在本次候選池中越靠近。</p></div>
+ if(item.candidate_tier)return <section className="similarity-evidence" aria-label="案例雙軸比對">
+  <strong>參考盤面 · {item.candidate_tier==='full'?'完整三週期':'五分鐘限定'}</strong>
+  <div className="similarity-axes"><div><span className="fine">K 線形狀</span><p>同層相對排名 {item.shape_rank==null?'資料不足':`${(item.shape_rank*100).toFixed(1)}%`}；越低表示在本次案例池中越靠近。</p></div>
   <div><span className="fine">技術指標</span><p>同層相對排名 {item.indicator_rank==null?'資料不足':`${(item.indicator_rank*100).toFixed(1)}%`}；不是準確率。</p></div></div>
-  {item.indicator_differences&&<details><summary>指標差異</summary><div className="table-scroll"><table><tbody>{Object.entries(item.indicator_differences).map(([name,value])=><tr key={name}><th>{name}</th><td>{value.toFixed(4)}</td></tr>)}</tbody></table></div></details>}
+  {item.indicator_differences&&<details><summary>指標差異</summary><p className="fine">下列數值是本次盤面與歷史案例的絕對差；同一欄越小越接近。不同指標的數字單位不同，請看上方同層相對排名。</p><div className="table-scroll"><table><tbody>{Object.entries(item.indicator_differences).map(([name,value])=><tr key={name}><th>{indicatorNames[name]||name}</th><td>{value.toFixed(4)}</td></tr>)}</tbody></table></div></details>}
+  <details><summary>對時依據</summary><p>進場前盤面及進出場參考棒已按來源時間模型定位；券商原始時鐘尚未獨立核實。排名只比較下單前已知的 K 線與指標。</p></details>
  </section>;
  if(item.comparison_basis==='direction_only')return <section className="similarity-evidence" aria-label="合成案例比對範圍">
   <strong>合成示範 · 僅依買賣方向列出</strong>

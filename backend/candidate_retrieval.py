@@ -57,7 +57,7 @@ def _rank_pool(pool, profiles, query, tier):
 
 def rank_candidates(cases, profiles, query, side, clock):
     result = dict(full=[], five_minute_only=[], counts=dict(full_pool=0, five_minute_only_pool=0),
-                  similarity_sufficiency='NO_MATCH', reason='沒有可比較的候選盤面')
+                  similarity_sufficiency='NO_MATCH', reason='沒有可比較的參考盤面')
     if side not in ('BUY', 'SELL') or query.get('status') != 'candidate_only' or query.get('as_of', 0) > clock:
         result['reason'] = '查詢盤面不可比較'
         return result
@@ -89,7 +89,7 @@ def rank_candidates(cases, profiles, query, side, clock):
             result[name].append(row)
     if groups:
         result.update(similarity_sufficiency='UNCALIBRATED',
-                      reason='僅為本次合格候選中的最近鄰；是否足夠相似尚未盲評校準')
+                      reason='依本次可用參考盤面列出近鄰；是否足夠相似尚未盲評校準')
     return result
 
 

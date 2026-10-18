@@ -26,16 +26,20 @@ test('rendered synthetic evidence does not reuse lot-weighted or verified-market
  assert.match(caseText,/合成示範 · 僅依買賣方向列出/);
 });
 
-test('candidate mode explains unverified clock and separate limited tier',()=>{
+test('local reference mode leads with market comparison and separates the limited tier',()=>{
  const r=new DemoEngine().retrieve('BUY','FIRST','.1');
  r.comparison={...r.comparison!,mode:'candidate_market',clock_status:'UNKNOWN',basis:'direction_and_market',
   reason:'券商時鐘未核實；尚未盲評'};
  r.five_minute_only_total=3;
  const text=poolDescription(r);
- assert.match(text.market,/候選盤面/);
+ assert.match(text.market,/參考盤面/);
  assert.match(text.market,/五分鐘限定/);
  assert.match(text.operation,/只篩買進／賣出方向/);
  assert.doesNotMatch(text.operation,/手數權重|40%|60%/);
+ const panel=renderToStaticMarkup(createElement(PoolEvidence,{pool:r}));
+ assert.match(panel,/歷史案例 · 參考盤面比對/);
+ assert.match(panel,/如何判斷相似與行情來源/);
+ assert.doesNotMatch(panel,/候選盤面 · 券商時鐘未核實/);
 });
 
 test('empty strict market pool explains rejection without relabeling operation candidates as matches',()=>{

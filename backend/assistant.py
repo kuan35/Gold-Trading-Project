@@ -103,7 +103,7 @@ def build_context(engine: Engine, draft: dict | None = None, side: str | None = 
                              counts=dict(full=retrieval['total'],five_minute_only=retrieval['five_minute_only_total']),
                              displayed_case_count=len(examples),cases=examples,
                              reason=retrieval.get('candidate_market_unavailable_reason') or
-                             '候選盤面最近鄰；券商時鐘未核實，足夠相似門檻尚未盲評校準',
+                             '參考盤面近鄰；來源時間模型可用，券商時鐘未獨立核實，足夠相似門檻尚未盲評校準',
                              limitations=['相對排序不是相似機率或獲利預測','不傳送原始案例、時間、價格、手數與行情側檔'])
             else:
                 examples=[]

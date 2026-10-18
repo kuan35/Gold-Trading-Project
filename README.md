@@ -1,8 +1,8 @@
 # Gold Trading Project
 
-## 2026-10-17：本機候選盤面檢索
+## 2026-10-18：本機參考盤面檢索
 
-本機逐案稽核 11,902 筆產品候選，其中 10,921 筆可建立進場前盤面特徵：完整三週期 6,573 筆，五分鐘限定 4,348 筆。檢索先篩 BUY／SELL，再以 K 線形狀與技術指標分軸排序；手數、首筆／加倉與盈虧不參與排序。券商時間尚未逐帳戶核實，正式確認盤面仍為 0；結果只稱候選最近鄰，沒有準確率或足夠相似門檻。公開 Pages 只依方向列出合成案例，沒有私人交易或歷史盤面。
+本機逐案稽核 11,902 筆產品案例，其中 10,921 筆可建立進場前盤面特徵；10,887 筆另具進出場參考棒與一致時序，納入專題參考盤面檢索（完整三週期 6,542、僅五分鐘 4,345）。檢索先篩 BUY／SELL，再依 K 線形狀與技術指標分軸排序；手數、首筆／加倉與盈虧不參與排序。參考盤面由來源時間模型定位，券商原始時鐘獨立核實仍為 0；排名沒有準確率或足夠相似門檻。公開 Pages 只依方向列出合成案例，沒有私人交易或歷史盤面。
 
 線上展示：https://kuan35.github.io/Gold-Trading-Project/
 
@@ -10,7 +10,7 @@ GitHub Pages 回放演練可在瀏覽器獨立操作，使用合成行情與案�
 
 Pages 部署由 `.github/workflows/pages.yml` 在 main 的前端更新後自動執行，先跑前端測試再建置。
 
-公開 Groq 代理的 Worker 程式與部署設定見 [groq-proxy](groq-proxy/README.md)。金鑰只存 Cloudflare Worker secret，Pages 不含金鑰；目前是否已連線，以網站「對話助手」狀態為準。本機候選盤面可供探索，但券商時間與參考行情時鐘未獨立核實，不能當正式歷史盤面匹配。
+公開 Groq 代理的 Worker 程式與部署設定見 [groq-proxy](groq-proxy/README.md)。金鑰只存 Cloudflare Worker secret，Pages 不含金鑰；目前是否已連線，以網站「對話助手」狀態為準。本機參考盤面已可用於專題案例檢索；券商原始時鐘仍待獨立核實。
 
 黃金交易案例與下單前風險輔助平台。React + TypeScript + Vite 前端、TradingView Lightweight Charts、FastAPI 後端。
 
@@ -101,6 +101,6 @@ npm run build
 - `API_CONTRACT.md`：前後端契約。
 - `docs/demo-script.md`：可交給同學操作的展示腳本。
 
-後續優先補券商／匯出時鐘與獨立行情證據、完成候選檢索盲評，再決定正式盤面門檻；券商 DEMO 帳戶授權與成交回報另行驗收。之後延伸 MAE、持倉警示、個人資料匯入、多使用者隔離與部署。真實資金交易不在此版範圍。
+後續完成參考盤面檢索盲評，並補券商／匯出時鐘與獨立行情證據；券商 DEMO 帳戶授權與成交回報另行驗收。之後延伸 MAE、持倉警示、個人資料匯入、多使用者隔離與部署。真實資金交易不在此版範圍。
 
 圖表使用 TradingView Lightweight Charts（https://tradingview.github.io/lightweight-charts/）；圖表保留套件提供的 TradingView 標識。第三方套件權利依其授權，原始交易資料不隨程式公開。

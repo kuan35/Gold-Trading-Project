@@ -38,8 +38,11 @@ def test_candidate_retrieval_ignores_action_and_lot_and_has_separate_tiers():
     assert a['total'] == 1 and a['five_minute_only_total'] == 1
     assert a['comparison']['mode'] == 'candidate_market'
     assert a['comparison']['clock_status'] == 'UNKNOWN'
+    assert a['comparison']['alignment_scope'] == 'PROJECT_REFERENCE'
+    assert a['comparison']['independent_clock_verified'] is False
     assert a['similarity_sufficiency'] == 'UNCALIBRATED'
     assert a['cases'][0]['distance'] is None
+    assert a['cases'][0]['reference_alignment'] == 'PROJECT_REFERENCE'
 
 
 def test_stale_sidecar_has_no_weighted_fallback():
@@ -56,4 +59,5 @@ def test_candidate_chart_never_includes_entry_or_exit_bar():
     detail = store.get_candidate_detail('full', 600)
     assert detail['bars'] and all(bar['time'] + 300 <= 400 for bar in detail['bars'])
     assert detail['markers'] == []
+    assert detail['reference_alignment'] == 'PROJECT_REFERENCE'
     assert store.get_candidate_detail('full', 70) is None

@@ -109,11 +109,11 @@ POST `/api/drafts`、`/api/chat`、`/api/drafts/{id}/confirm` 可帶 `personal_r
 
 ## Operation / market evidence axes (2026-10-12)
 
-### 本機候選盤面模式（2026-10-16，覆蓋下述舊檢索說明）
+### 本機參考盤面模式（2026-10-18，覆蓋下述舊檢索說明）
 
-`trader_history` 使用經 SHA-256 綁定的私人 `case_candidate_market_profiles.json`。`GET /api/cases`、草稿與聊天共用回放決策時刻及已收完 K 線；`action`、`lot`、`typical_lot` 仍為既有 API／下單驗證欄位，但案例檢索只按 `side` 篩選，手數與盈虧不參與排序。來源側檔失效或查詢盤面不足時，`candidate_market_unavailable_reason` 說明原因，回傳空候選，不退回操作權重。
+`trader_history` 使用經 SHA-256 綁定的私人 `case_candidate_market_profiles.json` 及其進出場標記台帳。專題可用門檻：來源時間模型有唯一進場時刻，進出場皆定位到參考五分鐘棒且時序一致，進場前有足夠已收 K 線形成特徵。原有 10,921 筆特徵中 10,887 筆符合（完整三週期 6,542、五分鐘限定 4,345）。這是「參考盤面可用」的操作定義，不等同券商原始時鐘獨立核實。`GET /api/cases`、草稿與聊天共用回放決策時刻及已收完 K 線；`action`、`lot`、`typical_lot` 仍為既有 API／下單驗證欄位，但案例檢索只按 `side` 篩選，手數與盈虧不參與排序。來源側檔失效或查詢盤面不足時，`candidate_market_unavailable_reason` 說明原因，回傳空案例，不退回操作權重。
 
-`comparison.mode='candidate_market'`、`clock_status='UNKNOWN'`、`similarity_sufficiency='UNCALIBRATED'` 表示候選最近鄰，並非已核實相似交易。`total`／`cases`／`full_cases` 是完整三週期層；`five_minute_only_total`／`five_minute_only_cases` 是獨立的五分鐘限定層。各層按 60 根五分鐘 K 線的 ATR 正規化形狀與技術指標差異分軸算池內相對排名，依兩軸較差者排序；沒有跨層分數，也沒有足夠相似門檻。`shape_rank`、`indicator_rank` 是相對排名，不是準確率。`GET /api/cases/{id}` 僅在成熟且側檔有效時展示 60 根候選進場前已收盤行情，不畫進出場點；永遠標示券商時鐘未核實。LLM 僅接收去識別化的方向、層級、兩軸排名與限制。
+`comparison.mode='candidate_market'`（相容欄位名稱）、`alignment_scope='PROJECT_REFERENCE'`、`clock_status='UNKNOWN'`、`independent_clock_verified=false`、`similarity_sufficiency='UNCALIBRATED'` 表示本機參考盤面近鄰。`production_enabled=false` 仍保留為原時鐘／券商成交的嚴格旗標，不否定專題檢索可用。`total`／`cases`／`full_cases` 是完整三週期層；`five_minute_only_total`／`five_minute_only_cases` 是獨立的五分鐘限定層。各層按 60 根五分鐘 K 線的 ATR 正規化形狀與技術指標差異分軸算池內相對排名，依兩軸較差者排序；沒有跨層分數，也沒有足夠相似門檻。`shape_rank`、`indicator_rank` 是相對排名，不是準確率。`GET /api/cases/{id}` 僅在成熟且側檔有效時展示 60 根進場前已收盤參考行情，不畫進出場點；對時依據在詳情中揭露。LLM 僅接收去識別化的方向、層級、兩軸排名與限制。
 
 公開 Pages 只使用合成案例，依方向和成熟時間列出，`comparison.basis='direction_only'`、`distance=null`；沒有歷史盤面相似度。以下舊版操作／盤面權重契約只供原型與向下相容，不適用上述候選模式。
 

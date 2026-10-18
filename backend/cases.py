@@ -181,16 +181,19 @@ class CaseStore:
         chart_bars=[dict(time=bar['time'],**{key:float(bar[key]) for key in ('open','high','low','close')},volume=0) for bar in bars]
         return dict(value,bars=chart_bars,markers=[],distance=None,
                     candidate_tier=profile['tier'],clock_status='UNKNOWN',
-                    chart_reason='參考行情＋候選 UTC，券商時鐘未核實；只顯示進場前已收盤 K 線')
+                    reference_alignment='PROJECT_REFERENCE',
+                    reference_clock_basis=profile.get('reference_clock_basis'),
+                    chart_reason='參考行情依來源時間模型定位；只顯示進場前已收盤 K 線。券商原始時鐘尚未獨立核實')
 
 
 def candidate_unavailable(status: str) -> dict:
-    reason = f'候選盤面無法比較（{status}）；請檢查本機側檔與回放行情。沒有改用舊版操作權重。'
+    reason = f'參考盤面無法比較（{status}）；請檢查本機側檔與回放行情。沒有改用舊版操作權重。'
     return dict(total=0,wins=0,losses=0,flat=0,unknown=0,win_rate=None,cases=[],
                 profit_cases=[],loss_cases=[],full_cases=[],five_minute_only_cases=[],
                 five_minute_only_total=0,candidate_market_unavailable_reason=reason,
                 similarity_sufficiency='NO_MATCH',
-                comparison=dict(mode='candidate_market',clock_status='UNKNOWN',method='candidate_market_v1',
+                comparison=dict(mode='candidate_market',alignment_scope='NONE',clock_status='UNKNOWN',
+                                independent_clock_verified=False,method='candidate_market_v1',
                                 basis='direction_and_market',market_features_enabled=False,reason=reason),
                 sufficiency=dict(status='insufficient',label='資料不足',reasons=[reason],matched_groups=0,
                                  is_success_probability=False),limitations=[reason,'券商時鐘尚未逐帳戶核實'])
@@ -205,12 +208,13 @@ def candidate_response(tiers: dict, cases: list[dict]) -> dict:
             safe = {key: value for key,value in case.items() if key not in (
                 'size_profile','scope_private','market_profile','market','source_format','market_alignment_reason')}
             result.append(dict(safe,distance=None,candidate_tier=row['tier'],
+                               reference_alignment='PROJECT_REFERENCE',
                                shape_rank=round(row['shape_percentile'],4),
                                indicator_rank=round(row['indicator_percentile'],4),
                                indicator_differences={key:round(value,4) for key,value in row['indicator_differences'].items()},
                                clock_status='UNKNOWN',
-                               match_reasons=['方向相同','候選盤面雙軸近鄰；尚未校準足夠相似門檻'],
-                               differences=['券商時鐘未核實；只用於本機候選檢索']))
+                               match_reasons=['方向相同','參考 K 線與指標雙軸近鄰'],
+                               differences=['來源時間模型已定位參考盤面；券商原始時鐘尚未獨立核實']))
         return result
     summary = summarize_candidate_tier(tiers['full'],lookup)
     full = make_rows(tiers['full'][:6])
@@ -231,13 +235,15 @@ def candidate_response(tiers: dict, cases: list[dict]) -> dict:
                 full_cases=full,five_minute_only_cases=limited,
                 five_minute_only_total=len(tiers['five_minute_only']),candidate_market_unavailable_reason=None,
                 similarity_sufficiency=tiers['similarity_sufficiency'],
-                comparison=dict(mode='candidate_market',clock_status='UNKNOWN',method='candidate_market_v1',
+                comparison=dict(mode='candidate_market',alignment_scope='PROJECT_REFERENCE',
+                                clock_status='UNKNOWN',independent_clock_verified=False,
+                                method='candidate_market_v1',
                                 basis='direction_and_market',market_features_enabled=True,
                                 full_pool=tiers['counts']['full_pool'],
                                 five_minute_only_pool=tiers['counts']['five_minute_only_pool'],reason=reason),
                 sufficiency=dict(status='limited' if full or limited else 'insufficient',
-                                 label='候選近鄰／未校準' if full or limited else '資料不足',
+                                 label='參考盤面近鄰／未校準' if full or limited else '資料不足',
                                  reasons=[reason],matched_groups=len(full)+len(limited),is_success_probability=False),
-                limitations=['候選 UTC 與券商時鐘未核實；案例 K 線不是已確認的交易盤面',
-                             '雙軸分位只在各自候選池內排序，不是相似機率或預測勝率',
+                limitations=['參考 K 線依來源時間模型定位；券商原始時鐘未獨立核實',
+                             '雙軸分位只在各自案例池內排序，不是相似機率或預測勝率',
                              '獲利比例僅為完整三週期池的歷史結果分布；盈虧不參與排序'])

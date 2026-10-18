@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 import hashlib
 import json
+from datetime import datetime
 from pathlib import Path
 
 
@@ -13,6 +14,31 @@ COMMON = {'5m_ma_gap', '5m_atr_pct', '5m_rsi14', '5m_macd_hist',
 FULL = COMMON | {'15m_ma_gap', '15m_atr_pct', '15m_rsi14',
                  '15m_macd_hist', '1h_ma_gap', '1h_atr_pct'}
 SECONDS = {'5m': 300, '15m': 900, '1h': 3600}
+REFERENCE_CLOCK_BASES = {'ledger_price_hypothesis', 'source_model_scenario'}
+
+
+def _utc_second(value):
+    try:
+        parsed = datetime.fromisoformat(value.replace('Z', '+00:00'))
+        return int(parsed.timestamp()) if parsed.tzinfo is not None and parsed.utcoffset().total_seconds() == 0 else None
+    except (AttributeError, TypeError, ValueError, OverflowError):
+        return None
+
+
+def _reference_ready(marker, profile):
+    if (marker.get('marker_status') != 'BOTH_MARKERS_AVAILABLE'
+            or marker.get('timezone_status') != 'UNKNOWN'
+            or marker.get('production_enabled') is not False
+            or marker.get('frozen_boundary_policy_difference') is not False
+            or marker.get('candidate_clock_basis') not in REFERENCE_CLOCK_BASES):
+        return False
+    opened = _utc_second(marker.get('candidate_open_utc'))
+    closed = _utc_second(marker.get('candidate_close_utc'))
+    entry = _utc_second(marker.get('entry_bar_utc'))
+    exit_ = _utc_second(marker.get('exit_bar_utc'))
+    return (opened is not None and closed is not None and closed >= opened
+            and profile['as_of'] == opened
+            and entry == opened // 300 * 300 and exit_ == closed // 300 * 300)
 
 
 def _finite(value):
@@ -79,7 +105,7 @@ def load_candidate_sidecar(case_path, sidecar_path, private_root):
         if payload.get('input_cases_sha256') != hashlib.sha256(Path(case_path).read_bytes()).hexdigest():
             return {}, 'STALE'
         inputs = payload.get('inputs')
-        if not isinstance(inputs, dict) or not inputs:
+        if not isinstance(inputs, dict) or not isinstance(inputs.get('alignment'), dict):
             return {}, 'INVALID'
         for ref in inputs.values():
             if not isinstance(ref, dict) or not isinstance(ref.get('path'), str):
@@ -93,6 +119,23 @@ def load_candidate_sidecar(case_path, sidecar_path, private_root):
         if (not isinstance(profiles, dict) or not set(profiles) <= ids
                 or any(not _valid_profile(value) for value in profiles.values())):
             return {}, 'INVALID'
-        return profiles, 'READY'
+        alignment_path = (root / inputs['alignment']['path']).resolve()
+        markers = json.loads(alignment_path.read_text(encoding='utf-8'))
+        if not isinstance(markers, list):
+            return {}, 'INVALID'
+        by_id = {}
+        for marker in markers:
+            if not isinstance(marker, dict):
+                return {}, 'INVALID'
+            case_id = marker.get('case_id')
+            if case_id is not None:
+                if case_id in by_id:
+                    return {}, 'INVALID'
+                by_id[case_id] = marker
+        ready = {case_id: dict(profile, reference_alignment='PROJECT_REFERENCE',
+                               reference_clock_basis=by_id[case_id]['candidate_clock_basis'])
+                 for case_id, profile in profiles.items()
+                 if case_id in by_id and _reference_ready(by_id[case_id], profile)}
+        return ready, 'READY'
     except (OSError, KeyError, ValueError, TypeError, AttributeError):
         return {}, 'INVALID'
