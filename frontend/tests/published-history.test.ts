@@ -25,5 +25,8 @@ test('published real archive and compact index support point-in-time retrieval',
   assert.ok(result.full_cases!.every(item=>item.source_kind==='trader_history'));
   assert.ok(result.full_cases!.every(item=>item.market_state_text?.includes('進場前已收60根5分鐘K線')));
   assert.ok(result.full_cases!.every(item=>rawById.get(item.id)!.available_at<=query.as_of));
+  const detail=store.detail(result.full_cases![0].id,query.as_of);
+  assert.equal(detail?.market_path_pct?.length,60);
+  assert.equal(detail?.sequence.length,raw.group_sequences[detail!.group].length);
   assert.equal(store.audit().total_gold_records,11902);
 });
