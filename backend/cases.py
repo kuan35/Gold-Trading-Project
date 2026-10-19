@@ -4,7 +4,8 @@ import json
 from .similarity import build_size_profiles, compare, positive, summarize
 from .market_similarity import valid_profile, compare_market, load_sidecar, METHOD as MARKET_METHOD
 from .candidate_sidecar import load_candidate_sidecar
-from .candidate_retrieval import rank_candidates, summarize_candidate_tier
+from .candidate_retrieval import summarize_candidate_tier
+from .hybrid_retrieval import rank_hybrid_candidates, METHOD as HYBRID_METHOD
 from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -141,7 +142,7 @@ class CaseStore:
             status = getattr(self,'candidate_profile_status','MISSING')
             if status != 'READY' or not query or query.get('status') != 'candidate_only' or query.get('as_of') != clock:
                 return candidate_unavailable(status if status != 'READY' else 'QUERY_UNAVAILABLE')
-            tiers = rank_candidates(self.items,self.candidate_profiles,query,side,clock)
+            tiers = rank_hybrid_candidates(self.items,self.candidate_profiles,query,side,clock)
             return candidate_response(tiers,self.items)
         kwargs.pop('query_candidate',None)
         ranked = self.rank(side,action,lot,clock,**kwargs)
@@ -193,7 +194,7 @@ def candidate_unavailable(status: str) -> dict:
                 five_minute_only_total=0,candidate_market_unavailable_reason=reason,
                 similarity_sufficiency='NO_MATCH',
                 comparison=dict(mode='candidate_market',alignment_scope='NONE',clock_status='UNKNOWN',
-                                independent_clock_verified=False,method='candidate_market_v1',
+                                independent_clock_verified=False,method=HYBRID_METHOD,
                                 basis='direction_and_market',market_features_enabled=False,reason=reason),
                 sufficiency=dict(status='insufficient',label='資料不足',reasons=[reason],matched_groups=0,
                                  is_success_probability=False),limitations=[reason,'券商時鐘尚未逐帳戶核實'])
@@ -210,15 +211,20 @@ def candidate_response(tiers: dict, cases: list[dict]) -> dict:
             result.append(dict(safe,distance=None,candidate_tier=row['tier'],
                                reference_alignment='PROJECT_REFERENCE',
                                shape_rank=round(row['shape_percentile'],4),
+                                path_rank=round(row['path_percentile'],4),
+                                path_distance_pct=round(row['path_distance_pct'],5),
                                indicator_rank=round(row['indicator_percentile'],4),
                                indicator_differences={key:round(value,4) for key,value in row['indicator_differences'].items()},
+                                pattern_code=row['pattern_code'],pattern_match=row['pattern_match'],
+                                market_state_text=row['market_state_text'],
                                clock_status='UNKNOWN',
-                               match_reasons=['方向相同','參考 K 線與指標雙軸近鄰'],
+                               match_reasons=['方向相同','進場前 K 線路徑與指標雙軸近鄰',
+                                              '三段走勢型態相同' if row['pattern_match'] else '三段走勢型態不同'],
                                differences=['來源時間模型已定位參考盤面；券商原始時鐘尚未獨立核實']))
         return result
     summary = summarize_candidate_tier(tiers['full'],lookup)
-    full = make_rows(tiers['full'][:6])
-    limited = make_rows(tiers['five_minute_only'][:6])
+    full = make_rows(tiers['full'][:5])
+    limited = make_rows(tiers['five_minute_only'][:5])
     counts = summary['counts']
     known = counts['win']+counts['loss']+counts['flat']
     reason = tiers['reason']
@@ -237,13 +243,16 @@ def candidate_response(tiers: dict, cases: list[dict]) -> dict:
                 similarity_sufficiency=tiers['similarity_sufficiency'],
                 comparison=dict(mode='candidate_market',alignment_scope='PROJECT_REFERENCE',
                                 clock_status='UNKNOWN',independent_clock_verified=False,
-                                method='candidate_market_v1',
+                                method=tiers['method'],
                                 basis='direction_and_market',market_features_enabled=True,
+                                query_pattern_code=tiers['query_pattern_code'],
+                                query_market_text=tiers['query_market_text'],
+                                rerank_window=tiers['rerank_window'],
                                 full_pool=tiers['counts']['full_pool'],
                                 five_minute_only_pool=tiers['counts']['five_minute_only_pool'],reason=reason),
                 sufficiency=dict(status='limited' if full or limited else 'insufficient',
-                                 label='參考盤面近鄰／未校準' if full or limited else '資料不足',
+                                 label='混合盤面近鄰／未校準' if full or limited else '資料不足',
                                  reasons=[reason],matched_groups=len(full)+len(limited),is_success_probability=False),
                 limitations=['參考 K 線依來源時間模型定位；券商原始時鐘未獨立核實',
-                             '雙軸分位只在各自案例池內排序，不是相似機率或預測勝率',
+                             '數值路徑與指標按層排序，前15個不同操作群再依三段文字型態重排；不是相似機率或預測勝率',
                              '獲利比例僅為完整三週期池的歷史結果分布；盈虧不參與排序'])

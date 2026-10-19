@@ -15,8 +15,10 @@ export function PoolEvidence({pool}:{pool:Retrieval}){
  if(c?.mode==='candidate_market')return <section className="similarity-evidence" aria-label="參考盤面比較範圍">
   <strong>歷史案例 · 參考盤面比對</strong>
   <div className="similarity-axes"><div><span className="fine">篩選條件</span><p>{text.operation}</p></div>
-  <div><span className="fine">K 線形狀＋技術指標</span><p>{text.market}</p><p>{text.reason}</p></div></div>
-  <details><summary>如何判斷相似與行情來源</summary><p>只用相同買賣方向、查詢前已平倉且具可用參考盤面的案例。K 線形狀與指標各自計算距離，再在同一資料層轉成相對排名；按兩軸中較差的排名排序。完整三週期與五分鐘限定分開，不跨層比較分數。</p><p>參考行情依來源時間模型定位進出場棒；券商原始時鐘尚未獨立核實。尚未完成盲評，沒有足夠相似門檻；排名不是準確率、獲利機率或交易建議。</p></details>
+  <div><span className="fine">K 線路徑＋技術指標＋固定型態</span><p>{text.market}</p><p>{text.reason}</p></div></div>
+  {c.query_pattern_code&&<p className="fine">本次三段走勢：<strong>{c.query_pattern_code}</strong>（U 上行／D 下行／S 盤整）</p>}
+  {c.query_market_text&&<details><summary>本次盤面固定描述</summary><p>{c.query_market_text}</p></details>}
+  <details><summary>如何檢索與行情來源</summary><p>只用相同買賣方向、查詢前已平倉且具可用參考盤面的案例。60 根已收五分鐘 K 線收盤路徑與指標各自計算距離，再在同一資料層轉成相對排名；先看兩軸中較差的排名。前 {c.rerank_window??15} 個不同操作群內，三段走勢型態相同的案例提前，其餘維持數值順序；最後展示前五。完整三週期與五分鐘限定分開，不跨層比較分數。</p><p>文字型態取自同一批 K 線，不是獨立證據。這裡使用本機回放時點的已收行情；外部即時看盤不會傳入此檢索。參考行情依來源時間模型定位，券商原始時鐘尚未獨立核實。尚未完成盲評，沒有足夠相似門檻；排名不是準確率、獲利機率或交易建議。</p></details>
  </section>;
  return <section className="similarity-evidence" aria-label="相似案例比較範圍">
   <div className="similarity-axes"><div><span className="fine">操作條件</span><strong>{c?.basis==='direction_only'?'只比較方向':c?.basis==='relative_lot'?'比較相對平常手數':'比較絕對手數'}</strong><p>{text.operation}</p></div>
@@ -30,8 +32,10 @@ export function CaseEvidence({item}:{item:Case}){
  const op=item.operation_comparison,market=item.market_comparison;
  if(item.candidate_tier)return <section className="similarity-evidence" aria-label="案例雙軸比對">
   <strong>參考盤面 · {item.candidate_tier==='full'?'完整三週期':'五分鐘限定'}</strong>
-  <div className="similarity-axes"><div><span className="fine">K 線形狀</span><p>同層相對排名 {item.shape_rank==null?'資料不足':`${(item.shape_rank*100).toFixed(1)}%`}；越低表示在本次案例池中越靠近。</p></div>
+  <div className="similarity-axes"><div><span className="fine">K 線收盤路徑</span><p>同層相對排名 {item.path_rank==null?'資料不足':`${(item.path_rank*100).toFixed(1)}%`}；路徑差 {item.path_distance_pct==null?'資料不足':`${item.path_distance_pct.toFixed(3)} 個百分點`}。</p></div>
   <div><span className="fine">技術指標</span><p>同層相對排名 {item.indicator_rank==null?'資料不足':`${(item.indicator_rank*100).toFixed(1)}%`}；不是準確率。</p></div></div>
+  {item.pattern_code&&<p className="fine">三段走勢 {item.pattern_code} · {item.pattern_match?'與本次型態相同':'與本次型態不同'}；型態僅在數值候選內重排。</p>}
+  {item.market_state_text&&<details><summary>案例進場前固定描述</summary><p>{item.market_state_text}</p></details>}
   {item.indicator_differences&&<details><summary>指標差異</summary><p className="fine">下列數值是本次盤面與歷史案例的絕對差；同一欄越小越接近。不同指標的數字單位不同，請看上方同層相對排名。</p><div className="table-scroll"><table><tbody>{Object.entries(item.indicator_differences).map(([name,value])=><tr key={name}><th>{indicatorNames[name]||name}</th><td>{value.toFixed(4)}</td></tr>)}</tbody></table></div></details>}
   <details><summary>對時依據</summary><p>進場前盤面及進出場參考棒已按來源時間模型定位；券商原始時鐘尚未獨立核實。排名只比較下單前已知的 K 線與指標。</p></details>
  </section>;

@@ -86,9 +86,10 @@ def build_context(engine: Engine, draft: dict | None = None, side: str | None = 
         if draft is not None and draft['revision'] != state['version']:
             raise DomainError('草稿建立後行情已更新，請重新檢查訂單',409)
         retrieval = draft['retrieval'] if draft else None
-        if retrieval is None and side in ('BUY','SELL') and lot:
+        lookup_lot = lot or ('0.01' if engine.cases.source == 'trader_history' else None)
+        if retrieval is None and side in ('BUY','SELL') and lookup_lot:
             try:
-                retrieval = engine.retrieve(side, engine.action(side), amount(lot,'手數'), amount(typical_lot,'平常手數') if typical_lot else None)
+                retrieval = engine.retrieve(side, engine.action(side), amount(lookup_lot,'手數'), amount(typical_lot,'平常手數') if typical_lot else None)
             except DomainError:
                 pass
         history: dict = dict(status='not_queried', reason='未提供有效方向及手數，尚未檢索', cases=[])
@@ -96,14 +97,18 @@ def build_context(engine: Engine, draft: dict | None = None, side: str | None = 
             if retrieval.get('comparison',{}).get('mode') == 'candidate_market':
                 rows=(retrieval.get('full_cases') or [])+(retrieval.get('five_minute_only_cases') or [])
                 examples=[dict(reference=f'H{index+1}',side=c['side'],tier=c['candidate_tier'],
-                               shape_relative_rank=c['shape_rank'],indicator_relative_rank=c['indicator_rank'],
+                               path_relative_rank=c.get('path_rank'),indicator_relative_rank=c['indicator_rank'],
+                               pattern_code=c.get('pattern_code'),pattern_match=c.get('pattern_match'),
+                               market_state_text=c.get('market_state_text'),
                                clock_status='UNKNOWN') for index,c in enumerate(rows)]
                 history=dict(status='candidate_nearest' if rows else 'no_matches',
                              source_kind='trader_history',
+                              query_pattern_code=retrieval.get('comparison',{}).get('query_pattern_code'),
+                              query_market_text=retrieval.get('comparison',{}).get('query_market_text'),
                              counts=dict(full=retrieval['total'],five_minute_only=retrieval['five_minute_only_total']),
                              displayed_case_count=len(examples),cases=examples,
                              reason=retrieval.get('candidate_market_unavailable_reason') or
-                             '參考盤面近鄰；來源時間模型可用，券商時鐘未獨立核實，足夠相似門檻尚未盲評校準',
+                              '數值路徑與指標近鄰經固定三段型態重排；券商時鐘未獨立核實，足夠相似門檻尚未盲評校準',
                              limitations=['相對排序不是相似機率或獲利預測','不傳送原始案例、時間、價格、手數與行情側檔'])
             else:
                 examples=[]
@@ -273,7 +278,7 @@ def respond(engine: Engine, message: str, side: str | None = None, lot: str | No
         answer='若要建立草稿，請明確指定方向與手數，例如「買進黃金0.1手」。\n'
     else:
         answer=''
-    context=build_context(engine,draft,side,lot,typical_lot)
+    context=build_context(engine,draft,requested_side or side,lot,typical_lot)
     rules=validate_rules(personal_rules or [])
     reading=context['market']['frames'][0].get('reading')
     with engine.lock:

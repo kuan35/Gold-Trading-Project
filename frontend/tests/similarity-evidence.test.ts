@@ -29,7 +29,8 @@ test('rendered synthetic evidence does not reuse lot-weighted or verified-market
 test('local reference mode leads with market comparison and separates the limited tier',()=>{
  const r=new DemoEngine().retrieve('BUY','FIRST','.1');
  r.comparison={...r.comparison!,mode:'candidate_market',clock_status:'UNKNOWN',basis:'direction_and_market',
-  reason:'券商時鐘未核實；尚未盲評'};
+  reason:'券商時鐘未核實；尚未盲評',query_pattern_code:'UDU',
+  query_market_text:'進場前已收60根5分鐘K線；首尾收盤變動 1.00%。',rerank_window:15};
  r.five_minute_only_total=3;
  const text=poolDescription(r);
  assert.match(text.market,/參考盤面/);
@@ -38,7 +39,16 @@ test('local reference mode leads with market comparison and separates the limite
  assert.doesNotMatch(text.operation,/手數權重|40%|60%/);
  const panel=renderToStaticMarkup(createElement(PoolEvidence,{pool:r}));
  assert.match(panel,/歷史案例 · 參考盤面比對/);
- assert.match(panel,/如何判斷相似與行情來源/);
+ assert.match(panel,/如何檢索與行情來源/);
+ assert.match(panel,/本次三段走勢/);
+ assert.match(panel,/首尾收盤變動 1.00%/);
+ const item={...r.cases[0],candidate_tier:'full' as const,path_rank:0.12,
+  path_distance_pct:0.5,indicator_rank:0.2,pattern_code:'UDU',pattern_match:true,
+  market_state_text:'歷史盤面固定描述'};
+ const candidate=renderToStaticMarkup(createElement(CaseEvidence,{item}));
+ assert.match(candidate,/K 線收盤路徑/);
+ assert.match(candidate,/與本次型態相同/);
+ assert.match(candidate,/歷史盤面固定描述/);
  assert.doesNotMatch(panel,/候選盤面 · 券商時鐘未核實/);
 });
 

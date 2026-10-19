@@ -67,11 +67,14 @@ def build_catalog(context: dict) -> dict:
             '參考盤面檢索',counts,mandatory=True)
         add('history','sufficiency','目前列出同層最近案例；足夠相似門檻尚未經盲評校準。排名不是準確率或預測勝率。',
             '參考證據限制',dict(clock_status='UNKNOWN',similarity_sufficiency='UNCALIBRATED'),mandatory=True)
-        add('history','comparison','只篩買賣方向；K 線形狀與技術指標分軸排名。手數、首筆／加倉與盈虧不參與排序。完整與五分鐘限定層分開。',
-            '參考盤面檢索方法',dict(mode='candidate_market',clock_status='UNKNOWN'),mandatory=True)
+        add('history','comparison','只篩買賣方向；進場前 K 線收盤路徑與技術指標分軸排序，前15個不同操作群依固定三段型態重排。手數、首筆／加倉與盈虧不參與排序。完整與五分鐘限定層分開。',
+            '參考盤面檢索方法',dict(mode='candidate_market',method='path_indicator_pattern_v1',clock_status='UNKNOWN'),mandatory=True)
+        if history.get('query_market_text'):
+            add('history','query_market',f'本次已收盤面固定描述：{history["query_market_text"]} 三段型態 {history.get("query_pattern_code") or "資料不足"}。',
+                '程式固定格式盤面描述',dict(pattern_code=history.get('query_pattern_code')),default=True)
         for case in history['cases']:
             add('history',case['reference'],
-                f'展示案例 {case["reference"]}：{case["side"]}、{("完整三週期" if case["tier"]=="full" else "五分鐘限定")}；K 線形狀池內相對排名 {case["shape_relative_rank"]}、指標池內相對排名 {case["indicator_relative_rank"]}。',
+                f'展示案例 {case["reference"]}：{case["side"]}、{("完整三週期" if case["tier"]=="full" else "五分鐘限定")}；K 線收盤路徑池內相對排名 {case.get("path_relative_rank")}、指標池內相對排名 {case["indicator_relative_rank"]}；三段型態 {case.get("pattern_code") or "資料不足"}，與本次{("相同" if case.get("pattern_match") else "不同")}。'+(f'固定描述：{case["market_state_text"]}' if case.get('market_state_text') else ''),
                 '去識別化參考盤面摘要',case,default=True)
     if status != 'not_queried' and 'full' not in history.get('counts',{}):
         counts = history['counts']

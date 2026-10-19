@@ -102,6 +102,37 @@ def test_future_candles_do_not_change_explanation_context(monkeypatch):
     assert assistant.build_context(engine)==before
 
 
+def test_read_only_history_question_uses_explicit_direction_without_lot(monkeypatch):
+    engine=synthetic_engine(monkeypatch)
+    engine.cases.source='trader_history'
+    calls=[]
+    def retrieve(side, action, lot, typical_lot=None):
+        calls.append((side, lot))
+        return dict(total=0, five_minute_only_total=0, full_cases=[],
+                    five_minute_only_cases=[], comparison=dict(mode='candidate_market',
+                    query_pattern_code='UDU', query_market_text='固定盤面描述'),
+                    candidate_market_unavailable_reason='沒有可比較案例')
+    monkeypatch.setattr(engine,'retrieve',retrieve)
+    context=assistant.build_context(engine, side='SELL')
+    assert calls==[('SELL', assistant.amount('0.01','手數'))]
+    assert context['historical_reference']['query_pattern_code']=='UDU'
+    assert context['historical_reference']['query_market_text']=='固定盤面描述'
+
+
+def test_history_question_text_overrides_selected_side(monkeypatch):
+    engine=synthetic_engine(monkeypatch)
+    seen=[]
+    original=assistant.build_context
+    def capture(engine_arg, draft=None, side=None, lot=None, typical_lot=None):
+        seen.append(side)
+        return original(engine_arg,draft,side,lot,typical_lot)
+    monkeypatch.setattr(assistant,'build_context',capture)
+    monkeypatch.setenv('GOLD_ENABLE_LLM','false')
+    reply=assistant.respond(engine,'目前做空有相似案例嗎？','BUY','0.10')
+    assert reply['draft'] is None
+    assert seen==['SELL']
+
+
 def test_form_api_uses_llm_and_quote_change_during_wait_invalidates_draft(monkeypatch):
     from fastapi.testclient import TestClient
     from backend import app as module

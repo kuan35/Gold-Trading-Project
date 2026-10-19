@@ -5,11 +5,16 @@ from backend.cases import CaseStore
 from backend.candidate_retrieval import FIVE, HIGH
 
 
-def _profile(tier='full', value='0'):
+def _profile(tier='full', value='0', clock=90):
+    bars = [dict(time=clock-18000+index*300, open='100', high='101', low='99',
+                 close=str(100+index/10+float(value))) for index in range(60)]
     return dict(status='candidate_only', timezone_status='UNKNOWN', production_enabled=False,
-                tier=tier, as_of=90, shape=[value] * 240,
-                indicators={key: value for key in (FIVE + HIGH if tier == 'full' else FIVE)},
-                pre_entry_bars={'5m': [dict(time=0, open='1', high='2', low='1', close='2')]})
+                tier=tier, as_of=clock, shape=[value] * 240,
+                latest_closed={'5m': clock},
+                indicators={key: '0.5' if key == '5m_atr_pct' else value
+                            for key in (FIVE + HIGH if tier == 'full' else FIVE)},
+                pre_entry_bars={'5m': bars,
+                                **({'15m': [], '1h': []} if tier == 'full' else {})})
 
 
 def _store(status='READY'):
@@ -29,8 +34,7 @@ def _store(status='READY'):
 
 def test_candidate_retrieval_ignores_action_and_lot_and_has_separate_tiers():
     store = _store()
-    query = _profile()
-    query['as_of'] = 100
+    query = _profile(clock=100)
     a = store.retrieve('BUY', 'FIRST', Decimal('.1'), 100, query_candidate=query)
     b = store.retrieve('BUY', 'ADD', Decimal('5'), 100, typical_lot=Decimal('8'), query_candidate=query)
     assert [row['id'] for row in a['full_cases']] == [row['id'] for row in b['full_cases']]
@@ -42,6 +46,7 @@ def test_candidate_retrieval_ignores_action_and_lot_and_has_separate_tiers():
     assert a['comparison']['independent_clock_verified'] is False
     assert a['similarity_sufficiency'] == 'UNCALIBRATED'
     assert a['cases'][0]['distance'] is None
+    assert a['comparison']['method'] == 'path_indicator_pattern_v1'
     assert a['cases'][0]['reference_alignment'] == 'PROJECT_REFERENCE'
 
 
@@ -55,7 +60,7 @@ def test_stale_sidecar_has_no_weighted_fallback():
 
 def test_candidate_chart_never_includes_entry_or_exit_bar():
     store = _store()
-    store.candidate_profiles['full']['as_of'] = 400
+    store.candidate_profiles['full'] = _profile(clock=400)
     detail = store.get_candidate_detail('full', 600)
     assert detail['bars'] and all(bar['time'] + 300 <= 400 for bar in detail['bars'])
     assert detail['markers'] == []

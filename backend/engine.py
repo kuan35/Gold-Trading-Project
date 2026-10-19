@@ -233,6 +233,11 @@ class Engine:
             stop_loss = abs(price-stop)*qty*100 if stop is not None else None
             rr = abs(target-price)/abs(stop-price) if target is not None and stop is not None else None
             retrieval = self.retrieve(side,self.action(side),qty,amount(typical_lot,'平常手數') if typical_lot else None)
+            explanation = (f'本次已收 K 線盤面列出完整三週期 {retrieval["total"]} 群、'
+                           f'五分鐘限定 {retrieval.get("five_minute_only_total",0)} 群歷史近鄰；'
+                           '先比較收盤路徑及指標，再按固定三段型態重排。足夠相似門檻尚未校準。'
+                           if retrieval.get('comparison',{}).get('mode') == 'candidate_market' else
+                           f'已找到 {retrieval["total"]} 個合成示範操作候選。此資料沒有歷史盤面相似度。')
             draft = dict(id=uuid4().hex,revision=self.version,side=side,lot=str(qty),sl=str(stop) if stop else None,
                          tp=str(target) if target else None,price=money(price),action=self.action(side),status='REVIEW',
                          order_type=order_type,limit_price=money(price) if order_type=='LIMIT' else None,
@@ -240,7 +245,7 @@ class Engine:
                                    stop_loss_usd=money(stop_loss) if stop_loss is not None else None,
                                    reward_risk=money(rr) if rr is not None else None,scenarios=scenarios,warnings=warnings),
                          retrieval=retrieval,
-                         explanation=f'已找到 {retrieval["total"]} 個相似操作候選。比較方向、操作種類、手數基準與加倉條件；盤面相似度尚未核實。新增後總部位為 {before+qty} 手。請核對下列風險後自行確認。')
+                         explanation=explanation+f'新增後總部位為 {before+qty} 手。請核對下列風險後自行確認。')
             self.drafts[draft['id']] = draft
             return draft
 
