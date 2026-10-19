@@ -4,7 +4,8 @@ import type {Bar} from './types';
 
 export type DemoMarket = {
   source:'ctrader_demo_xauusd';environment:'demo';connection_status:string;
-  token_scope:string;order_connection:false;
+  token_scope:string;order_connection:boolean;
+  symbol:{lot_size_cents:number;min_volume_cents:number;max_volume_cents:number;step_volume_cents:number;digits:number}|null;
   quote:{status:string;bid:string|null;ask:string|null;source_time_utc:string|null;age_seconds:number|null};
   account:{status:string;balance:string|null;equity:string|null;currency:string|null;
     positions:{id:string;side:'BUY'|'SELL';volume_units:string;entry:string|null;sl:string|null;tp:string|null}[];

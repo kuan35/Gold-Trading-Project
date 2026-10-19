@@ -1,5 +1,6 @@
 from __future__ import annotations
 import json
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Literal
 from fastapi import FastAPI, Request
@@ -8,14 +9,17 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, ConfigDict
 from .engine import Engine, DomainError, amount
 from .market import ROOT
-from .cases import LABELS
+from .cases import LABELS, candidate_unavailable
+from .live_candidate_profile import profile_from_live_snapshot
+from .broker_orders import BrokerOrders
 from .assistant import respond, llm_enabled, explain_draft
 from .personal_rules import validate_rules, evaluate_rules
 from .technical import analyze as technical_analysis
-from .demo_quote_bridge import read_demo_quote
+from .demo_market_stream import stream as demo_market_stream
 
 app=FastAPI(title='Gold Trading Project',version='0.1.0')
 engine=Engine()
+broker_orders=BrokerOrders(demo_market_stream)
 
 
 class Body(BaseModel):
@@ -37,6 +41,20 @@ class ConfirmInput(Body):
     revision:int
     idempotency_key:str=Field(min_length=1,max_length=128)
     personal_rules:list[dict]=Field(default_factory=list,max_length=50)
+
+
+class BrokerDraftInput(Body):
+    side:Literal['BUY','SELL']
+    lot:str=Field(max_length=30)
+    order_type:Literal['MARKET','LIMIT']='MARKET'
+    limit_price:str|None=None
+    sl:str|None=None
+    tp:str|None=None
+
+
+class BrokerConfirmInput(Body):
+    revision:int
+    idempotency_key:str=Field(min_length=1,max_length=128)
 
 
 class CloseInput(Body):
@@ -94,8 +112,95 @@ def bars(interval:Literal['5m','15m','1h']='5m',focus:str|None=None):
 
 
 @app.get('/api/broker/quote')
-def broker_demo_quote():
-    return JSONResponse(content=read_demo_quote(), headers={'Cache-Control': 'no-store'})
+def broker_demo_quote(request: Request):
+    if not _local_broker_access(request):
+        return JSONResponse(status_code=403, content={'detail': 'DEMO 行情僅供本機查看'})
+    # Legacy endpoint shares the persistent SDK session; never open a second
+    # cTrader DEMO connection merely to answer a polling request.
+    return JSONResponse(content=demo_market_stream.snapshot()['quote'],
+                        headers={'Cache-Control': 'no-store'})
+
+
+def _local_broker_access(request: Request) -> bool:
+    if request.client is None or request.client.host not in ('127.0.0.1', '::1', 'testclient'):
+        return False
+    host = request.url.hostname
+    if host not in ('127.0.0.1', 'localhost', '::1', 'testserver'):
+        return False
+    origin = request.headers.get('origin')
+    return not origin or origin in ('http://127.0.0.1:8765', 'http://localhost:8765',
+                                    'http://127.0.0.1:5173', 'http://localhost:5173')
+
+
+@app.get('/api/broker/market')
+def broker_demo_market(request: Request):
+    if not _local_broker_access(request):
+        return JSONResponse(status_code=403, content={'detail': 'DEMO 帳戶資料僅供本機查看'})
+    return JSONResponse(content=demo_market_stream.snapshot(),
+                        headers={'Cache-Control': 'no-store'})
+
+
+@app.get('/api/broker/bars')
+def broker_demo_bars(request: Request, interval: Literal['5m', '15m', '1h'] = '5m'):
+    if not _local_broker_access(request):
+        return JSONResponse(status_code=403, content={'detail': 'DEMO 行情僅供本機查看'})
+    return JSONResponse(content=demo_market_stream.bars(interval),
+                        headers={'Cache-Control': 'no-store'})
+
+
+@app.get('/api/broker/cases')
+def broker_demo_cases(request: Request, side: Literal['BUY', 'SELL'] = 'BUY'):
+    if not _local_broker_access(request):
+        return JSONResponse(status_code=403, content={'detail': 'DEMO 案例查詢僅供本機查看'})
+    result, query = _live_retrieval(demo_market_stream.query_snapshot(), side)
+    result['query_source'] = 'ctrader_demo_xauusd'
+    result['query_as_of_utc'] = query.get('as_of')
+    result['query_status'] = query['status']
+    result['query_reason'] = query.get('reason')
+    return JSONResponse(content=result, headers={'Cache-Control': 'no-store'})
+
+
+def _live_retrieval(snapshot: dict, side: str) -> tuple[dict, dict]:
+    query = profile_from_live_snapshot(snapshot)
+    if query['status'] != 'candidate_only':
+        result = candidate_unavailable(query.get('reason', 'QUERY_UNAVAILABLE'))
+    else:
+        with engine.lock:
+            result = engine.cases.retrieve(side, 'FIRST', Decimal('0.10'), query['as_of'],
+                                           query_candidate=query)
+    return result, query
+
+
+@app.post('/api/broker/drafts')
+def broker_demo_draft(request: Request, body: BrokerDraftInput):
+    if not _local_broker_access(request):
+        return JSONResponse(status_code=403, content={'detail': 'DEMO 委託僅供本機確認'})
+    snapshot = demo_market_stream.query_snapshot()
+    retrieval, _ = _live_retrieval(snapshot, body.side)
+    return broker_orders.create(snapshot, side=body.side, lot=body.lot,
+                                order_type=body.order_type, limit_price=body.limit_price,
+                                sl=body.sl, tp=body.tp, retrieval=retrieval)
+
+
+@app.post('/api/broker/drafts/{draft_id}/confirm')
+def broker_demo_confirm(request: Request, draft_id: str, body: BrokerConfirmInput):
+    if not _local_broker_access(request):
+        return JSONResponse(status_code=403, content={'detail': 'DEMO 委託僅供本機確認'})
+    return broker_orders.confirm(draft_id, body.revision, body.idempotency_key)
+
+
+@app.get('/api/broker/drafts/{draft_id}/status')
+def broker_demo_order_status(request: Request, draft_id: str):
+    if not _local_broker_access(request):
+        return JSONResponse(status_code=403, content={'detail': 'DEMO 委託僅供本機查看'})
+    return JSONResponse(content=broker_orders.status(draft_id), headers={'Cache-Control': 'no-store'})
+
+
+@app.post('/api/broker/drafts/{draft_id}/cancel')
+def broker_demo_cancel(request: Request, draft_id: str):
+    if not _local_broker_access(request):
+        return JSONResponse(status_code=403, content={'detail': 'DEMO 草稿僅供本機取消'})
+    return broker_orders.cancel(draft_id)
 
 
 @app.post('/api/replay/step')
@@ -177,6 +282,19 @@ def case(case_id:str):
             return dict(candidate,match_reasons=[],differences=['參考盤面依來源時間模型定位；券商時鐘尚未獨立核實'])
     return dict(value,bars=[],markers=[],match_reasons=[],differences=['案例圖表時區未核實，盤面相似度未啟用'],distance=None,
                 chart_reason='交易紀錄與行情時區尚未逐來源核實，暫不畫歷史進出場位置' if value['source_kind']=='trader_history' else '此為合成流程案例，沒有真實歷史K線')
+
+
+@app.get('/api/broker/cases/{case_id}')
+def broker_demo_case(request: Request, case_id: str):
+    if not _local_broker_access(request):
+        return JSONResponse(status_code=403, content={'detail': 'DEMO 案例僅供本機查看'})
+    with engine.lock:
+        value = engine.cases.get_candidate_detail(case_id, int(datetime.now(timezone.utc).timestamp()))
+    if not value:
+        raise DomainError('案例不存在或尚未成熟', 404)
+    return JSONResponse(content=dict(value, match_reasons=[],
+                                     differences=['參考盤面依來源時間模型定位；券商時鐘尚未獨立核實']),
+                        headers={'Cache-Control': 'no-store'})
 
 
 @app.get('/api/audit')

@@ -18,7 +18,7 @@ export function PoolEvidence({pool}:{pool:Retrieval}){
   <div><span className="fine">K 線路徑＋技術指標＋固定型態</span><p>{text.market}</p><p>{text.reason}</p></div></div>
   {c.query_pattern_code&&<p className="fine">本次三段走勢：<strong>{c.query_pattern_code}</strong>（U 上行／D 下行／S 盤整）</p>}
   {c.query_market_text&&<details><summary>本次盤面固定描述</summary><p>{c.query_market_text}</p></details>}
-  <details><summary>如何檢索與行情來源</summary><p>只用相同買賣方向、查詢前已平倉且具可用參考盤面的案例。60 根已收五分鐘 K 線收盤路徑與指標各自計算距離，再在同一資料層轉成相對排名；先看兩軸中較差的排名。前 {c.rerank_window??15} 個不同操作群內，三段走勢型態相同的案例提前，其餘維持數值順序；最後展示前五。完整三週期與五分鐘限定分開，不跨層比較分數。</p><p>文字型態取自同一批 K 線，不是獨立證據。{c.basis==='synthetic_query_real_history'?'本頁用合成回放 K 線作查詢，對照公開的真實交易員案例；這只展示檢索流程，不能當成真實下單前的相似度驗證。':'本機版使用回放時點的已收行情。'}外部即時看盤不會傳入此檢索。參考行情依來源時間模型定位，券商原始時鐘尚未獨立核實。尚未完成盲評，沒有足夠相似門檻；排名不是準確率、獲利機率或交易建議。</p></details>
+  <details><summary>如何檢索與行情來源</summary><p>只用相同買賣方向、查詢前已平倉且具可用參考盤面的案例。60 根已收五分鐘 K 線收盤路徑與指標各自計算距離，再在同一資料層轉成相對排名；先看兩軸中較差的排名。前 {c.rerank_window??15} 個不同操作群內，三段走勢型態相同的案例提前，其餘維持數值順序；最後展示前五。完整三週期與五分鐘限定分開，不跨層比較分數。</p><p>文字型態取自同一批 K 線，不是獨立證據。{c.basis==='synthetic_query_real_history'?'本頁用合成回放 K 線作查詢，對照公開的真實交易員案例；這只展示檢索流程，不能當成真實下單前的相似度驗證。':('query_source' in pool&&pool.query_source==='ctrader_demo_xauusd'?'本機即時查詢使用 cTrader DEMO 已收 K 線；當下 tick 只作時鐘，不混入未收盤 K 線。':'本機版使用回放時點的已收行情。')}參考行情依來源時間模型定位，券商原始時鐘尚未獨立核實。尚未完成盲評，沒有足夠相似門檻；排名不是準確率、獲利機率或交易建議。</p></details>
  </section>;
  return <section className="similarity-evidence" aria-label="相似案例比較範圍">
   <div className="similarity-axes"><div><span className="fine">操作條件</span><strong>{c?.basis==='direction_only'?'只比較方向':c?.basis==='relative_lot'?'比較相對平常手數':'比較絕對手數'}</strong><p>{text.operation}</p></div>
