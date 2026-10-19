@@ -54,6 +54,8 @@ dialog{background:var(--surface);color:var(--ink);border:1px solid var(--line);b
 .similarity-evidence{border-bottom:1px solid var(--border,#33403e);padding:12px 0;margin-bottom:12px}.similarity-axes{display:grid;grid-template-columns:1fr 1fr;gap:16px}.similarity-axes strong{display:block;margin:5px 0}.similarity-axes p{font-size:13px;line-height:1.7;margin:5px 0}.similarity-evidence details{font-size:12px;line-height:1.8;margin-top:10px}.similarity-evidence summary{cursor:pointer}.similarity-evidence small{font-size:12px}@media(max-width:650px){.similarity-axes{grid-template-columns:1fr}}
 
 /* Trading workspace: a shared viewport for chart, ticket and trade ledger. */
+.demo-quote{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:8px 20px;border-bottom:1px solid var(--line);font-size:12px;background:var(--surface)}
+.demo-quote strong{color:var(--primary)}.demo-quote b{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:15px}.demo-quote small{color:var(--muted)}
 :root {
   --bg:oklch(.18 .013 255); --surface:oklch(.225 .016 255);
   --raised:oklch(.27 .018 255); --ink:oklch(.93 .008 255);

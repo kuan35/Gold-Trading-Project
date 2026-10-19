@@ -12,6 +12,7 @@ from .cases import LABELS
 from .assistant import respond, llm_enabled, explain_draft
 from .personal_rules import validate_rules, evaluate_rules
 from .technical import analyze as technical_analysis
+from .demo_quote_bridge import read_demo_quote
 
 app=FastAPI(title='Gold Trading Project',version='0.1.0')
 engine=Engine()
@@ -90,6 +91,11 @@ def state():
 def bars(interval:Literal['5m','15m','1h']='5m',focus:str|None=None):
     with engine.lock:
         return engine.chart(interval,focus)
+
+
+@app.get('/api/broker/quote')
+def broker_demo_quote():
+    return JSONResponse(content=read_demo_quote(), headers={'Cache-Control': 'no-store'})
 
 
 @app.post('/api/replay/step')

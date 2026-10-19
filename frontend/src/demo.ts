@@ -1,9 +1,10 @@
-/** Public Pages sandbox. Only generated fixtures; no broker, keys or backend. */
+/** Public Pages sandbox: synthetic replay and explicitly released real case archive. */
 import Decimal from 'decimal.js';
 import {validateRules,evaluateRules,parseRuleMessage,type PersonalRule} from './personalRules';
 import {tradeChart} from './tradeChart';
 import fixtures from './demo-data.json';
 import {attachDemoProfiles,rankCases,summarizeCases} from './similarity';
+import {loadPublicHistory,PublicHistoryStore} from './publicHistory';
 import type {Action,Audit,Bar,BarsResponse,Case,Draft,Order,OrderType,PendingOrder,Position,Retrieval,Side,State} from './types';
 Decimal.set({precision:28,rounding:Decimal.ROUND_HALF_EVEN});
 const d=(v:Decimal.Value)=>new Decimal(v);
@@ -24,6 +25,7 @@ export class DemoEngine {
  readonly bars=structuredClone(fixtures.bars) as SourceBar[];
  readonly cases=structuredClone(fixtures.cases) as unknown as DemoCase[];
  mode:State['mode']='replay';cursor=360;version=0;balance=d(10000);
+ history:PublicHistoryStore|null=null;
  positions:Position[]=[];orders:Order[]=[];pendingOrders:PendingOrder[]=[];drafts=new Map<string,Draft>();
  private confirmations=new Map<string,Receipt>();private closes=new Map<string,Receipt>();
  constructor(){this.reset();this.cases.forEach(c=>{c.currency='USD';});attachDemoProfiles(this.cases);}
@@ -40,10 +42,10 @@ export class DemoEngine {
    positions:this.positions.map(p=>({...p,pnl:money(this.pnl(p))})),orders:structuredClone(this.orders).reverse(),pending_orders:structuredClone(this.pendingOrders),
    market:{high:money(high),low:money(low),change_pct:money(close.minus(recent[0].open).div(recent[0].open).times(100)),range_pct:money(high.minus(low).div(close).times(100)),
     ma20:money(sum(recent.slice(-20).map(b=>b.close)).div(20)),ma60:money(sum(recent.map(b=>b.close)).div(60))},
-   data_quality:['GitHub Pages 公開展示：行情與案例全部合成，非交易員歷史績效',
+   data_quality:[this.history?'回放行情與成交為合成示範；檢索案例為真實交易員紀錄，兩者來源不同':'GitHub Pages 公開展示：目前僅載入合成資料',
     '瀏覽器記憶體工作階段；重新整理或重設會清空模擬持倉，每位訪客獨立',
     '固定價差0.30美元、100oz/lot；佣金、隔夜費、保證金與強制平倉未模擬',
-    '本地規則解析；無外部 LLM、無券商連線，案例只比較操作條件']};
+    this.history?'本地規則解析；無券商連線。真實案例依同方向、已成熟時間、K 線路徑與指標排序':'本地規則解析；無外部 LLM、無券商連線，案例只比較操作條件']};
  }
  action(side:Side):Action{return !this.positions.length?'FIRST':this.positions.every(p=>p.side===side)?'ADD':'OPPOSITE';}
  chart(interval:'5m'|'15m'|'1h'='5m',focus?:string):BarsResponse{
@@ -64,6 +66,7 @@ export class DemoEngine {
   return rankCases(this.cases,{side,action,lot,clock:this.clock,prior_count:same.length,prior_lot:total.toString(),signed_distance:signed?.toString()??null,typical_lot});
  }
  retrieve(side:Side,action:Action,lot:string,typical_lot?:string|null):Retrieval{
+  if(this.history)return this.history.retrieve(side,this.cursor);
   const excluded=typical_lot?this.cases.filter(c=>c.side===side&&c.action===action&&c.available_at<=this.clock&&!c.typical_lot).length:0;
   return summarizeCases(this.rank(side,action,lot,typical_lot),typical_lot,excluded);
  }
@@ -97,7 +100,7 @@ export class DemoEngine {
   const result:Draft={id:id(),revision:this.version,side,lot:qty.toString(),sl:stop?.toString()||null,tp:target?.toString()||null,price:money(price),order_type:orderType,limit_price:orderType==='LIMIT'?money(price):null,action:this.action(side),status:'REVIEW',
    risk:{before_lot:before.toString(),after_lot:before.plus(qty).toString(),average_entry:money(avg),stop_loss_usd:stop?money(price.minus(stop).abs().times(qty).times(100)):null,
     reward_risk:stop&&target?money(target.minus(price).abs().div(stop.minus(price).abs())):null,scenarios,warnings},
-   retrieval:this.retrieve(side,this.action(side),lot,typical_lot),explanation:'合成案例與瀏覽器情境試算；請自行核對後確認，尚未成交。'};
+   retrieval:this.retrieve(side,this.action(side),lot,typical_lot),explanation:'合成回放與瀏覽器情境試算；案例來源請看檢索說明。請自行核對後確認，尚未成交。'};
   this.drafts.set(result.id,result);return structuredClone(result);
  }
  confirm(draftId:string,revision:number,key:string):Receipt{
@@ -149,10 +152,11 @@ export class DemoEngine {
   }return this.state();
  }
  caseDetail(caseId:string):Case{
+  if(this.history){const item=this.history.detail(caseId,this.clock);if(!item)throw Error('案例不存在或尚不可用');return item;}
   const c=this.cases.find(c=>c.id===caseId&&c.available_at<=this.clock);if(!c)throw Error('案例不存在或尚不可用');
   return {...c,bars:[],markers:[],distance:null,match_reasons:[],differences:['合成流程案例，沒有真實歷史 K 線'],chart_reason:'此為合成流程案例；時區為示範設定，沒有真實案例行情可供驗證'};
  }
- audit():Audit{return {source_files:0,total_gold_records:this.cases.length,period:'合成示範案例；不是交易員統計',source:'synthetic_demo',refreshed_at:'2026-10-01',
+ audit():Audit{if(this.history)return this.history.audit();return {source_files:0,total_gold_records:this.cases.length,period:'合成示範案例；不是交易員統計',source:'synthetic_demo',refreshed_at:'2026-10-01',
   groups:Object.entries(labels).map(([code,label])=>({code,label,count:this.cases.filter(c=>c.behavior===code).length,description:'合成示範分類，用於展示介面'})),limitations:['GitHub Pages 不包含私人交易員紀錄','本機新版資料稽核的匿名彙總另見 GitHub docs/data-audit-summary.md']};}
  chat(message:string,side?:Side,typical_lot?:string|null){
   if(parseRuleMessage(message,[]))return {message:'這是設定、假設或取消語句；請在我的規則中設定，不會建立訂單。',draft:null,provider:'local_rules'};
@@ -169,6 +173,12 @@ export class DemoEngine {
 const session=new DemoEngine();
 export async function browserAPI(path:string,body?:unknown):Promise<unknown>{
  const [route,query]=path.split('?'),input=(body||{}) as Record<string,unknown>,params=new URLSearchParams(query);
+ // Keep the workbench responsive while the public real-case archive loads.
+ // Node tests exercise the synthetic engine without a browser or static archive.
+ if(typeof document!=='undefined'&&(
+   route==='/audit'||route==='/cases'||route.startsWith('/cases/')||
+   route==='/drafts'||route==='/chat'
+ ))session.history=await loadPublicHistory();
  const validatedRules=(route==='/drafts'||route==='/chat')?validateRules(input.personal_rules||[]):[];
  let result:unknown;
  if(route==='/state')result=session.state();

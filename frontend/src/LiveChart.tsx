@@ -1,10 +1,24 @@
 import {useEffect,useRef,useState} from 'react';
+import {api} from './api';
+
+type DemoQuote={source:string;environment:'demo';status:string;bid:string|null;ask:string|null;
+  source_time_utc:string|null;age_seconds:number|null;order_connection:false};
 
 // Hosted widget only: no credentials, price extraction or order-engine access.
 export default function LiveChart({light}:{light:boolean}) {
   const host=useRef<HTMLDivElement>(null);
   const [status,setStatus]=useState<'loading'|'embedded'|'failed'>('loading');
   const [attempt,setAttempt]=useState(0);
+  const [demoQuote,setDemoQuote]=useState<DemoQuote|null>(null);
+  useEffect(()=>{
+    if(import.meta.env.MODE==='pages')return;
+    let active=true;
+    const refresh=()=>{api<DemoQuote>('/broker/quote').then(value=>{if(active)setDemoQuote(value);})
+      .catch(()=>{if(active)setDemoQuote({source:'ctrader_demo_xauusd',environment:'demo',
+        status:'UNAVAILABLE',bid:null,ask:null,source_time_utc:null,age_seconds:null,order_connection:false});});};
+    refresh();const timer=window.setInterval(refresh,20000);
+    return()=>{active=false;window.clearInterval(timer);};
+  },[]);
   useEffect(()=>{
     const target=host.current;if(!target)return;
     setStatus('loading');let active=true;
@@ -36,6 +50,11 @@ export default function LiveChart({light}:{light:boolean}) {
   return <section className="live-market" aria-label="TradingView 即時看盤">
     <div className="instrument-header"><div><h1>XAU / USD <span>即時參考行情</span></h1><div className="market-subtitle">TradingView · OANDA:XAUUSD · UTC</div></div><span className="fine">僅供看盤</span></div>
     <div className="live-status" role="status">{status==='loading'?'正在載入 TradingView 圖表…':status==='failed'?'圖表未能載入。請檢查網路或瀏覽器阻擋設定。':'圖表已嵌入 · 報價時間與市場狀態以圖表內顯示為準。'}{status==='failed'&&<button onClick={()=>setAttempt(n=>n+1)}>重新載入圖表</button>}</div>
+    {import.meta.env.MODE!=='pages'&&<div className="demo-quote" role="status"><strong>cTrader DEMO · XAUUSD 唯讀報價</strong>
+      {demoQuote?.bid&&demoQuote.ask?<><span>賣出價 BID <b>{demoQuote.bid}</b></span><span>買進價 ASK <b>{demoQuote.ask}</b></span>
+        <small>{demoQuote.status==='CURRENT'?'已收到報價':demoQuote.status==='STALE'?'報價已過期':'來源時間未確認'} · {demoQuote.source_time_utc??'未提供來源時間'} UTC</small></>:
+        <small>{demoQuote?'DEMO 報價未連線（'+demoQuote.status+'）':'正在讀取 DEMO 報價…'}</small>}
+      <small>與上方 OANDA 圖表來源不同；目前不參與回放成交或相似案例檢索。</small></div>}
     <div className="live-chart" ref={host}/>
     <div className="live-attribution"><a href="https://www.tradingview.com/symbols/XAUUSD/?exchange=OANDA" target="_blank" rel="noopener noreferrer">XAUUSD 圖表</a><span>由 TradingView 提供</span></div>
     <div className="limitations"><p>開市且來源正常時行情自動更新；休市、延遲或斷線狀態請依圖表顯示判讀。</p><p>此圖表的價格與指標尚未接入模擬成交、案例檢索或對話助手。</p></div>
