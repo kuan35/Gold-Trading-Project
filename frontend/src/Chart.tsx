@@ -2,8 +2,8 @@ import {useEffect,useRef} from 'react';
 import {CandlestickSeries,ColorType,createChart,createSeriesMarkers,HistogramSeries,LineSeries,type UTCTimestamp} from 'lightweight-charts';
 import type {Bar,Marker} from './types';
 import {displayMarker} from './chartMarkers';
-type Props = {bars:Bar[];markers?:Marker[];light:boolean;averages?:boolean;focusIds?:string[]};
-export default function Chart({bars,markers=[],light,averages=true,focusIds=[]}:Props) {
+type Props = {bars:Bar[];markers?:Marker[];light:boolean;averages?:boolean;focusIds?:string[];ariaLabel?:string};
+export default function Chart({bars,markers=[],light,averages=true,focusIds=[],ariaLabel='黃金 K 線與操作標記，時間依回放行情來源顯示'}:Props) {
   const host = useRef<HTMLDivElement>(null);
   useEffect(()=>{
     if(!host.current) return;
@@ -36,5 +36,5 @@ export default function Chart({bars,markers=[],light,averages=true,focusIds=[]}:
     fitBars();
     return ()=>{resize.disconnect();chart.remove();};
   },[bars,markers,light,averages,focusIds]);
-  return <div ref={host} className="chart-canvas" role="img" aria-label="黃金 K 線與操作標記，時間依回放行情來源顯示"/>;
+  return <div ref={host} className="chart-canvas" role="img" aria-label={ariaLabel}/>;
 }

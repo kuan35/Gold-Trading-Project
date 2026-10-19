@@ -6,6 +6,16 @@ This Cloudflare Worker is separate from the local `/api` contract. When configur
 
 All amounts/prices/lots are decimal strings. OHLC plotting is numeric. REST base /api. Errors JSON {detail: string}. Modes replay and broker_demo. Synthetic demo is clearly named, private imported data source is labelled.
 
+## Local cTrader DEMO read-only market feed (2026-10-20)
+
+These GET routes accept loopback clients only, return `Cache-Control: no-store`, and share one persistent DEMO SDK connection. They never place or cancel orders. Credentials and account ID remain server-side. The browser's global quote bar polls the market route every second; a closed-candle chart polls bars every 15 seconds. `CURRENT` requires a live connection and a recent source timestamp; cached quotes/bars become `STALE` on disconnect. Outside market hours, the last tick may age out.
+
+- `GET /api/broker/market` → `{source:'ctrader_demo_xauusd',environment:'demo',connection_status,token_scope,order_connection:false,quote:{status,bid,ask,source_time_utc,age_seconds},account:{status,balance,equity,currency,positions,pending_orders,all_positions_count,all_pending_orders_count,updated_at_utc}|null}`. Prices, money, and volumes in the account payload are decimal strings. The two position/order lists contain XAUUSD only; counts cover all symbols.
+- `GET /api/broker/bars?interval=5m|15m|1h` → `{source,environment:'demo',status,interval,closed_only:true,bars:[{time,open,high,low,close,volume}]}`. `time` is UTC Unix seconds. A forming candle is excluded. OHLC are numeric plotting coordinates, not order prices.
+- `GET /api/broker/quote` is a compatibility view of the same cached quote; it does not open a second SDK connection.
+
+The public static Pages build has no broker routes. It embeds a clearly attributed TradingView OANDA price widget on every page, with no cTrader account access. Neither public nor local external reference charts enter the replay engine or similarity rank. `broker_demo` order submission remains disabled until a separate, confirmed draft-to-broker execution flow exists.
+
 - GET /api/state → {mode,version,clock,data_source,broker_connected:false,llm_enabled:false,quote:{bid,ask,time},account:{balance,equity},positions:[{id,side,lot,entry,sl,tp,pnl,opened_at}],pending_orders:[{id,side,lot,limit_price,sl,tp,created_at,action,status:'PENDING'}],orders:[{id,side,lot,price,status,time,action,pnl}],market:{change_pct,range_pct,high,low,ma20,ma60},data_quality:[string]}
 - GET /api/bars?interval=5m|15m|1h&focus=optional_order_id → {bars,markers,source,interval,focus,analysis}. Unknown focus returns 404. GET does not advance time or alter positions.
   - bars: complete closed OHLCV only. Default latest250; focused view includes selected entry/exit plus100 bars before (enough for MA60) and40 after if already known, possibly more than250 for long holds.

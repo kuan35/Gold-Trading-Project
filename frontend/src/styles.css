@@ -56,6 +56,10 @@ dialog{background:var(--surface);color:var(--ink);border:1px solid var(--line);b
 /* Trading workspace: a shared viewport for chart, ticket and trade ledger. */
 .demo-quote{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:8px 20px;border-bottom:1px solid var(--line);font-size:12px;background:var(--surface)}
 .demo-quote strong{color:var(--primary)}.demo-quote b{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:15px}.demo-quote small{color:var(--muted)}
+.tick-strip{display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:7px 16px;border-bottom:1px solid var(--line);background:var(--surface);font-size:11px;min-height:38px}
+.tick-strip strong{color:var(--primary);white-space:nowrap}.tick-strip span{white-space:nowrap}.tick-strip b{font-family:Consolas,"Cascadia Mono",monospace;font-size:15px;margin-left:4px;font-variant-numeric:tabular-nums}.tick-strip small{color:var(--muted);margin-left:auto;font-size:10px}
+.tradingview-host{width:100%;height:100%}.broker-account{padding:12px;border:1px solid var(--line);background:var(--surface);margin:12px 0}.broker-account strong{color:var(--primary);font-size:12px}.broker-account p{margin:6px 0;color:var(--ink);font-size:11px}
+@media(max-width:760px){.tick-strip{gap:5px 12px;padding:7px 12px}.tick-strip strong{width:100%}.tick-strip small{width:100%;margin-left:0}}
 :root {
   --bg:oklch(.18 .013 255); --surface:oklch(.225 .016 255);
   --raised:oklch(.27 .018 255); --ink:oklch(.93 .008 255);
@@ -310,3 +314,10 @@ footer {padding:6px 16px;font-size:10px;min-height:26px;flex-shrink:0}
   .replay-workspace:not(.chat-workspace) .bottom-panel>.table-scroll {overflow-x:auto}
 }
 .case-path-preview{border:1px solid var(--line);background:var(--bg);padding:14px;margin-bottom:12px}.case-path-preview strong{display:block;font-size:12px}.case-path-preview svg{display:block;width:100%;height:150px;margin:12px 0;background:repeating-linear-gradient(to bottom,transparent 0,transparent 36px,var(--line) 37px,transparent 38px)}.case-path-line{fill:none;stroke:var(--primary);stroke-width:2;vector-effect:non-scaling-stroke}.case-path-zero{stroke:var(--muted);stroke-width:1;stroke-dasharray:4 4;vector-effect:non-scaling-stroke}.case-path-preview small{color:var(--muted)}.sequence-toggle{display:block;margin:12px auto 18px}
+
+.public-ticker{display:flex;align-items:center;gap:16px;min-height:44px;padding:2px 20px;border-bottom:1px solid var(--line);background:var(--surface);overflow:hidden}
+.public-ticker>strong{flex:none;color:var(--primary);font-size:12px}
+.public-ticker-widget{display:block;flex:1;min-width:170px;max-height:40px;overflow:hidden}
+.public-ticker-widget tv-ticker-tape{display:block;width:100%;height:40px}
+.public-ticker>small{flex:none;color:var(--muted);font-size:10px}
+@media(max-width:760px){.public-ticker{padding:2px 12px;gap:8px}.public-ticker>small{display:none}}

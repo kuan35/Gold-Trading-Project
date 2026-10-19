@@ -6,7 +6,7 @@
 
 檢索先篩 BUY／SELL、查詢前已成熟與資料週期，再以已收 K 線收盤路徑及指標分軸排序，前 15 組按三段固定走勢型態重排。查詢端目前仍是**合成回放**，因此網站展示的是檢索流程，並非真實當下盤面匹配。券商原始時鐘未獨立核實，人工相關性門檻未校準；排序不等於「足夠相似」或準確率。
 
-本機版在「即時看盤」可另外顯示 cTrader DEMO 的唯讀 XAUUSD BID／ASK 快照與來源時間，每約 20 秒更新一次；它不送單，也不參與回放、案例檢索或 TradingView OANDA 圖表。GitHub Pages 沒有 cTrader 憑證或這條本機報價 API。
+本機版以單一持續連線讀取 cTrader DEMO XAUUSD BID／ASK tick、帳戶摘要，以及 5 分、15 分、1 小時已收 K 線。三個工作台頁面共用頁首最新報價；即時頁優先顯示券商 K 線，連線不可用時顯示 TradingView OANDA 參考圖。這條連線仍為唯讀，尚不送單，也不把即時 K 線放入回放案例排名。GitHub Pages 無 cTrader 帳戶或憑證，改在各頁頁首展示 TradingView OANDA 外部參考價；它不是 cTrader tick 或可成交 BID／ASK，更新依資料供應商。
 
 ## 2026-10-18：本機參考盤面檢索
 
