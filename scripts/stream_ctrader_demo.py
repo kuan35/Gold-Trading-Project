@@ -48,6 +48,15 @@ def money(value: int, digits: int) -> str:
     return format(Decimal(value).scaleb(-digits), 'f')
 
 
+def decode_symbol_schedule(symbol) -> dict:
+    """Carry the broker's own XAUUSD trading sessions with the candle snapshot."""
+    intervals = sorted((int(item.startSecond), int(item.endSecond))
+                       for item in symbol.schedule)
+    return {'time_zone': str(symbol.scheduleTimeZone),
+            'intervals': [{'start_second': start, 'end_second': end}
+                          for start, end in intervals]}
+
+
 def run(config: dict[str, str]) -> None:
     from ctrader_open_api import Client, EndPoints, Protobuf, TcpProtocol
     from ctrader_open_api.messages.OpenApiCommonMessages_pb2 import ProtoHeartbeatEvent
@@ -80,13 +89,21 @@ def run(config: dict[str, str]) -> None:
                      'currency': None, 'positions': [], 'pending_orders': []}
     asset_names: dict[int, str] = {}
     order_ids: dict[int, str] = {}
+    stopping = False
 
     def failed(stage: str) -> None:
+        nonlocal stopping
+        if stopping:
+            return
+        stopping = True
         emit('status', {'status': 'UNAVAILABLE', 'stage': stage})
+        # A timed-out startup request otherwise leaves a live child process in
+        # UNAVAILABLE forever. Exiting lets the parent restart the DEMO stream.
+        reactor.callLater(0, reactor.stop)
 
     def send(request, stage: str, callback) -> None:
         try:
-            client.send(request, responseTimeoutInSeconds=10).addCallbacks(
+            client.send(request, responseTimeoutInSeconds=20).addCallbacks(
                 callback, lambda _failure: failed(stage))
         except Exception:
             failed(stage)
@@ -200,6 +217,7 @@ def run(config: dict[str, str]) -> None:
                                         min_volume_cents=int(symbol.minVolume),
                                         max_volume_cents=int(symbol.maxVolume),
                                         step_volume_cents=int(symbol.stepVolume), digits=digits)
+                    symbol_rules['trading_schedule'] = decode_symbol_schedule(symbol)
                     emit('symbol', dict(symbol_rules))
                     emit('status', {'status': 'CONNECTED', 'scope': scope,
                                     'orders_enabled': selected_demo and scope == 'TRADE'})

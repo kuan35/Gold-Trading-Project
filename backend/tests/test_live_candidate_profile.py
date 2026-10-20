@@ -1,6 +1,10 @@
 from datetime import datetime, timezone
+from types import SimpleNamespace
 
-from backend.live_candidate_profile import profile_from_live_snapshot
+import pytest
+
+from backend.live_candidate_profile import _closed_frame, profile_from_live_snapshot
+from scripts.stream_ctrader_demo import decode_symbol_schedule
 
 
 CLOCK = 1800000000
@@ -53,3 +57,55 @@ def test_live_profile_requires_current_quote_and_last_five_minute_close():
     source = snapshot()
     source['bars']['5m'].pop()
     assert profile_from_live_snapshot(source)['reason'] == 'STALE_CLOSED_BAR'
+
+
+def test_broker_session_gap_is_allowed_without_inventing_candles():
+    # The broker closes XAUUSD after Monday 16:59 New York time and reopens
+    # at 18:01. cTrader has no 15m bars between 20:45 and 22:00 UTC.
+    left = int(datetime(2026, 10, 19, 20, 45, tzinfo=timezone.utc).timestamp())
+    right = int(datetime(2026, 10, 19, 22, 0, tzinfo=timezone.utc).timestamp())
+    bars = [{'time': time, 'open': 4000, 'high': 4001, 'low': 3999,
+             'close': 4000.5} for time in (left, right)]
+    schedule = {'time_zone': 'America/New_York', 'intervals': [
+        {'start_second': 64860, 'end_second': 147540},
+        {'start_second': 151260, 'end_second': 233940}]}
+    assert _closed_frame(bars, 900, 2, right + 900, schedule) == bars
+    with pytest.raises(ValueError, match='BAR_GAP_OR_DUPLICATE'):
+        _closed_frame(bars, 900, 2, right + 900, None)
+
+
+def test_missing_broker_bar_during_open_session_still_blocks_retrieval():
+    left = int(datetime(2026, 10, 20, 3, 0, tzinfo=timezone.utc).timestamp())
+    right = left + 1800
+    bars = [{'time': time, 'open': 4000, 'high': 4001, 'low': 3999,
+             'close': 4000.5} for time in (left, right)]
+    schedule = {'time_zone': 'America/New_York', 'intervals': [
+        {'start_second': 151260, 'end_second': 233940}]}
+    with pytest.raises(ValueError, match='BAR_GAP_OR_DUPLICATE'):
+        _closed_frame(bars, 900, 2, right + 900, schedule)
+
+
+def test_broker_session_gap_follows_new_york_dst_transition():
+    # The same local Monday break shifts one UTC hour after DST ends.
+    left = int(datetime(2026, 11, 2, 21, 45, tzinfo=timezone.utc).timestamp())
+    right = int(datetime(2026, 11, 2, 23, 0, tzinfo=timezone.utc).timestamp())
+    bars = [{'time': time, 'open': 4000, 'high': 4001, 'low': 3999,
+             'close': 4000.5} for time in (left, right)]
+    schedule = {'time_zone': 'America/New_York', 'intervals': [
+        {'start_second': 64860, 'end_second': 147540},
+        {'start_second': 151260, 'end_second': 233940}]}
+    assert _closed_frame(bars, 900, 2, right + 900, schedule) == bars
+
+
+def test_incomplete_broker_schedule_never_licenses_missing_candles():
+    left = int(datetime(2026, 10, 19, 20, 45, tzinfo=timezone.utc).timestamp())
+    right = int(datetime(2026, 10, 19, 22, 0, tzinfo=timezone.utc).timestamp())
+    bars = [{'time': time, 'open': 4000, 'high': 4001, 'low': 3999,
+             'close': 4000.5} for time in (left, right)]
+    symbol = SimpleNamespace(scheduleTimeZone='America/New_York', schedule=[
+        SimpleNamespace(startSecond=64860, endSecond=147540),
+        SimpleNamespace(startSecond=151260, endSecond=233940),
+        SimpleNamespace(startSecond=999999, endSecond=1000000),
+    ])
+    with pytest.raises(ValueError, match='BAR_GAP_OR_DUPLICATE'):
+        _closed_frame(bars, 900, 2, right + 900, decode_symbol_schedule(symbol))

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from decimal import Decimal
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .candidate_bars import _prices
 from .candidate_profile import _indicators, profile_before_entry
@@ -16,7 +17,31 @@ def _unavailable(reason: str) -> dict:
     return {'status': 'insufficient', 'reason': reason}
 
 
-def _closed_frame(raw: list[dict], seconds: int, minimum: int, clock: int) -> list[dict]:
+def _closed_session_gap(start: int, end: int, schedule: dict | None) -> bool:
+    if not schedule or end <= start or end - start > 7 * 86400:
+        return False
+    try:
+        zone = ZoneInfo(schedule['time_zone'])
+        intervals = [(int(item['start_second']), int(item['end_second']))
+                     for item in schedule['intervals']]
+        if not intervals or any(a < 0 or a >= b or b > 7 * 86400 or
+                                a % 60 or b % 60 for a, b in intervals):
+            return False
+    except (KeyError, TypeError, ValueError, ZoneInfoNotFoundError):
+        return False
+    # Session boundaries are minute-aligned; every missing minute must be
+    # outside the broker's actual weekly XAUUSD schedule. No bar is invented.
+    for instant in range(start, end, 60):
+        local = datetime.fromtimestamp(instant, timezone.utc).astimezone(zone)
+        week_second = ((local.weekday() + 1) % 7) * 86400 + (
+            local.hour * 3600 + local.minute * 60 + local.second)
+        if any(a <= week_second < b for a, b in intervals):
+            return False
+    return True
+
+
+def _closed_frame(raw: list[dict], seconds: int, minimum: int, clock: int,
+                  schedule: dict | None = None) -> list[dict]:
     frames = sorted(raw, key=lambda bar: bar['time'])
     if len(frames) < minimum:
         raise ValueError('HISTORY_INSUFFICIENT')
@@ -24,9 +49,11 @@ def _closed_frame(raw: list[dict], seconds: int, minimum: int, clock: int) -> li
     if any(not isinstance(bar['time'], int) or bar['time'] % seconds or
            bar['time'] + seconds > clock for bar in frames):
         raise ValueError('FORMING_OR_UNALIGNED_BAR')
-    if any(right['time'] - left['time'] != seconds
-           for left, right in zip(frames, frames[1:])):
-        raise ValueError('BAR_GAP_OR_DUPLICATE')
+    for left, right in zip(frames, frames[1:]):
+        elapsed = right['time'] - left['time']
+        if elapsed < seconds or elapsed % seconds or (elapsed > seconds and not
+            _closed_session_gap(left['time'] + seconds, right['time'], schedule)):
+            raise ValueError('BAR_GAP_OR_DUPLICATE')
     if clock - (frames[-1]['time'] + seconds) >= seconds:
         raise ValueError('STALE_CLOSED_BAR')
     for bar in frames:
@@ -46,12 +73,13 @@ def profile_from_live_snapshot(snapshot: dict) -> dict:
         if source_time.tzinfo is None:
             raise ValueError('naive time')
         clock = int(source_time.astimezone(timezone.utc).timestamp()) // 300 * 300
+        schedule = (snapshot.get('symbol') or {}).get('trading_schedule')
         frames = {}
         for label, (seconds, minimum) in PERIODS.items():
             raw = (snapshot.get('bars') or {}).get(label)
             if not isinstance(raw, list):
                 raise ValueError(label.upper() + '_MISSING')
-            frames[label] = _closed_frame(raw, seconds, minimum, clock)
+            frames[label] = _closed_frame(raw, seconds, minimum, clock, schedule)
         if frames['5m'][-1]['time'] + 300 != clock:
             raise ValueError('FIVE_MINUTE_LAST_CLOSE_MISSING')
         profile = profile_before_entry(frames['5m'], clock, {'tier': '5m_only'})

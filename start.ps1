@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 Set-Location -LiteralPath $PSScriptRoot
 $goldPython = Join-Path $PSScriptRoot '.venv/Scripts/python.exe'
 if (!(Test-Path -LiteralPath $goldPython)) { throw '請先依 README 安裝 Python 依賴。' }

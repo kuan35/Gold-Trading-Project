@@ -6,7 +6,7 @@
 
 檢索先篩 BUY／SELL、查詢前已成熟與資料週期，再以已收 K 線收盤路徑及指標分軸排序，前 15 組按三段固定走勢型態重排。查詢端目前仍是**合成回放**，因此網站展示的是檢索流程，並非真實當下盤面匹配。券商原始時鐘未獨立核實，人工相關性門檻未校準；排序不等於「足夠相似」或準確率。
 
-本機版用單一持續連線讀取 cTrader DEMO XAUUSD BID／ASK tick、帳戶摘要，以及 5 分、15 分、1 小時的已收 K 線。「對話助手／回放演練／即時看盤」共用頁首報價；即時頁優先顯示券商 K 線，連線不可用時改顯示 TradingView OANDA 參考圖。即時頁的 BUY／SELL 案例查詢使用這批已收 K 線與現有混合檢索器；缺棒或過期就顯示資料不足。即時頁另有獨立的 cTrader DEMO 草稿與人工確認委託區，依券商商品規格換算手數，並顯示接受、成交、拒單或未知的實際回報；逾時不自動重送。回放下單與 DEMO 委託互不混用。GitHub Pages 沒有 cTrader 憑證或帳戶 API，改在各頁頁首顯示 TradingView OANDA 外部參考價；更新頻率依資料供應商，不能當作 cTrader tick 或可成交 BID／ASK。
+本機版用單一持續連線讀取 cTrader DEMO XAUUSD BID／ASK tick、帳戶摘要，以及 5 分、15 分、1 小時的已收 K 線。「對話助手／回放演練／即時看盤」共用頁首報價；即時頁優先顯示券商 K 線，連線不可用時改顯示 TradingView OANDA 參考圖。即時頁的 BUY／SELL 案例查詢使用這批已收 K 線與現有混合檢索器；只允許券商 XAUUSD 交易時段表證實的休市跳棒，開市時缺棒或資料過期仍顯示不足。即時頁另有獨立的 cTrader DEMO 草稿與人工確認委託區，依券商商品規格換算手數，並顯示接受、成交、拒單或未知的實際回報；逾時不自動重送。回放下單與 DEMO 委託互不混用。GitHub Pages 沒有 cTrader 憑證或帳戶 API，改在各頁頁首顯示 TradingView OANDA 外部參考價；更新頻率依資料供應商，不能當作 cTrader tick 或可成交 BID／ASK。
 
 ## 2026-10-18：本機參考盤面檢索
 
@@ -51,7 +51,7 @@ cd ..
 .\.venv\Scripts\python.exe -m uvicorn backend.app:app --host 127.0.0.1 --port 8765
 ```
 
-瀏覽 http://127.0.0.1:8765。無 private 資料時，自動載入標示清楚的合成行情與合成案例；不是原交易員績效。已安裝依賴並完成建置後，也可用 `powershell -File start.ps1` 在背景啟動本機伺服器。
+瀏覽 http://127.0.0.1:8765。無 private 資料時，自動載入標示清楚的合成行情與合成案例；不是原交易員績效。已安裝依賴並完成建置後，也可用 `powershell -NoProfile -ExecutionPolicy Bypass -File .\start.ps1` 在背景啟動本機伺服器（僅此程序套用執行原則）。
 
 開發前端可另開終端執行 `cd frontend`、`npm run dev`，使用 http://127.0.0.1:5173。Vite 將 API 轉送 8765，後端仍需啟動。
 

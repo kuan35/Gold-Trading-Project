@@ -7,6 +7,7 @@ server responses are intentionally excluded from logs and error messages.
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -64,7 +65,7 @@ def decode_spot_quote(bid: int, ask: int, source_timestamp_ms: int,
     return result
 
 
-def check_demo(config: dict[str, str], timeout_seconds: int = 18,
+def check_demo(config: dict[str, str], timeout_seconds: int = 40,
                *, spot: bool = False) -> dict[str, object]:
     # Delay import so configuration validation and tests do not initialize
     # Twisted's reactor or open a socket.
@@ -84,7 +85,8 @@ def check_demo(config: dict[str, str], timeout_seconds: int = 18,
         "application_auth": "UNTESTED", "account_auth": "NOT_REQUESTED",
         "demo_account_count": None, "token_scope": None,
         "symbol_list": "NOT_REQUESTED", "gold_symbols": [], "orders_sent": 0,
-        "quote_status": "NOT_REQUESTED", "quote": None,
+        "quote_status": "NOT_REQUESTED", "quote": None, "error_code": None,
+        "failure_type": None,
     }
     token = config.get("CTRADER_ACCESS_TOKEN", "")
     client = Client(EndPoints.PROTOBUF_DEMO_HOST, EndPoints.PROTOBUF_PORT, TcpProtocol)
@@ -100,13 +102,24 @@ def check_demo(config: dict[str, str], timeout_seconds: int = 18,
         status[stage] = "FAILED"
         finish()
 
+    def request_failed(stage, failure):
+        name = type(getattr(failure, "value", failure)).__name__
+        status["failure_type"] = name if re.fullmatch(r"[A-Za-z0-9_]{1,64}", name) else "UNRECOGNIZED"
+        fail(stage)
+
     def send(request, stage, callback):
-        deferred = client.send(request, responseTimeoutInSeconds=8)
-        deferred.addCallbacks(callback, lambda _failure: fail(stage))
+        deferred = client.send(request, responseTimeoutInSeconds=20)
+        deferred.addCallbacks(callback, lambda failure: request_failed(stage, failure))
+
+    def record_error_code(message):
+        if message.payloadType == ProtoOAErrorRes().payloadType:
+            code = Protobuf.extract(message).errorCode
+            status["error_code"] = code if re.fullmatch(r"[A-Z0-9_]{1,64}", code) else "UNRECOGNIZED"
 
     def symbols_listed(message):
         nonlocal selected_symbol_id
         if message.payloadType != ProtoOASymbolsListRes().payloadType:
+            record_error_code(message)
             fail("symbol_list")
             return
         response = Protobuf.extract(message)
@@ -211,7 +224,10 @@ def check_demo(config: dict[str, str], timeout_seconds: int = 18,
             return
         if message.payloadType == ProtoOAErrorRes().payloadType:
             # Never log raw descriptions; the response might contain account details.
-            stage = "application_auth" if status["application_auth"] != "OK" else "account_auth"
+            record_error_code(message)
+            stage = ("application_auth" if status["application_auth"] != "OK" else
+                     "account_auth" if status["account_auth"] != "OK" else
+                     "symbol_list" if status["symbol_list"] != "OK" else "quote_status")
             fail(stage)
 
     client.setConnectedCallback(connected)
