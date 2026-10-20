@@ -188,7 +188,7 @@ export async function browserAPI(path:string,body?:unknown):Promise<unknown>{
  else if(route.startsWith('/cases/'))result=session.caseDetail(decodeURIComponent(route.slice(7)));
  else if(route==='/replay/reset')result=session.reset();
  else if(route==='/replay/step')result=session.step(Number(input.bars));
- else if(route==='/mode'){if(!['replay','broker_demo'].includes(String(input.mode)))throw Error('不支援的模式');session.mode=input.mode as State['mode'];session.version++;result=session.state();}
+ else if(route==='/mode'){if(input.mode!=='replay')throw Error('公開版沒有券商模擬帳戶；請使用合成回放');session.mode='replay';session.version++;result=session.state();}
  else if(route==='/drafts')result=session.draft(input.side as Side,String(input.lot),input.sl as string|null,input.tp as string|null,input.typical_lot as string|null,(input.order_type||'MARKET') as OrderType,input.limit_price as string|null);
  else if(/^\/drafts\/[^/]+\/confirm$/.test(route)){
   const saved=session.drafts.get(route.split('/')[2]) as (Draft & {rule_snapshot?:PersonalRule[]})|undefined;

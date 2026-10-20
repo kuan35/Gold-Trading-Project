@@ -1,6 +1,12 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {DemoEngine} from '../src/demo';
+import {DemoEngine,browserAPI} from '../src/demo';
+
+test('public browser API cannot enter an unconnected broker mode',async()=>{
+ await browserAPI('/mode',{mode:'replay'});
+ await assert.rejects(browserAPI('/mode',{mode:'broker_demo'}),/公開版.*券商模擬帳戶/);
+ assert.equal((await browserAPI('/state') as {mode:string}).mode,'replay');
+});
 
 test('review, cancel, explicit confirmation and retries preserve order integrity',()=>{
  const e=new DemoEngine();const d=e.draft('BUY','0.10');
