@@ -83,6 +83,15 @@ def test_demo_order_rechecks_account_quote_and_trade_scope(tmp_path):
         create(service)
 
 
+def test_draft_cannot_move_to_another_demo_account_even_when_positions_are_identical(tmp_path):
+    stream=Stream();stream.value['account']['account_key']='demo-A'
+    service=BrokerOrders(stream,tmp_path/'journal.sqlite3');draft=create(service)
+    stream.value['account']['account_key']='demo-B'
+    with pytest.raises(DomainError,match='帳戶'):
+        service.confirm(draft['id'],draft['revision'],'not-sent')
+    assert stream.calls==[]
+
+
 def test_unknown_result_is_durable_and_never_resent_after_restart(tmp_path):
     stream = Stream()
     stream.place_order = lambda command: stream.calls.append(command) or {

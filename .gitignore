@@ -15,3 +15,7 @@ research/artifacts/
 artifacts/
 tmp/
 *.tsbuildinfo
+*.sqlite
+*.sqlite3
+*.db
+*.dpapi

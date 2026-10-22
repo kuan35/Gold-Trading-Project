@@ -1,7 +1,7 @@
 """Descriptive closed-candle indicators, not a trade signal or trader-drawn line."""
 from __future__ import annotations
 
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 D = Decimal
 
@@ -100,6 +100,81 @@ def analyze(bars: list[dict], seconds: int, clock: int) -> dict:
         candles.append(dict(time=start,close=D(group[-1]['close']),
                             high=max(D(b['high']) for b in group),low=min(D(b['low']) for b in group),
                             volume=sum((D(str(b.get('volume',0))) for b in group),D(0))))
+    return _analyze_candles(candles, seconds)
+
+
+def analyze_native(bars: list[dict], seconds: int, clock: int) -> dict:
+    """Analyze native completed bars without reconstructing smaller intervals.
+
+    Times must be unique, ascending UTC bucket starts. Invalid ordering rejects
+    the complete frame rather than silently changing its sequence. Invalid OHLC
+    rows are excluded and counted; unknown volume does not discard valid prices.
+    Gaps are reported, never filled or classified as a known market closure here.
+    Indicators count observed valid bars, as in the existing replay calculation.
+    """
+    if seconds not in (300, 900, 3600):
+        raise ValueError('unsupported native candle interval')
+    quality = dict(status='ok', input_count=len(bars), rejected_price_count=0,
+                   excluded_unclosed_count=0, unknown_volume_count=0,
+                   gap_count=0, missing_interval_count=0, reasons=[])
+    candles = []
+    previous = None
+    for bar in bars:
+        start = bar.get('time') if isinstance(bar, dict) else None
+        if (type(start) is not int or start < 0 or start % seconds or
+                (previous is not None and start <= previous)):
+            quality['status'] = 'invalid'
+            quality['reasons'].append('native_times_must_be_sorted_unique_aligned_integers')
+            result = _analyze_candles([], seconds, include_prices=True)
+            result['data_quality'] = quality
+            return result
+        previous = start
+        if start + seconds > clock:
+            quality['excluded_unclosed_count'] += 1
+            continue
+        try:
+            prices = {key: D(str(bar[key])) for key in ('open', 'high', 'low', 'close')}
+            if (any(not value.is_finite() or value <= 0 for value in prices.values()) or
+                    not (prices['low'] <= min(prices['open'], prices['close']) <=
+                         max(prices['open'], prices['close']) <= prices['high'])):
+                raise ValueError('invalid OHLC')
+        except (KeyError, InvalidOperation, ValueError, TypeError):
+            quality['rejected_price_count'] += 1
+            continue
+        try:
+            volume = D(str(bar.get('volume')))
+            if not volume.is_finite() or volume < 0:
+                raise ValueError('invalid volume')
+        except (InvalidOperation, ValueError, TypeError):
+            volume = None
+            quality['unknown_volume_count'] += 1
+        candles.append(dict(time=start, **prices, volume=volume))
+    for left, right in zip(candles, candles[1:]):
+        missing = (right['time'] - left['time']) // seconds - 1
+        if missing:
+            quality['gap_count'] += 1
+            quality['missing_interval_count'] += missing
+    for field, reason in (
+        ('rejected_price_count', 'invalid_or_missing_ohlc_excluded'),
+        ('excluded_unclosed_count', 'forming_or_future_bars_excluded'),
+        ('unknown_volume_count', 'source_volume_unknown'),
+        ('gap_count', 'native_time_gaps_not_filled_or_classified'),
+    ):
+        if quality[field]:
+            quality['reasons'].append(reason)
+    if quality['rejected_price_count'] or quality['unknown_volume_count'] or quality['gap_count']:
+        quality['status'] = 'partial'
+    elif len(candles) < 60:
+        quality['status'] = 'insufficient'
+    if len(candles) < 60:
+        quality['reasons'].append('fewer_than_60_valid_closed_bars_for_ma60')
+    result = _analyze_candles(candles, seconds, include_prices=True)
+    result['data_quality'] = quality
+    return result
+
+
+def _analyze_candles(candles: list[dict], seconds: int, *, include_prices: bool = False) -> dict:
+    """Shared Decimal formulas for already selected completed candles."""
     closes=[b['close'] for b in candles]
     changes=[b-a for a,b in zip(closes,closes[1:])]
     gains=wilder([max(v,D(0)) for v in changes],14)
@@ -113,8 +188,19 @@ def analyze(bars: list[dict], seconds: int, clock: int) -> dict:
     middle=sum(closes[-20:],D(0))/20 if len(closes)>=20 else None
     sd=(sum(((v-middle)**2 for v in closes[-20:]),D(0))/20).sqrt() if middle is not None else None
     volumes=[b['volume'] for b in candles]
-    prior_volume=sum(volumes[-21:-1],D(0))/20 if len(volumes)>=21 else None
-    ratio=volumes[-1]/prior_volume if prior_volume and prior_volume>0 else None
+    baseline=candles[-21:-1] if len(candles)>=21 else []
+    last_volume=volumes[-1] if volumes else None
+    prior_volume=(sum((b['volume'] for b in baseline),D(0))/20
+                  if len(baseline)==20 and all(b['volume'] is not None for b in baseline) else None)
+    contiguous=len(candles)>=21 and all(b['time']-a['time']==seconds for a,b in zip(candles[-21:],candles[-20:]))
+    volume_status=('INSUFFICIENT_HISTORY' if len(candles)<21 else 'GAPPED_BASELINE' if not contiguous else
+                   'UNKNOWN_VOLUME' if last_volume is None or prior_volume is None else
+                   'ZERO_BASELINE' if prior_volume==0 else 'AVAILABLE')
+    ratio=last_volume/prior_volume if volume_status=='AVAILABLE' else None
+    volume_activity=dict(status=volume_status,last=format(last_volume,'f') if last_volume is not None else None,
+                         mean20=format(prior_volume,'f') if prior_volume is not None else None,
+                         ratio=formatted(ratio,4),baseline_count=len(baseline),
+                         relation=('ABOVE' if last_volume>prior_volume else 'BELOW' if last_volume<prior_volume else 'EQUAL') if ratio is not None else None)
     levels=[]
     recent=candles[-120:]
     for i in range(2,len(recent)-2):
@@ -137,7 +223,8 @@ def analyze(bars: list[dict], seconds: int, clock: int) -> dict:
         else:
             clustered.append(dict(item,pivot_count=1))
     last=closes[-1] if closes else None
-    reading=interpret(dict(close=last,ma20=middle,ma60=sum(closes[-60:],D(0))/60 if len(closes)>=60 else None,
+    ma60=sum(closes[-60:],D(0))/60 if len(closes)>=60 else None
+    reading=interpret(dict(close=last,ma20=middle,ma60=ma60,
                            rsi14=rsi,macd_line=macd[-1] if macd else None,
                            macd_histogram=macd[-1]-signal[-1] if signal else None,atr14=atr,
                            boll_middle=middle,boll_lower=middle-2*sd if middle is not None else None,
@@ -147,7 +234,7 @@ def analyze(bars: list[dict], seconds: int, clock: int) -> dict:
                (v['value']<last if kind=='support' else v['value']>last)]
         return [dict(price=formatted(v['value']),pivot_count=v['pivot_count'],confirmed_at=v['confirmed_at'])
                 for v in sorted(valid,key=lambda v:abs(v['value']-last))[:2]]
-    return dict(interval={300:'5m',900:'15m',3600:'1h'}[seconds],count=len(candles),reading=reading,
+    result = dict(interval={300:'5m',900:'15m',3600:'1h'}[seconds],count=len(candles),reading=reading,
                 last_closed_at=candles[-1]['time']+seconds if candles else None,
                 rsi14=formatted(rsi),macd_line=formatted(macd[-1] if macd else None,4),
                 macd_signal=formatted(signal[-1] if signal else None,4),
@@ -155,7 +242,10 @@ def analyze(bars: list[dict], seconds: int, clock: int) -> dict:
                 atr14=formatted(atr),boll_middle=formatted(middle),
                 boll_upper=formatted(middle+2*sd if middle is not None else None),
                 boll_lower=formatted(middle-2*sd if middle is not None else None),
-                source_volume_ratio=formatted(ratio),
+                source_volume_ratio=formatted(ratio),volume_activity=volume_activity,
                 levels=dict(status='candidate',lookback_count=len(recent),support=nearest('support'),resistance=nearest('resistance'),
                             tolerance=formatted(tolerance),method='已收K棒左右各2根確認轉折；同類價位按ATR14四分之一（至少0.20）合併。僅候選，非交易員畫線或有效支撐壓力認證。'),
                 definitions='RSI/ATR用Wilder14；MACD為EMA12/26/9，EMA以首段SMA起算；布林20根、母體標準差2倍；量比為末根來源量÷前20根平均，非全球成交量。')
+    if include_prices:
+        result.update(close=formatted(last), ma20=formatted(middle), ma60=formatted(ma60))
+    return result

@@ -74,14 +74,14 @@ def test_case_store_uses_hybrid_for_local_history_and_keeps_no_match_explicit():
     store.candidate_profile_status = 'READY'
     store.candidate_profiles = {'A': profile(clock=15000)}
     result = store.retrieve('BUY', 'FIRST', Decimal('0.1'), 18000,
-                            query_candidate=profile())
+                            query_candidate=profile(),retrieval_method='path_indicator_pattern_v1')
     assert result['comparison']['method'] == 'path_indicator_pattern_v1'
     assert result['comparison']['query_pattern_code'] == 'UDU'
     assert result['cases'][0]['pattern_match'] is True
     assert result['cases'][0]['path_rank'] is not None
     assert result['similarity_sufficiency'] == 'UNCALIBRATED'
     missing = store.retrieve('SELL', 'FIRST', Decimal('0.1'), 18000,
-                             query_candidate=profile())
+                             query_candidate=profile(),retrieval_method='path_indicator_pattern_v1')
     assert missing['similarity_sufficiency'] == 'NO_MATCH'
 
 

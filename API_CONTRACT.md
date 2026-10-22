@@ -1,5 +1,73 @@
 # Frontend API contract v1
 
+## 2026-10-23 即時量能（本機）
+
+原生技術盤面各週期新增`volume_activity:{status,last,mean20,ratio,baseline_count,relation}`；數量／平均／倍率皆十進位字串或null，relation為ABOVE／BELOW／EQUAL或null。status為AVAILABLE／INSUFFICIENT_HISTORY／GAPPED_BASELINE／UNKNOWN_VOLUME／ZERO_BASELINE。最後21根已收棒需連續；ratio=末根tick量／此前20根均量，形成棒排除。真實0保持0，均量0不除。
+
+即時助手evidence新增`f5.volume`／`f15.volume`／`f1.volume`，values為各前綴的`_volume_count`、`_volume_mean`、`_volume_ratio`、`_volume_window`、`_volume_state`、`_volume_note_state`。缺值在解讀ledger中以「未提供／無法計算」呈現，數值API仍null。模型只用token與程式關係，後端凍結後代入原值。range事實保留價格／ATR，量問題另選volume。前端量能區標明券商tick量與均量定義。未增加送單權限或檢索特徵；公開Pages未部署此更新。
+
+## 2026-10-22 聊天案例操作明細與未知回報補強（本機）
+
+`GET /api/assistant/snapshots/{snapshot_id}/operations?case_ref=案例甲`：本機client／Host／Origin限制、成功no-store。case_ref限原快照選出的別名（1..64字）；未知別名404、快照過期或不存在409，不回退讀新資料。回傳 `{snapshot_id,case_ref,as_of_utc,clock_status:UNKNOWN,source:trader_history,status:AVAILABLE|UNAVAILABLE,representative,rows,provided_rows,displayed_rows,reported_total,truncated,coverage,limitations}`。
+
+`representative`為該案例代表單筆 `{side,action,lot,entry,exit,profit,currency,...}`。`rows`最多100筆，每筆 `{index,side,lot,entry,exit,profit,currency,result,role,ordering_uncertain}`；金額皆有限十進位字串或null。每列幣別只讀本列，不繼承代表單筆的USD；unknown不補0，不提供群和。coverage為VISIBLE_ONLY（僅來源可見，不保證完整帳戶）、PARTIAL（缺漏／截斷）、COUNT_CONFLICT（記載筆數與序列衝突）。原始帳號／來源檔／case ID不在此輸出。
+
+操作資料於live-chat／DEMO草稿原分析建立時，從選出案例的來源可見序列製成白名單並凍結；存在SnapshotStore的獨立operations欄位，不加入context.facts或外部模型資料。讀取明細不再讀行情／案例／檢索，不改案例排序與時間界線。
+
+`POST /api/broker/drafts`及新進場confirm新增耐久日誌檢查：同帳戶有UNKNOWN／未辨識回報時回409，禁止用另一份草稿／重開頁面／重啟程序繞過；confirm在SQLite寫入交易中再次檢查。相同草稿及相同防重送key仍只查原結果。兩個明確不同帳戶不互相阻擋；舊紀錄無法證明帳戶時保守阻擋不明回報。已接受、部分成交與已辨識終態不是UNKNOWN，不能因此把已接受限價稱為成交。畸形回報（含status的null／陣列／物件）保存為UNKNOWN並供核對，不自動重送。
+
+## 2026-10-22 聊天共用委託與固定圖層（本機）
+
+`POST /api/assistant/interpret`：loopback client／Host／Origin限制及no-store；body `{message:string(1..1500),draft?:{side?:BUY|SELL|null,order_type?:MARKET|LIMIT|null,lot?:string,limit_price?:string,sl?:string,tp?:string},analysis_side?:BUY|SELL|null,input_revision?:int>=0}`；draft各字串最多30字，禁止額外欄位。純程式解析，不讀報價／模型／券商，不建立後端草稿。回傳 `{intent:DISCUSS|PREPARE|EDIT|CLARIFY|UNSUPPORTED,analysis_side,patch,proposal,message,missing_fields,input_revision}`。patch僅明確欄位、SLTP null表清空；proposal需使用者另按套用；前端必須比對input_revision，假設／澄清不可改欄位。沒有方向不能因API舊預設BUY而查案例，首頁以include_cases=false分析。
+
+`POST /api/broker/drafts`增加 `analysis_reply`（與analysis_snapshot_id／asof一致的程式解讀、FROZEN）。仍只讀一次市場快照；不因產生解釋再次查市場／案例，不呼叫外部模型，不改確認權限或期限。
+
+`GET /api/assistant/snapshots/{id}/charts`增加 `analysis:{as_of_utc,frames:{5m,15m,1h:{bars,layers,quality}}}`。bars最多90已收棒數值座標；layers為程式 `{id,kind:line|region|marker,label,price?,time?,start_time?,end_time?,high?,low?}`，價格字串、UTC秒；不是模型圖上建議。quality保留原生缺棒／不足／過期資訊。原query／cases雙週期60／20窗口保持。缺快照409，不用新行情代替。
+
+`case_comparison.cases[]`增加僅本機展示的 `representative:{result:WIN|LOSS|FLAT|UNKNOWN,profit:string|null,currency:string|null,currency_stated:boolean,side,action,lot:string|null}`；是代表單筆，不是群和。`case_comparison.distribution:{total,wins,losses,flat,unknown,basis}`使用完整通過去重池；矛盾或缺值為null。新增原值不進模型facts；既有去識別化模型資料契約不變。
+
+
+## 2026-10-22 即時盤面對話（僅本機）
+
+`GET /api/assistant/status`：沿用 loopback client／Host／Origin 檢查、`Cache-Control:no-store`。回傳 `configured:boolean,enabled:boolean,model:string,source:'ctrader_demo_xauusd',read_only:true`；不回金鑰，不作外部請求。configured只表示後端已設定key，仍需實際請求確認授權／額度。
+
+`POST /api/assistant/live-chat`：同一本機限制、no-store。body `{message:string(1..1500),llm_enabled?:boolean=false,previous_questions?:string[0..4](每項<=600),side?:'BUY'|'SELL'='BUY',include_cases?:boolean=true}`，禁止額外欄位。每次只取得一次券商串流快照；include_cases=true且有效即時報價時，從同份已收棒檢索情境案例。false不執行案例檢索。stale不呼叫外部模型。
+
+回傳 `{message,provider,llm_status,model,source,market_status,as_of_utc,quote_time_utc,sections:[{title,text,fact_ids,source?:'model'|'program'}],evidence:[{id,text,values}],followups:string[],draft:null,snapshot_id,query_as_of_utc,analysis_mode:'live'|'draft_snapshot',case_comparison:null|object}`。provider為`groq_market_analysis`或`local_market_rules`；llm_status包括`ok,partial_grounding,not_requested,market_unavailable,read_only,invalid_grounding`及既有模型錯誤狀態（disabled、timeout、expired_key、authentication_failed、rate_limited等）。部分段落被替換時必須標記partial_grounding，不能稱全部是模型產生。程式降級仍是HTTP200，輸入錯誤422、本機存取拒絕403。
+
+`case_comparison`：`{status,label,reason,method,side,snapshot_id,query_as_of_utc,query_state:{event,tail_direction},counts:{eligible:int|null,passed:int|null,displayed:int},cases:[{ref,case_id,metrics:[{key,label,actual:decimal_string|null,tolerance:decimal_string|null,unit,passed:bool|null}],event,tail_direction,similarities:string[],differences:string[]}],rejections:[{key,label,count}]}`。五個status為PASSED／NO_RULE_MATCH／NO_COMPARABLE_CASES／UNCERTAIN_EVENT／INSUFFICIENT_DATA。cases最多五組，case_id只供本機連結，不送Groq；外部facts只含前兩組別名與程式比較事實，不含逐筆成果／識別欄位。actual為距離或倍率，非機率。未通過次數按列、可重複；counts不可混用。
+
+`POST /api/broker/drafts`加回傳`analysis_snapshot_id,analysis_as_of_utc`，原確認版本／idempotency／30秒期限不變。`POST /api/assistant/draft-chat` body `{draft_id:string(1..64),message:string(1..1500),llm_enabled?:boolean=false,previous_questions?:string[0..4]}`，禁止額外欄位；只讀該草稿原分析，不重新讀行情／檢索。回傳同上但analysis_mode=draft_snapshot、market_status=FROZEN、draft=null。FROZEN指歷史快照，不表示原報價一定有效；原資料不足仍回market_unavailable且說明當時缺資料。沒有確認送單權限。
+
+`GET /api/assistant/snapshots/{snapshot_id}/charts`：回`{snapshot_id,query_as_of_utc,source,query:{'5m':OHLC[],'1h':OHLC[]},cases:[{ref,as_of_utc,clock_status:'UNKNOWN',alignment:'PROJECT_REFERENCE','5m':OHLC[],'1h':OHLC[]}]}`。只含決策前60／20根，價格float僅供繪圖；未知量不補零。原始案例ID不在此圖表回應。快照最多32份、TTL20分鐘，過期／被釋放／服務重啟409，不換新盤面。上述新路由均loopback client／Host／Origin＋no-store。
+
+`GET /api/assistant/acceptance/{filename}`：同一本機限制；只提供固定index.html與D01–D10 PNG十日圖集，其他名稱404。不提供任意private檔案、CSV／JSON／雜湊清單。此為離線凍結回看，非本輪十次即時行情。詳細見`docs/case_assistant_integration_20261022.md`。
+
+`evidence.text`是帶占位符的程式事實，`values`是精確十進位字串或明確缺值文字。Groq只接收選定事實模板、token名稱及程式算好的關係／動能判讀，不接收原始帳戶、憑證或逐筆案例；回覆經已提供事實ID、占位符及部分宣稱檢查後，程式才填回原值。evidence並非所有語意都驗證的保證。原生5m／15m／1h完整指標只用已收棒，報價須五秒內；唯讀解讀容許來源時鐘領先本機最多100毫秒，但不得跨入下一個五分鐘已收棒邊界。券商執行檢查不變。舊棒／無行情明示原因，不用回放代替現在。詳細流程見`docs/live_market_assistant_20261022.md`及本輪case_assistant_integration文件。
+
+## 2026-10-22 形成中繪圖串流與 DEMO 平倉
+
+`GET /api/broker/chart-stream?interval=5m|15m|1h`：loopback Host／Origin、no-store、text/event-stream；最多每250ms一個`data:`完整展示快照，未變更送註解keepalive。沿用bars回應並加`closed_only:false,forming_status:CURRENT|WAITING,price_basis:BID,volume_basis:observed_bid_updates,forming:null|{bar,pending_bars,updated_at_ms,partial,price_basis,volume_basis}`。形成中bar為UTC開始秒OHLC及本機接收量，只供繪圖；pending_bars亦是待原生棒覆蓋的觀測值。原`/broker/bars`與檢索query_snapshot仍closed-only，沒有形成中資料。
+
+`POST /api/broker/positions/{position_id}/close-draft`：建立全量平倉草稿，僅DEMO且須有效帳戶／交易權限／5秒內報價。回應`intent:CLOSE,action:CLOSE,position_id,side`（原部位方向）、`lot`（全部剩餘）、`price`（BUY取Bid／SELL取Ask）、revision／expires_at_utc／explanation。使用既有`/broker/drafts/{id}/confirm|cancel|status`；confirm帶revision與idempotency_key，先持久記錄再送ClosePositionReq。status新增`intent,position_id,status_observed_at_utc`；activity提交行新增intent，畫面須分辨平倉與新進場。未知／接受／部分成交的同帳戶同部位平倉禁止跨草稿重送，FILLED等待更新帳戶快照。詳見`docs/live_candles_and_close_20261022.md`。公開Pages未開私人券商API。
+
+## 2026-10-21 本機 DEMO 帳戶與交易紀錄
+
+`GET /api/broker/activity?limit=50&offset=0`：只讀、loopback Host／Origin 限制、no-store；limit 1–200、offset 0–1000000。回應 `source=ctrader_demo_xauusd,environment=demo,connection_status,account_scope,updated_at_utc`；`submissions={items,total,offset,limit,has_more}` 是 SQLite 提交紀錄；`broker_orders`／`broker_deals` 為 `{status,items,has_more,from_utc?,to_utc?,updated_at_utc?}`，各限最近30天500筆。status CURRENT／LOADING／UNAVAILABLE／STALE；本機提交 status 與券商訂單進度同既有契約。未知不重送；列表不回傳 idempotency key、account_key 或憑證。
+
+行情快照 account 新增 `net_unrealized_pnl,xau_net_unrealized_pnl,pnl_status,pnl_updated_at_utc`；positions 新增 `lot,opened_at_utc,gross_pnl,net_pnl`，保留 entry/sl/tp；財務值皆字串或 null。PnL 狀態 CURRENT／LOADING／INCOMPLETE／UNAVAILABLE／STALE。淨值與損益須同時通過連線、帳戶及損益新鮮度檢查才顯示；逐倉回覆須屬同一帳戶快照世代。各類歷史與回放來源分開，詳見 `docs/broker_account_workspace_20261021.md`。公開 Pages 未接此私人 API。
+
+## 2026-10-21 本機情境相似規則更新（優先於下方歷次契約）
+
+本機私人案例 `GET /api/cases`、回放草稿及對話查詢預設 `context_contract_v1`；`GET /api/broker/cases?side=BUY|SELL&method=context_contract_v1` 及 `POST /api/broker/drafts` 的 `retrieval_method` 同樣預設此法。可明選 `dual_path_structure_v1`／`path_indicator_pattern_v1` 作對照。完整規格見 `docs/context_rules_product_20261021.md`。公開Pages仍維持既有靜態混合法，本輪未發布。
+
+新增 `rule_status`: `PASSED|NO_RULE_MATCH|NO_COMPARABLE_CASES|UNCERTAIN_EVENT|INSUFFICIENT_DATA`。`similarity_sufficiency=RULE_PASSED` 只代表通過固定試驗條件，人工校準仍false；其餘無通過回NO_MATCH，資料不足回INSUFFICIENT_DATA。資料不足保留 `query_status=insufficient` 和 `query_reason`，即使券商行情本身已就緒也不能覆寫。空但資料可用時 `candidate_market_unavailable_reason=null`。
+
+`comparison` 新增 `thresholds={d5:0.25,d1h:0.50,dtail:0.10,vol_ratio:2}`、`query_event_stage/label`、`query_tail_direction`、`eligible_rows`、`passed_rows`、`passed_unique`、`rejections`、`first_rejection`、`rejection_labels`。拒絕可重疊計數，`first_rejection`才是每筆只計第一個原因。`total`為全部通過且去重池，歷史損益分布只取此池，每次最多展示五筆。
+
+案例新增 `retrieval_method`、`event_stage/label`、`query_event_stage/label`、`tail_direction`、`query_tail_direction`、`tail_path_distance_pct`、`context_check={passed,score_max,score_sum,thresholds}`；保留 `path_distance_pct`、`hour_path_distance_pct`、`volatility_ratio`。路徑差是百分點，波動是較大／較小倍率，分數非機率。草稿確認、防重送及交易權限不改。API仍用十進位字串傳財務金額；float僅用無單位差距與排名。
+
+
 ## Optional public Groq explanation proxy (2026-10-13)
 
 This Cloudflare Worker is separate from the local `/api` contract. When configured, Pages may POST `/explain` with `{message,facts,token}` after explicit visitor opt-in and Turnstile verification. It returns `{message,provider:"groq_explanation"}`. `facts` contain the synthetic replay snapshot and aggregate counts from the public real-case retrieval; they exclude per-case rows and credentials. The Worker validates the Turnstile token with Siteverify, checks hostname/action, and keeps `GROQ_API_KEY` / `TURNSTILE_SECRET_KEY` in Worker secrets. The response is display-only: it cannot create or confirm drafts, change similarity results, or execute orders. If absent or unavailable, `/chat` remains the local deterministic browser implementation. See `groq-proxy/README.md`.
@@ -140,3 +208,14 @@ Operation-only mode preserves the original matcher and labels market comparison 
 `parameters_validated` remains false in production; sufficiency always discloses this and cannot upgrade solely because many candidates exist. Source/independence limitations are conditional on actual metadata, not hard-coded permanent claims. No probability is inferred from distances, coverage or historical outcomes. Profit/loss grouping occurs only after matching.
 
 Chat facts include actual comparison scope and use the same snapshots as form drafts. New snapshots use closed candles only; no embeddings, LLM ranking, broker order connection or automatic order execution is introduced. Pages 提供真實歷史案例近鄰，但查詢行情屬合成回放；Groq 僅接收彙總，不傳逐筆案例。`GET /api/broker/quote` 僅在本機 FastAPI 可用，回傳 `{source:'ctrader_demo_xauusd',environment:'demo',status,bid,ask,source_time_utc,age_seconds,order_connection:false}`，由 DEMO XAUUSD 唯讀 spot 訂閱取得單次快照並快取十秒；未設定或失敗時價格為 `null`。此路由不進入回放、檢索或送單流程，Pages 沒有該路由。
+
+
+### Local live dual-path retrieval (2026-10-21)
+
+`GET /api/broker/cases?side=BUY&method=dual_path_structure_v1` defaults to the new method. `path_indicator_pattern_v1` remains an explicit alternative. `POST /api/broker/drafts` accepts the same optional `retrieval_method`, defaulting to the new method; confirmation/idempotency semantics remain unchanged. No new order endpoint is added.
+
+The new method requires 60 closed 5m candles (plus one for ATR metadata) and 20 closed 1h candles. It uses two normalized close-path RMSE axes, same previous-20-bar high/low state first, then minimax percentile rank, rank sum and ID. One result per group and reference window; top five. Mature same-side historical profiles must end before the query context starts. No lot, P/L or indicator distance participates in ranking.
+
+Results retain the standard case response, add `retrieval_method`, `hour_path_rank`, `hour_path_distance_pct`, structure keys/labels/match, `volatility_ratio` (metadata only), and query/case descriptions. `path_distance_pct` and `hour_path_distance_pct` are percentage-point RMSE, not match probabilities. `comparison.method` preserves the requested method even for insufficient data. Missing private history does not fall back to synthetic ranking. `UNCALIBRATED` means nearest ranked references, not a calibrated similarity threshold. Replay/chat/Pages retain their prior method.
+
+本機live-chat對已收到、同一5分鐘區間且來源僅領先100..250ms的快照，最多等255ms再用真實本機時間執行原100ms／5秒檢查；不重讀報價、不向前設定時間，跨棒／更大偏差直接拒絕。券商草稿／確認不使用此等待。來源領先造成資料不足時回覆明示時鐘原因。

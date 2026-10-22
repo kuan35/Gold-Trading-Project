@@ -8,7 +8,7 @@ def test_order_size_does_not_change_local_candidate_case_order():
     with TestClient(app) as client:
         q=client.get('/api/cases',params={'lot':'.1','typical_lot':'.1'}).json()
         draft=client.post('/api/drafts',json={'side':'BUY','lot':'.1','typical_lot':'.1'}).json()
-        expected='direction_and_market' if engine.cases.source == 'trader_history' else 'relative_lot'
+        expected='context_rules' if engine.cases.source == 'trader_history' else 'relative_lot'
         assert draft['retrieval']['comparison']['basis']==expected
         assert q['comparison']['basis']==expected
         assert q['total']==draft['retrieval']['total']

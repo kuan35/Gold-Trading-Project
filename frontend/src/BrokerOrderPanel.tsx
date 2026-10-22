@@ -1,7 +1,9 @@
 import {useEffect,useRef,useState,type FormEvent} from 'react';
 import {api,key} from './api';
 import type {DemoMarket} from './demoMarket';
-import type {Draft,OrderType,Side} from './types';
+import type {Draft,OrderType,Side,LiveRetrievalMethod} from './types';
+import {PoolEvidence} from './SimilarityEvidence';
+import DraftCaseAssistant from './DraftCaseAssistant';
 
 type BrokerResult={client_order_id:string;status:string;order_id?:string|null;position_id?:string|null;execution_price?:string|null;error_code?:string|null;message?:string};
 
@@ -9,7 +11,7 @@ const resultLabel=(status:string)=>({ACCEPTED:'券商已接受，等待成交或
   PARTIALLY_FILLED:'券商回報部分成交',REJECTED:'券商拒單',UNKNOWN:'回報狀態未知，請至 cTrader 帳戶核對，勿重送',
   CANCELLED:'券商已取消',EXPIRED:'券商委託已過期'}[status]??`券商狀態：${status}`);
 
-export default function BrokerOrderPanel({market,side,onSideChange}:{market:DemoMarket|null;side:Side;onSideChange:(side:Side)=>void}){
+export default function BrokerOrderPanel({market,side,onSideChange,retrievalMethod}:{market:DemoMarket|null;side:Side;onSideChange:(side:Side)=>void;retrievalMethod:LiveRetrievalMethod}){
   const [lot,setLot]=useState('0.10'),[orderType,setOrderType]=useState<OrderType>('MARKET');
   const [limit,setLimit]=useState(''),[sl,setSl]=useState(''),[tp,setTp]=useState('');
   const [draft,setDraft]=useState<Draft|null>(null),[result,setResult]=useState<BrokerResult|null>(null);
@@ -24,7 +26,7 @@ export default function BrokerOrderPanel({market,side,onSideChange}:{market:Demo
     return()=>{active=false;window.clearInterval(timer);};
   },[result?.status,result?.client_order_id,draft?.id]);
   const review=async(event:FormEvent)=>{event.preventDefault();if(busy)return;setBusy(true);setError('');setResult(null);
-    try{const next=await api<Draft>('/broker/drafts',{side,lot,order_type:orderType,
+    try{const next=await api<Draft>('/broker/drafts',{side,lot,order_type:orderType,retrieval_method:retrievalMethod,
       limit_price:orderType==='LIMIT'?limit:null,sl:sl.trim()||null,tp:tp.trim()||null});
       confirmKey.current=key();setDraft(next);
     }catch(e){setError(e instanceof Error?e.message:'無法建立 DEMO 草稿');}finally{setBusy(false);}
@@ -53,10 +55,12 @@ export default function BrokerOrderPanel({market,side,onSideChange}:{market:Demo
       <p><strong>{draft.side} {draft.lot} 手 · {draft.order_type==='LIMIT'?'限價':'市價'}</strong> · 擬進場價 {draft.price}</p>
       <p>停損 {draft.sl??'未設定'} · 停利 {draft.tp??'未設定'} · 帳戶：cTrader DEMO</p>
       <p>總曝險手數 {draft.risk.before_lot} → {draft.risk.after_lot}；本筆停損情境損失 {draft.risk.stop_loss_usd??'未設定'} USD</p>
-      <p>已收盤面案例：完整三週期 {draft.retrieval.total} 群、五分鐘限定 {draft.retrieval.five_minute_only_total??0} 群；排名尚無足夠相似門檻。</p>
+      <p>已收盤面案例：{draft.retrieval.comparison?.method==='context_contract_v1'?'情境規則':draft.retrieval.comparison?.method==='dual_path_structure_v1'?'雙週期對照':'原法三週期'} {draft.retrieval.total} 群；{draft.retrieval.comparison?.reason??'尚未校準相似門檻。'}</p>
+      <PoolEvidence pool={draft.retrieval}/>
+      <DraftCaseAssistant key={draft.id} draftId={draft.id}/>
       <div className="limitations">{draft.risk.warnings.map((warning,index)=><p key={index}>{warning}</p>)}</div>
       {result&&<div role="status"><strong>{resultLabel(result.status)}</strong><p>券商委託 ID：{result.order_id??'尚未回報'}{result.execution_price?` · 成交價 ${result.execution_price}`:''}</p>{result.error_code&&<p>券商錯誤碼：{result.error_code}</p>}</div>}
       {error&&<p className="modal-error" role="alert">{error}</p>}
-    </div><div className="dialog-actions"><button disabled={busy} onClick={()=>void cancel()}>{result?'關閉':'取消草稿'}</button>{!result&&<button className="primary" disabled={busy} onClick={()=>void confirm()}>{busy?'等待券商回報…':'確認送出 DEMO 委託'}</button>}</div></>}</dialog>
+    </div><div className="dialog-actions"><button disabled={busy} onClick={()=>void cancel()}>{result?'關閉':'取消草稿'}</button>{result?<button className="primary" disabled={busy} onClick={()=>{void cancel().then(()=>document.getElementById('broker-account-panel')?.scrollIntoView({block:'start',behavior:'auto'}));}}>查看持倉與紀錄</button>:<button className="primary" disabled={busy} onClick={()=>void confirm()}>{busy?'等待券商回報…':'確認送出 DEMO 委託'}</button>}</div></>}</dialog>
   </section>;
 }

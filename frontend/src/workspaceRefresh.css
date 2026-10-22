@@ -170,3 +170,67 @@ footer {padding:9px 30px}
   .live-layout .live-chart {height:560px;min-height:560px}
   .workspace.live-layout {padding:12px}
 }
+
+/* Navigation stays legible while requests run; shortcuts reveal their destination. */
+.topbar .market-view-tabs button:not(.active):not(:disabled) {color:var(--ink);opacity:.84;font-weight:600}
+#market-workspace,#order-panel,#case-results {scroll-margin-top:16px}
+.live-public-actions {display:grid;gap:8px;margin-top:16px}
+.live-public-actions .full {margin-top:0}
+
+/* Broker data is a full-width, page-scrolling account workspace below the chart. */
+.broker-account-workspace {min-width:0;flex:none;border-top:1px solid var(--line);scroll-margin-top:16px}
+.broker-account-heading {display:flex;justify-content:space-between;align-items:center;gap:16px;padding:18px 22px 10px}
+.broker-account-heading h2 {margin:0;font-size:17px}
+.broker-account-heading p {margin:5px 0 0}
+.broker-account-heading>span {color:var(--muted);font-size:12px}
+.broker-account-totals {display:flex;flex-wrap:wrap;gap:12px 32px;margin:0;padding:12px 22px}
+.broker-account-totals>div {min-width:150px;flex:1}
+.broker-account-totals dt {color:var(--muted);font-size:11px}
+.broker-account-totals dd {margin:6px 0 0;font-size:16px;font-weight:600;font-variant-numeric:tabular-nums}
+.broker-pnl-note,.broker-read-error {padding:0 22px 12px;margin:0}
+.broker-read-error {color:var(--negative)}
+.broker-account-tabs {padding:0 22px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);gap:18px;flex-wrap:wrap}
+.broker-account-tabs button {min-height:42px;font-size:12px}
+.broker-account-workspace .table-scroll {overflow-x:auto;max-height:none}
+.broker-account-workspace td {font-variant-numeric:tabular-nums}
+.broker-empty {padding:18px 22px;margin:0;color:var(--muted);font-size:12px;white-space:normal}
+.broker-history-content>h3 {font-size:14px;margin:22px 22px 8px}
+.broker-history-content>p {padding:0 22px;max-width:95ch}
+.broker-history-pages {padding:12px 22px;display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:10px}
+.broker-history-pages span {margin-right:auto;color:var(--muted);font-size:12px}
+.broker-history-pages button {min-height:36px}
+.replay-position-line {display:flex;flex-wrap:wrap;gap:4px 12px;justify-content:space-between}
+.replay-account-links {display:flex;flex-wrap:wrap;gap:8px}
+.replay-account-links button {min-height:36px}
+@media(max-width:580px) {
+ .broker-account-heading {align-items:flex-start;flex-direction:column;gap:8px;padding:16px}
+ .broker-account-totals {padding:12px 16px;gap:18px 12px}
+ .broker-account-totals>div {min-width:125px}
+ .broker-account-tabs {padding:0 16px;gap:12px}
+ .broker-pnl-note,.broker-read-error {padding-left:16px;padding-right:16px}
+}
+.forming-strip{display:flex;align-items:center;gap:8px 16px;flex-wrap:wrap;padding:8px 20px;border-top:1px solid var(--line);font-size:12px;font-variant-numeric:tabular-nums;flex-shrink:0}
+.forming-strip strong{color:var(--primary);font-size:12px}.forming-strip small{color:var(--muted)}
+.tick-change{animation:tick-feedback 160ms ease-out}
+@keyframes tick-feedback{from{background:var(--raised)}to{background:transparent}}
+@media(prefers-reduced-motion:reduce){.tick-change{animation:none}}
+.assistant-source-panel,.live-assistant{min-width:0;display:flex;flex-direction:column;flex:1}
+.assistant-source-switch{display:flex;gap:4px;flex-wrap:wrap;padding:12px 20px;border-bottom:1px solid var(--line)}
+.assistant-source-switch button{background:transparent;color:var(--muted)}.assistant-source-switch button.active{background:var(--raised);color:var(--primary)}
+.live-assistant-controls{padding:16px 20px;border-bottom:1px solid var(--line);display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;font-size:12px}
+.live-assistant-controls>p{flex-basis:100%;margin:2px 0;max-width:75ch}.live-assistant-controls label{display:flex;align-items:center;gap:6px;color:var(--text)}
+.live-assistant-controls input[type=checkbox]{width:auto;min-height:auto;accent-color:var(--primary)}
+.live-assistant-conversation{padding:18px 20px;min-height:380px;flex:1;overflow:visible}
+.live-assistant-intro{padding:36px 0}.live-assistant-intro h2{font-size:20px}.live-assistant-intro p{color:var(--muted);font-size:13px;line-height:1.7}
+.live-assistant-reply{margin:12px 0 24px;max-width:76ch;font-size:14px;line-height:1.85;overflow-wrap:anywhere}
+.live-reply-meta{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12px;color:var(--muted)}.live-reply-meta strong{color:var(--primary)}
+.live-assistant-reply h3{font-size:15px;margin:18px 0 4px}.live-assistant-reply section p{margin:4px 0 12px;white-space:pre-line}
+.live-followups{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}.live-followups button{text-align:left;font-size:12px;padding:8px 10px}
+.live-assistant-evidence{border-top:1px solid var(--line);padding-top:10px;font-size:12px;color:var(--muted)}.live-assistant-evidence summary{cursor:pointer}
+.live-assistant-status,.live-assistant-working{font-size:12px;color:var(--primary);line-height:1.7}.live-assistant .chat-input{padding:16px 20px}
+.case-comparison{margin:20px 0;border-top:1px solid var(--line);padding-top:16px;font-size:13px;line-height:1.7}
+.case-comparison header{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px}.case-comparison header strong{color:var(--primary)}.case-comparison header span{color:var(--muted)}
+.case-comparison details{border-top:1px solid var(--line);padding:10px 0}.case-comparison summary{cursor:pointer;font-weight:600}.case-comparison table{width:100%;border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums}.case-comparison th,.case-comparison td{padding:8px 5px;border-bottom:1px solid var(--line);text-align:left;white-space:normal;overflow-wrap:anywhere}.case-comparison td{font-family:Consolas,monospace}.case-comparison>button{margin-top:12px}
+.case-chart-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.case-chart-grid>section{min-width:0}.case-chart-grid .chart-canvas{height:230px;min-height:230px}.case-chart-grid h4{margin:12px 0 6px;font-size:13px}.case-chart-comparison label{display:flex;align-items:center;gap:12px}.case-chart-comparison select{width:auto}
+.draft-case-assistant{border-top:1px solid var(--line);padding-top:12px;margin-top:16px}.draft-case-assistant>label{display:flex;gap:8px;font-size:12px;align-items:center}.draft-case-assistant input[type=checkbox]{width:auto;min-height:0}.draft-case-assistant>button{margin-top:12px}.live-assistant-controls select{width:auto;max-width:180px;font-size:12px}
+@media(max-width:720px){.case-chart-grid{grid-template-columns:1fr}.case-comparison th,.case-comparison td{padding:7px 3px}}

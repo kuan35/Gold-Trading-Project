@@ -94,7 +94,23 @@ def build_context(engine: Engine, draft: dict | None = None, side: str | None = 
                 pass
         history: dict = dict(status='not_queried', reason='未提供有效方向及手數，尚未檢索', cases=[])
         if retrieval is not None:
-            if retrieval.get('comparison',{}).get('mode') == 'candidate_market':
+            if retrieval.get('comparison',{}).get('method') == 'context_contract_v1':
+                comparison=retrieval['comparison']
+                rows=retrieval.get('cases') or []
+                history=dict(status='rule_matches' if rows else 'insufficient' if retrieval['rule_status']=='INSUFFICIENT_DATA' else 'no_matches',
+                    method='context_contract_v1',rule_status=retrieval['rule_status'],source_kind='trader_history',
+                    counts=dict(full=retrieval['total'],five_minute_only=0),displayed_case_count=len(rows),
+                    thresholds=comparison['thresholds'],query_market_text=comparison.get('query_market_text'),
+                    eligible_rows=comparison['eligible_rows'],rejections=comparison['rejections'],
+                    rejection_labels=comparison['rejection_labels'],reason=comparison['reason'],
+                    cases=[dict(reference=f'H{index+1}',side=c['side'],tier='full',
+                        path_distance_pct=c['path_distance_pct'],hour_path_distance_pct=c['hour_path_distance_pct'],
+                        tail_path_distance_pct=c['tail_path_distance_pct'],volatility_ratio=c['volatility_ratio'],
+                        event_label=c['event_label'],tail_direction=c['tail_direction'],
+                        market_state_text=c['market_state_text'],clock_status='UNKNOWN') for index,c in enumerate(rows)],
+                    limitations=['只解釋程式規則結果，LLM不判定通過、不改排序、不確認下單',
+                        '容忍尚未人工校準；不傳送原始案例、精確時間、價格、手數或損益'])
+            elif retrieval.get('comparison',{}).get('mode') == 'candidate_market':
                 rows=(retrieval.get('full_cases') or [])+(retrieval.get('five_minute_only_cases') or [])
                 examples=[dict(reference=f'H{index+1}',side=c['side'],tier=c['candidate_tier'],
                                path_relative_rank=c.get('path_rank'),indicator_relative_rank=c['indicator_rank'],
@@ -141,7 +157,8 @@ def build_context(engine: Engine, draft: dict | None = None, side: str | None = 
         return context
 
 
-def explain_context(context: dict, question: str, *, catalog: dict | None = None) -> dict:
+def explain_context(context: dict, question: str, *, catalog: dict | None = None,
+                    system_prompt: str | None = None, response_format: dict | None = None) -> dict:
     model=os.getenv('GOLD_LLM_MODEL','gpt-4.1-mini')
     result=dict(status='disabled',text=None,model=model)
     if not llm_enabled():
@@ -162,11 +179,13 @@ def explain_context(context: dict, question: str, *, catalog: dict | None = None
         if effort and effort not in ('low','medium','high'):
             return dict(result,status='invalid_configuration')
         payload = catalog if catalog is not None else context
-        body={'model':model,'messages':[{'role':'system','content':SELECT_SYSTEM if catalog is not None else SYSTEM},
+        body={'model':model,'messages':[{'role':'system','content':system_prompt or (SELECT_SYSTEM if catalog is not None else SYSTEM)},
               {'role':'user','content':scrub(question)+'\ncontext:\n'+json.dumps(payload,ensure_ascii=False)}],
               token_field:budget}
         if catalog is not None:
             body['response_format']={'type':'json_object'}
+        if response_format is not None:
+            body['response_format']=response_format
         if effort:
             body['reasoning_effort']=effort
         if parsed.hostname=='api.groq.com' and model.startswith('openai/gpt-oss-'):

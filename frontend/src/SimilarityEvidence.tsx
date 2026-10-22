@@ -1,5 +1,6 @@
 import {comparisonValue,poolDescription} from './similarityPresentation';
 import type {Case,Retrieval} from './types';
+import {ContextPoolEvidence,ContextCaseEvidence} from './ContextEvidence';
 
 const indicatorNames:Record<string,string>={
  '5m_ma_gap':'5 分｜價格距 MA20（ATR 倍）','5m_atr_pct':'5 分｜ATR 波動比例',
@@ -12,6 +13,11 @@ const indicatorNames:Record<string,string>={
 
 export function PoolEvidence({pool}:{pool:Retrieval}){
  const text=poolDescription(pool),c=pool.comparison;
+ if(c?.method==='context_contract_v1')return <ContextPoolEvidence pool={pool}/>;
+ if(c?.method==='dual_path_structure_v1')return <section className="similarity-evidence" aria-label="雙週期路徑比較範圍">
+  <strong>歷史案例 · 雙週期完整路徑＋前高低狀態</strong><p>{text.operation}</p><p>{text.market}；{text.reason}</p>
+  <details><summary>如何檢索與行情來源</summary><p>五分60根看進場細節，一小時20根看背景。各窗首根收盤歸零，逐根計算百分比路徑差；前高低狀態相同者優先，再看兩軸中較差的相對排名、排名和。每個操作群及盤面時點只留一筆。</p><p>前高低取末五分棒之前20棒的最高／最低；波動倍率另列，不參與排名。來源是cTrader DEMO已收K線，沒有混入未收棒；歷史盤面時鐘尚未獨立核實，前五並非已通過足夠相似門檻。</p></details>
+ </section>;
  if(c?.mode==='candidate_market')return <section className="similarity-evidence" aria-label="參考盤面比較範圍">
   <strong>歷史案例 · 參考盤面比對</strong>
   <div className="similarity-axes"><div><span className="fine">篩選條件</span><p>{text.operation}</p></div>
@@ -30,6 +36,15 @@ export function PoolEvidence({pool}:{pool:Retrieval}){
 
 export function CaseEvidence({item}:{item:Case}){
  const op=item.operation_comparison,market=item.market_comparison;
+ if(item.retrieval_method==='context_contract_v1')return <ContextCaseEvidence item={item}/>;
+ if(item.retrieval_method==='dual_path_structure_v1')return <section className="similarity-evidence" aria-label="雙週期案例差異">
+  <strong>參考盤面 · 五分60根＋一小時20根</strong>
+  <p>前高低狀態：{item.structure_label??'資料不足'}；{item.structure_match?'與查詢相同':'與查詢不同，屬補充參考'}。</p>
+  <div className="similarity-axes"><div><span className="fine">五分鐘路徑</span><p>差距 {item.path_distance_pct?.toFixed(3)??'—'} 百分點；池內排名 {item.path_rank==null?'—':`${(item.path_rank*100).toFixed(1)}%`}。</p></div>
+  <div><span className="fine">一小時路徑</span><p>差距 {item.hour_path_distance_pct?.toFixed(3)??'—'} 百分點；池內排名 {item.hour_path_rank==null?'—':`${(item.hour_path_rank*100).toFixed(1)}%`}。</p></div></div>
+  <p>ATR波動倍率差 {item.volatility_ratio?.toFixed(2)??'—'} 倍（1為相同；另列不排名）。</p>
+  <p className="fine">先看兩軸中較差的相對排名；以上數字是差距與先後，不是準確率或獲利機率。</p>
+ </section>;
  if(item.candidate_tier)return <section className="similarity-evidence" aria-label="案例雙軸比對">
   <strong>參考盤面 · {item.candidate_tier==='full'?'完整三週期':'五分鐘限定'}</strong>
   <div className="similarity-axes"><div><span className="fine">K 線收盤路徑</span><p>同層相對排名 {item.path_rank==null?'資料不足':`${(item.path_rank*100).toFixed(1)}%`}；路徑差 {item.path_distance_pct==null?'資料不足':`${item.path_distance_pct.toFixed(3)} 個百分點`}。</p></div>

@@ -9,6 +9,16 @@ export function comparisonValue(value:string|null|undefined):string{
 
 export function poolDescription(pool:Retrieval):{operation:string;market:string;reason:string}{
  const c=pool.comparison,strict=c?.mode==='market_and_operation';
+ if(c?.method==='context_contract_v1')return {
+  operation:'只篩買進／賣出、成熟時間與不重疊完整雙週期；手數、首筆或加倉、事後盈虧不排名。',
+  market:pool.rule_status==='INSUFFICIENT_DATA'?'盤面資料不足':pool.rule_status==='PASSED'?`符合情境條件 ${pool.total} 群`:'本次無符合案例',
+  reason:c.reason||'事件、末段、雙週期路徑與波動都通過試驗容忍才保留。',
+ };
+ if(c?.method==='dual_path_structure_v1')return {
+  operation:'只篩買進／賣出、成熟時間與完整雙週期；手數、首筆或加倉、盈虧不排名。',
+  market:pool.candidate_market_unavailable_reason?'雙週期盤面暫無法比較':`雙週期完整路徑 ${pool.total} 群`,
+  reason:c.reason||'前高低狀態相同者優先，再比較五分與一小時路徑。',
+ };
  if(c?.mode==='candidate_market')return {
   operation:'只篩買進／賣出方向；手數、首筆或加倉、事後盈虧均不參與排序。',
   market:pool.candidate_market_unavailable_reason?'參考盤面暫無法比較':`參考盤面 · 完整三週期 ${pool.total} 群／五分鐘限定 ${pool.five_minute_only_total??0} 群`,

@@ -2,8 +2,9 @@ import {useEffect,useRef} from 'react';
 import {CandlestickSeries,ColorType,createChart,createSeriesMarkers,HistogramSeries,LineSeries,type UTCTimestamp} from 'lightweight-charts';
 import type {Bar,Marker} from './types';
 import {displayMarker} from './chartMarkers';
-type Props = {bars:Bar[];markers?:Marker[];light:boolean;averages?:boolean;focusIds?:string[];ariaLabel?:string};
-export default function Chart({bars,markers=[],light,averages=true,focusIds=[],ariaLabel='黃金 K 線與操作標記，時間依回放行情來源顯示'}:Props) {
+const EMPTY_MARKERS:Marker[]=[];const EMPTY_IDS:string[]=[];
+type Props = {bars:Array<Omit<Bar,'volume'>&{volume?:number}>;markers?:Marker[];light:boolean;averages?:boolean;showVolume?:boolean;focusIds?:string[];ariaLabel?:string};
+export default function Chart({bars,markers=EMPTY_MARKERS,light,averages=true,showVolume=true,focusIds=EMPTY_IDS,ariaLabel='黃金 K 線與操作標記，時間依回放行情來源顯示'}:Props) {
   const host = useRef<HTMLDivElement>(null);
   useEffect(()=>{
     if(!host.current) return;
@@ -11,10 +12,10 @@ export default function Chart({bars,markers=[],light,averages=true,focusIds=[],a
     const chart=createChart(host.current,{autoSize:true,layout:{background:{type:ColorType.Solid,color:background},textColor:text,fontFamily:'Segoe UI, Microsoft JhengHei, sans-serif',fontSize:11,attributionLogo:true},grid:{vertLines:{color:grid},horzLines:{color:grid}},rightPriceScale:{borderColor:grid},timeScale:{borderColor:grid,timeVisible:true,secondsVisible:false},crosshair:{vertLine:{labelBackgroundColor:'#42767b'},horzLine:{labelBackgroundColor:'#42767b'}}});
     const candles=chart.addSeries(CandlestickSeries,{upColor:'#6ab5a3',downColor:'#d68485',borderUpColor:'#6ab5a3',borderDownColor:'#d68485',wickUpColor:'#6ab5a3',wickDownColor:'#d68485',priceFormat:{type:'price',precision:2,minMove:0.01}});
     candles.setData(bars.map(b=>({...b,time:b.time as UTCTimestamp})));
-    const volume=chart.addSeries(HistogramSeries,{priceFormat:{type:'volume'},priceScaleId:'',priceLineVisible:false,lastValueVisible:false});
+    if(showVolume){const volume=chart.addSeries(HistogramSeries,{priceFormat:{type:'volume'},priceScaleId:'',priceLineVisible:false,lastValueVisible:false});
     volume.priceScale().applyOptions({scaleMargins:{top:0.82,bottom:0}});
     candles.priceScale().applyOptions({scaleMargins:{top:0.08,bottom:0.22}});
-    volume.setData(bars.map(b=>({time:b.time as UTCTimestamp,value:b.volume,color:b.close>=b.open?'#6ab5a340':'#d6848540'})));
+    volume.setData(bars.filter(b=>b.volume!==undefined).map(b=>({time:b.time as UTCTimestamp,value:b.volume!,color:b.close>=b.open?'#6ab5a340':'#d6848540'})));}
     const plotted=markers.map(m=>displayMarker(m,focusIds));
     createSeriesMarkers(candles,plotted,{autoScale:true});
     for(const m of markers.filter(m=>m.price&&focusIds.includes(m.id||''))){
@@ -35,6 +36,6 @@ export default function Chart({bars,markers=[],light,averages=true,focusIds=[],a
     resize.observe(host.current);
     fitBars();
     return ()=>{resize.disconnect();chart.remove();};
-  },[bars,markers,light,averages,focusIds]);
+  },[bars,markers,light,averages,focusIds,showVolume]);
   return <div ref={host} className="chart-canvas" role="img" aria-label={ariaLabel}/>;
 }

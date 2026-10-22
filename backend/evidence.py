@@ -61,7 +61,24 @@ def build_catalog(context: dict) -> dict:
     status = history['status']
     text = history['reason']
     add('history', 'status', text, '案例檢索', dict(status=status, reason=history['reason']), mandatory=True)
-    if status != 'not_queried' and 'full' in history.get('counts',{}):
+    if history.get('method')=='context_contract_v1':
+        add('history','comparison','相同買賣方向、成熟且不重疊的雙週期盤面，逐項檢查完整路徑、最近半小時路徑與方向、波動、事件階段；全部通過才保留。手數與盈虧不排名。',
+            '情境相似規則',dict(method=history['method'],thresholds=history['thresholds']),mandatory=True)
+        add('history','decision',f'檢索結果：{history["reason"]} 可比較 {history["eligible_rows"]} 筆，通過且去重 {history["counts"]["full"]} 群，展示 {history["displayed_case_count"]} 筆。',
+            '程式條件檢查',dict(rule_status=history['rule_status'],counts=history['counts']),mandatory=True)
+        add('history','sufficiency','容忍範圍是固定試驗設定，尚未經新日期人工校準；通過規則不是相似機率或預測勝率。券商原始時鐘尚未獨立核實。',
+            '方法限制',dict(clock_status='UNKNOWN',parameters_validated=False),mandatory=True)
+        if history.get('query_market_text'):
+            add('history','query_market',history['query_market_text'],'當前已收盤面描述',{},mandatory=True)
+        if history['rejections']:
+            text='；'.join(f'{history["rejection_labels"][key]}：{value}筆' for key,value in history['rejections'].items())
+            add('history','rejections',text+'。同一案例可能同時違反多項，計數不可相加當作案例數。','逐項拒絕檢查',history['rejections'],default=True)
+        for case in history['cases']:
+            add('history',case['reference'],
+                f'展示案例 {case["reference"]}：{case["side"]}；{case["event_label"]}；最近半小時{case["tail_direction"]}。'
+                f'五分鐘路徑差 {case["path_distance_pct"]:.4f}、一小時 {case["hour_path_distance_pct"]:.4f}、末段 {case["tail_path_distance_pct"]:.4f}百分點，波動 {case["volatility_ratio"]:.2f}倍；各項通過試驗容忍。',
+                '去識別化通過案例',case,default=True)
+    if status != 'not_queried' and 'full' in history.get('counts',{}) and history.get('method')!='context_contract_v1':
         counts=history['counts']
         add('history','pool',f'本機參考盤面：完整三週期 {counts["full"]} 個；五分鐘限定 {counts["five_minute_only"]} 個。依來源時間模型定位；券商時鐘未獨立核實。',
             '參考盤面檢索',counts,mandatory=True)
@@ -135,6 +152,8 @@ def build_catalog(context: dict) -> dict:
     time_note=('訪談第1頁已確認使用券商伺服器時間、會換夏令時間、圖表與對帳單同時鐘；但適用來源、UTC偏移及切換日期仍待逐一核對。' if history.get('source_kind')=='trader_history' else '')
     market_used=history.get('comparison',{}).get('mode')=='market_and_operation'
     scope=('本次只對有已核實時間及完整已收K棒的案例比較盤面條件；並非逐根K線型態識別，不推斷心理或盈虧原因。' if market_used else time_note+'案例行情對齊尚未核實或資料不足，只比較事前操作條件；不能解讀為 K 線型態相似，也不推斷交易員心理或盈虧原因。')
+    if history.get('method')=='context_contract_v1':
+        scope='本次依來源時間模型的參考行情比較進場前完整收盤路徑、末段、事件階段與波動；各項通過試驗容忍才保留。原始時鐘未獨立核實，容忍尚未人工校準，不推斷交易員心理或盈虧原因。'
     add('limits','history',scope,'案例檢索範圍',dict(market_similarity_verified=market_used,interview_scope='unmapped_sources' if time_note else None),mandatory=True)
     add('limits', 'use', '以上僅供資料比較與本機模擬；模型只整理重點，價格、條件與風險敘述均由程式產生，沒有預測新單勝率或執行訂單。',
         '系統權限', dict(model_can_execute=False, success_probability=False), mandatory=True)

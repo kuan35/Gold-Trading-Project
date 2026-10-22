@@ -39,6 +39,8 @@ class DemoMarketStream:
         self._quote: dict | None = None
         self._account: dict | None = None
         self._bars: dict[str, list[dict]] = {}
+        self._forming: dict[str, dict] = {}
+        self._history: dict[str, dict] = {}
         self._symbol: dict | None = None
         self._orders_enabled = False
         self._order_results: dict[str, dict] = {}
@@ -57,6 +59,8 @@ class DemoMarketStream:
         self._quote = None
         self._account = None
         self._bars = {}
+        self._history = {}
+        self._forming = {}
         self._symbol = None
         self._orders_enabled = False
         self._status = 'CONNECTING'
@@ -98,6 +102,10 @@ class DemoMarketStream:
                             {'quote_status': data.get('freshness'), 'quote': data})
                     elif kind == 'account':
                         self._account = data
+                    elif kind == 'forming' and data.get('interval') in ('5m','15m','1h'):
+                        self._forming[data['interval']]=data['forming']
+                    elif kind in ('broker_orders','broker_deals'):
+                        self._history[kind] = {'items':[],'has_more':False,**self._history.get(kind,{}),**data}
                     elif kind == 'bars' and data.get('interval') in ('5m', '15m', '1h'):
                         self._bars[data['interval']] = data.get('bars', [])
                     elif kind in ('order_result', 'order_event'):
@@ -138,6 +146,12 @@ class DemoMarketStream:
                     account['status'] = 'STALE'
             except (KeyError, TypeError, ValueError):
                 account['status'] = 'STALE'
+            try:
+                pnl_age=(datetime.now(timezone.utc)-datetime.fromisoformat(account['pnl_updated_at_utc'])).total_seconds()
+                if self._status!='CONNECTED' or pnl_age>10 or pnl_age < -5:
+                    account['pnl_status']='STALE'
+            except (KeyError,TypeError,ValueError):
+                account['pnl_status']='UNAVAILABLE'
         return {'source': 'ctrader_demo_xauusd', 'environment': 'demo',
                 'connection_status': self._status, 'token_scope': self._scope,
                 'order_connection': bool(self._orders_enabled and self._symbol and
@@ -189,7 +203,27 @@ class DemoMarketStream:
 
     def order_status(self, ident: str) -> dict | None:
         with self._lock:
-            return deepcopy(self._order_results.get(ident))
+            latest=self._order_results.get(ident)
+            data=self._history.get('broker_orders',{})
+            if data.get('status')=='CURRENT':
+                row=next((r for r in data.get('items',[]) if r.get('client_order_id')==ident),None)
+                if row:
+                    history={key:row.get(key) for key in ('client_order_id','order_id','position_id','status','execution_price','updated_at_utc')}
+                    latest=_advance_order(latest,history)
+            return deepcopy(latest)
+
+    def activity_snapshot(self) -> dict:
+        with self._lock:
+            self._start()
+            value=self._snapshot_locked()
+            history=deepcopy(self._history)
+            for data in history.values():
+                try:
+                    age=(datetime.now(timezone.utc)-datetime.fromisoformat(data['updated_at_utc'])).total_seconds()
+                    if self._status!='CONNECTED' or age>45 or age < -5:data['status']='STALE'
+                except (KeyError,TypeError,ValueError):data['status']='UNAVAILABLE'
+            value['history']=history
+            return value
 
     def bars(self, interval: str) -> dict:
         if interval not in ('5m', '15m', '1h'):
@@ -201,6 +235,19 @@ class DemoMarketStream:
                     'status': ('CURRENT' if bars and self._status == 'CONNECTED'
                                else 'STALE' if bars else self._status), 'interval': interval,
                     'closed_only': True, 'bars': bars}
+
+    def chart_snapshot(self,interval:str,now_ms:int|None=None) -> dict:
+        """Forming bars are exposed only through the drawing stream."""
+        value=self.bars(interval)
+        with self._lock:
+            forming=deepcopy(self._forming.get(interval))
+            now_ms=now_ms if now_ms is not None else int(datetime.now(timezone.utc).timestamp()*1000)
+            age=now_ms-forming.get('updated_at_ms',0) if forming else None
+            span={'5m':300,'15m':900,'1h':3600}[interval]
+            if self._status!='CONNECTED' or age is None or not -1000<=age<=5000 or forming['bar']['time']!=now_ms//(span*1000)*span:
+                forming=None
+            return dict(value,closed_only=False,forming=forming,
+                forming_status='CURRENT' if forming else 'WAITING',price_basis='BID',volume_basis='observed_bid_updates')
 
     def stop(self) -> None:
         with self._lock:

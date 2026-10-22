@@ -6,6 +6,8 @@ from .market_similarity import valid_profile, compare_market, load_sidecar, METH
 from .candidate_sidecar import load_candidate_sidecar
 from .candidate_retrieval import summarize_candidate_tier
 from .hybrid_retrieval import rank_hybrid_candidates, METHOD as HYBRID_METHOD
+from .dual_path_retrieval import DualPathIndex, METHOD as DUAL_METHOD, unavailable as dual_unavailable
+from .context_retrieval import ContextIndex, METHOD as CONTEXT_METHOD, unavailable as context_unavailable
 from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -134,6 +136,10 @@ class CaseStore:
 
     def retrieve(self, side: str, action: str, lot: D, clock: int, **kwargs) -> dict:
         self.clock = clock
+        method=kwargs.get('retrieval_method') or (CONTEXT_METHOD if self.source=='trader_history' else None)
+        unavailable=context_unavailable if method==CONTEXT_METHOD else dual_unavailable if method==DUAL_METHOD else candidate_unavailable
+        if self.source!='trader_history' and method in (CONTEXT_METHOD,DUAL_METHOD,HYBRID_METHOD):
+            return unavailable('PRIVATE_HISTORY_MISSING')
         if self.source == 'trader_history':
             self.ensure_candidate_profiles()
             if positive(lot) is None or (kwargs.get('typical_lot') is not None and positive(kwargs['typical_lot']) is None):
@@ -141,7 +147,15 @@ class CaseStore:
             query = kwargs.get('query_candidate')
             status = getattr(self,'candidate_profile_status','MISSING')
             if status != 'READY' or not query or query.get('status') != 'candidate_only' or query.get('as_of') != clock:
-                return candidate_unavailable(status if status != 'READY' else 'QUERY_UNAVAILABLE')
+                return unavailable(status if status != 'READY' else 'QUERY_UNAVAILABLE')
+            if method == CONTEXT_METHOD:
+                if not hasattr(self,'context_index'):
+                    self.context_index=ContextIndex(self.items,self.candidate_profiles)
+                return self.context_index.retrieve(query,side)
+            if method == DUAL_METHOD:
+                if not hasattr(self,'dual_path_index'):
+                    self.dual_path_index=DualPathIndex(self.items,self.candidate_profiles)
+                return self.dual_path_index.retrieve(query,side)
             tiers = rank_hybrid_candidates(self.items,self.candidate_profiles,query,side,clock)
             return candidate_response(tiers,self.items)
         kwargs.pop('query_candidate',None)

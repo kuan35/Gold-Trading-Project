@@ -35,8 +35,8 @@ def _store(status='READY'):
 def test_candidate_retrieval_ignores_action_and_lot_and_has_separate_tiers():
     store = _store()
     query = _profile(clock=100)
-    a = store.retrieve('BUY', 'FIRST', Decimal('.1'), 100, query_candidate=query)
-    b = store.retrieve('BUY', 'ADD', Decimal('5'), 100, typical_lot=Decimal('8'), query_candidate=query)
+    a = store.retrieve('BUY', 'FIRST', Decimal('.1'), 100, query_candidate=query,retrieval_method='path_indicator_pattern_v1')
+    b = store.retrieve('BUY', 'ADD', Decimal('5'), 100, typical_lot=Decimal('8'), query_candidate=query,retrieval_method='path_indicator_pattern_v1')
     assert [row['id'] for row in a['full_cases']] == [row['id'] for row in b['full_cases']]
     assert [row['id'] for row in a['five_minute_only_cases']] == ['limited']
     assert a['total'] == 1 and a['five_minute_only_total'] == 1

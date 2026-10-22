@@ -12,9 +12,12 @@ from decimal import Decimal
 import json
 import sys
 import time
+from hashlib import sha256
 from threading import Thread
 
 from scripts.check_ctrader_demo import decode_spot_quote, load_local_config
+from scripts.ctrader_account_payloads import money, decode_positions, decode_order, decode_deal, apply_unrealized, close_request_args
+from scripts.live_candles import LiveCandles
 
 
 PERIODS = {'5m': (5, 5, 2), '15m': (7, 15, 5), '1h': (9, 60, 12)}
@@ -28,9 +31,9 @@ def price(value: int, digits: int) -> str:
     return format((Decimal(value) / 100000).quantize(Decimal(1).scaleb(-digits)), 'f')
 
 
-def decode_bar(bar, digits: int, minutes: int, now_ms: int) -> dict | None:
+def decode_bar(bar, digits: int, minutes: int, now_ms: int, *,closed_only:bool=True) -> dict | None:
     opened = int(bar.utcTimestampInMinutes) * 60
-    if not opened or (opened + minutes * 60) * 1000 > now_ms:
+    if not opened or opened*1000>now_ms or closed_only and (opened + minutes * 60) * 1000 > now_ms:
         return None  # A forming candle cannot enter case retrieval or the closed-bar chart.
     low = int(bar.low)
     values = [low + int(bar.deltaOpen), low + int(bar.deltaHigh), low,
@@ -40,12 +43,6 @@ def decode_bar(bar, digits: int, minutes: int, now_ms: int) -> dict | None:
     return {'time': opened, 'open': float(price(values[0], digits)),
             'high': float(price(values[1], digits)), 'low': float(price(values[2], digits)),
             'close': float(price(values[3], digits)), 'volume': int(bar.volume)}
-
-
-def money(value: int, digits: int) -> str:
-    if not 0 <= digits <= 12:
-        raise ValueError('invalid money precision')
-    return format(Decimal(value).scaleb(-digits), 'f')
 
 
 def decode_symbol_schedule(symbol) -> dict:
@@ -68,11 +65,12 @@ def run(config: dict[str, str]) -> None:
         ProtoOAGetPositionUnrealizedPnLReq, ProtoOAGetPositionUnrealizedPnLRes,
         ProtoOAGetTrendbarsReq, ProtoOAGetTrendbarsRes,
         ProtoOAReconcileReq, ProtoOAReconcileRes,
+        ProtoOAOrderListReq, ProtoOAOrderListRes, ProtoOADealListReq, ProtoOADealListRes,
         ProtoOASubscribeLiveTrendbarReq, ProtoOASubscribeSpotsReq, ProtoOASubscribeSpotsRes,
         ProtoOASpotEvent, ProtoOASymbolByIdReq, ProtoOASymbolByIdRes,
         ProtoOASymbolsListReq, ProtoOASymbolsListRes,
         ProtoOATraderReq, ProtoOATraderRes,
-        ProtoOANewOrderReq, ProtoOAExecutionEvent, ProtoOAOrderErrorEvent,
+        ProtoOANewOrderReq, ProtoOAClosePositionReq, ProtoOAExecutionEvent, ProtoOAOrderErrorEvent,
     )
     from twisted.internet import reactor
 
@@ -84,12 +82,17 @@ def run(config: dict[str, str]) -> None:
     selected_demo = False
     symbol_rules: dict = {}
     bars: dict[str, dict[int, dict]] = {period: {} for period in PERIODS}
+    live_candles=LiveCandles()
     spot_parts: dict[str, int] = {}
     account: dict = {'status': 'LOADING', 'balance': None, 'equity': None,
                      'currency': None, 'positions': [], 'pending_orders': []}
     asset_names: dict[int, str] = {}
     order_ids: dict[int, str] = {}
+    request_ids: set[str] = set()
     stopping = False
+    position_ids: set[str] = set()
+    account_generation = 0
+    pending = {"account": False, "pnl": False, "orders": False, "deals": False}
 
     def failed(stage: str) -> None:
         nonlocal stopping
@@ -115,60 +118,126 @@ def run(config: dict[str, str]) -> None:
             failed('heartbeat')
         reactor.callLater(10, heartbeat)
 
+    def optional_send(request, callback, on_error) -> None:
+        def received(message):
+            try: callback(message)
+            except (KeyError, TypeError, ValueError, ArithmeticError): on_error()
+        try:
+            client.send(request, responseTimeoutInSeconds=10).addCallbacks(
+                received, lambda _failure: on_error())
+        except Exception:
+            on_error()
+
     def refresh_account() -> None:
-        if account_id is None:
-            return
+        nonlocal account_generation
+        if account_id is None or pending['account']:return
+        account_generation += 1
+        pending['account']=True
         send(ProtoOATraderReq(ctidTraderAccountId=account_id), 'trader', trader_received)
 
     def trader_received(message) -> None:
         if message.payloadType != ProtoOATraderRes().payloadType:
-            failed('trader')
-            return
-        trader = Protobuf.extract(message).trader
-        precision = int(trader.moneyDigits) if trader.HasField('moneyDigits') else 2
-        account['balance'] = money(trader.balance, precision)
-        account['currency'] = asset_names.get(int(trader.depositAssetId))
-        account['status'] = 'CURRENT'
-        account['updated_at_utc'] = datetime.now(timezone.utc).isoformat()
+            failed('trader');return
+        trader=Protobuf.extract(message).trader
+        precision=int(trader.moneyDigits) if trader.HasField('moneyDigits') else 2
+        account['balance']=money(trader.balance,precision)
+        account['currency']=asset_names.get(int(trader.depositAssetId))
         send(ProtoOAReconcileReq(ctidTraderAccountId=account_id), 'reconcile', reconciled)
 
     def reconciled(message) -> None:
+        nonlocal position_ids
+        pending['account']=False
         if message.payloadType != ProtoOAReconcileRes().payloadType:
-            failed('reconcile')
-            return
-        response = Protobuf.extract(message)
-        account['positions'] = [
-            {'id': str(p.positionId), 'side': 'BUY' if p.tradeData.tradeSide == 1 else 'SELL',
-             'volume_units': money(p.tradeData.volume, 2),
-             'entry': str(p.price) if p.HasField('price') else None,
-             'sl': str(p.stopLoss) if p.HasField('stopLoss') else None,
-             'tp': str(p.takeProfit) if p.HasField('takeProfit') else None}
-            for p in response.position if p.tradeData.symbolId == symbol_id]
-        account['pending_orders'] = [
-            {'id': str(o.orderId), 'side': 'BUY' if o.tradeData.tradeSide == 1 else 'SELL',
-             'volume_units': money(o.tradeData.volume, 2),
-             'limit_price': str(o.limitPrice) if o.HasField('limitPrice') else None}
-            for o in response.order if o.tradeData.symbolId == symbol_id]
-        account['all_positions_count'] = len(response.position)
-        account['all_pending_orders_count'] = len(response.order)
-        if not response.position:
-            account['equity'] = account['balance']
-            emit('account', dict(account))
-        else:
-            send(ProtoOAGetPositionUnrealizedPnLReq(ctidTraderAccountId=account_id),
-                 'unrealized_pnl', pnl_received)
-        reactor.callLater(30, refresh_account)
+            failed('reconcile');return
+        response=Protobuf.extract(message)
+        position_ids={str(p.positionId) for p in response.position}
+        account['positions']=decode_positions(response.position,symbol_id,symbol_rules['lot_size_cents'])
+        account['pending_orders']=[value for o in response.order
+            if (value:=decode_order(o,symbol_id,symbol_rules['lot_size_cents']))]
+        account['all_positions_count']=len(response.position)
+        account['all_pending_orders_count']=len(response.order)
+        account['status']='CURRENT'
+        account['updated_at_utc']=datetime.now(timezone.utc).isoformat()
+        account['account_key']=sha256(f'ctrader-demo:{account_id}'.encode()).hexdigest()[:24]
+        account['pnl_status']='LOADING'
+        account['equity']=account['net_unrealized_pnl']=account['xau_net_unrealized_pnl']=None
+        if not position_ids:
+            account.update(apply_unrealized(account,[],2,set(),datetime.now(timezone.utc).isoformat()))
+        if not position_ids:emit('account',dict(account))
+        refresh_pnl()
 
-    def pnl_received(message) -> None:
+    def pnl_failed() -> None:
+        pending['pnl']=False
+        account['pnl_status']='UNAVAILABLE'
+        emit('account',dict(account))
+
+    def refresh_pnl() -> None:
+        if account_id is None or not position_ids or pending['pnl'] or pending['account']:return
+        pending['pnl']=True
+        generation=account_generation
+        optional_send(ProtoOAGetPositionUnrealizedPnLReq(ctidTraderAccountId=account_id),
+            lambda message:pnl_received(message,generation),pnl_failed)
+
+    def pnl_received(message,generation) -> None:
+        pending['pnl']=False
+        if generation!=account_generation:
+            refresh_pnl();return
         if message.payloadType != ProtoOAGetPositionUnrealizedPnLRes().payloadType:
-            account['equity'] = None
-            emit('account', dict(account))
-            return
-        response = Protobuf.extract(message)
-        precision = int(response.moneyDigits)
-        net = sum(int(p.netUnrealizedPnL) for p in response.positionUnrealizedPnL)
-        account['equity'] = str(Decimal(account['balance']) + Decimal(money(net, precision)))
-        emit('account', dict(account))
+            pnl_failed();return
+        response=Protobuf.extract(message)
+        if int(response.ctidTraderAccountId)!=account_id:
+            pnl_failed();return
+        account.update(apply_unrealized(account,response.positionUnrealizedPnL,
+            int(response.moneyDigits),position_ids,datetime.now(timezone.utc).isoformat()))
+        emit('account',dict(account))
+
+    def history_failed(kind) -> None:
+        pending[kind]=False
+        emit('broker_'+kind,{'status':'UNAVAILABLE','reason':'BROKER_HISTORY_UNAVAILABLE'})
+
+    def history_received(message,kind,from_ms,to_ms) -> None:
+        pending[kind]=False
+        expected=ProtoOAOrderListRes if kind=='orders' else ProtoOADealListRes
+        if message.payloadType!=expected().payloadType:
+            history_failed(kind);return
+        response=Protobuf.extract(message)
+        if int(response.ctidTraderAccountId)!=account_id:
+            history_failed(kind);return
+        decode=decode_order if kind=='orders' else decode_deal
+        rows=[value for item in getattr(response,'order' if kind=='orders' else 'deal')
+              if (value:=decode(item,symbol_id,symbol_rules['lot_size_cents']))]
+        rows.sort(key=lambda v:(v.get('updated_at_utc') or v.get('executed_at_utc') or v.get('created_at_utc') or '',v['id']),reverse=True)
+        limited=bool(response.hasMore) or len(rows)>500
+        emit('broker_'+kind,dict(status='CURRENT',items=rows[:500],has_more=limited,
+            from_utc=datetime.fromtimestamp(from_ms/1000,timezone.utc).isoformat(),
+            to_utc=datetime.fromtimestamp(to_ms/1000,timezone.utc).isoformat(),
+            updated_at_utc=datetime.now(timezone.utc).isoformat()))
+        if kind=='orders':
+            for row in rows:
+                if row['client_order_id']:
+                    order_ids[int(row['order_id'])]=row['client_order_id']
+                    emit('order_event',{k:row.get(k) for k in ('client_order_id','order_id','position_id','status','execution_price','updated_at_utc')})
+
+    def refresh_history() -> None:
+        if account_id is None or symbol_id is None or not symbol_rules:return
+        to_ms=int(time.time()*1000);from_ms=to_ms-30*86400000
+        for kind,request_type in (('orders',ProtoOAOrderListReq),('deals',ProtoOADealListReq)):
+            if pending[kind]:continue
+            pending[kind]=True
+            args=dict(ctidTraderAccountId=account_id,fromTimestamp=from_ms,toTimestamp=to_ms)
+            if kind=='deals':args['maxRows']=500
+            optional_send(request_type(**args),
+                lambda message,k=kind:history_received(message,k,from_ms,to_ms),
+                lambda k=kind:history_failed(k))
+
+    def poll_account() -> None:
+        refresh_account();reactor.callLater(5,poll_account)
+
+    def poll_pnl() -> None:
+        refresh_pnl();reactor.callLater(2,poll_pnl)
+
+    def poll_history() -> None:
+        refresh_history();reactor.callLater(15,poll_history)
 
     def refresh_bars() -> None:
         if account_id is None or symbol_id is None:
@@ -188,11 +257,16 @@ def run(config: dict[str, str]) -> None:
         if message.payloadType != ProtoOAGetTrendbarsRes().payloadType:
             failed(f'bars_{label}')
             return
-        decoded = [decode_bar(item, digits, minutes, int(time.time() * 1000))
-                   for item in Protobuf.extract(message).trendbar]
-        for bar in decoded:
+        for item in Protobuf.extract(message).trendbar:
+            now_ms=int(time.time()*1000)
+            bar=decode_bar(item,digits,minutes,now_ms)
             if bar:
                 bars[label][bar['time']] = bar
+            else:
+                seed=decode_bar(item,digits,minutes,now_ms,closed_only=False)
+                if seed:
+                    live_candles.seed(label,seed)
+                    publish_forming(label)
         bars[label] = dict(sorted(bars[label].items())[-120:])
         emit('bars', {'interval': label, 'bars': list(bars[label].values()),
                       'source': 'ctrader_demo_xauusd', 'closed_only': True})
@@ -201,7 +275,9 @@ def run(config: dict[str, str]) -> None:
         if message.payloadType == ProtoOAAssetListRes().payloadType:
             for asset in Protobuf.extract(message).asset:
                 asset_names[int(asset.assetId)] = asset.name
-        refresh_account()
+        poll_account()
+        poll_pnl()
+        poll_history()
         refresh_bars()
 
     def symbol_received(message) -> None:
@@ -285,12 +361,16 @@ def run(config: dict[str, str]) -> None:
         send(ProtoOAApplicationAuthReq(clientId=config['CTRADER_CLIENT_ID'],
              clientSecret=config['CTRADER_CLIENT_SECRET']), 'application_auth', app_authorized)
 
-    def execution_result(event) -> dict | None:
+    def execution_result(event,request_ident=None) -> dict | None:
         if int(event.ctidTraderAccountId) != account_id or not event.HasField('order'):
             return None
         order = event.order
-        client_order_id = (str(order.clientOrderId) if order.HasField('clientOrderId')
-                           else order_ids.get(int(order.orderId), ''))
+        position_id=str(event.position.positionId) if event.HasField('position') else str(order.positionId) if order.HasField('positionId') else None
+        client_order_id = request_ident or order_ids.get(int(order.orderId))
+        if not client_order_id and order.HasField('closingOrder') and order.closingOrder:
+            return None  # A manual/SL/TP close is not a response to our close request.
+        if not client_order_id:
+            client_order_id=str(order.clientOrderId) if order.HasField('clientOrderId') else ''
         if not client_order_id.startswith('gd-'):
             return None
         order_ids[int(order.orderId)] = client_order_id
@@ -299,7 +379,7 @@ def run(config: dict[str, str]) -> None:
                   7: 'REJECTED', 11: 'PARTIALLY_FILLED'}.get(event_type, 'UNKNOWN')
         return {'client_order_id': client_order_id, 'status': status,
                 'order_id': str(order.orderId),
-                'position_id': str(event.position.positionId) if event.HasField('position') else None,
+                'position_id': position_id,
                 'execution_price': str(order.executionPrice) if order.HasField('executionPrice') else None,
                 'error_code': str(event.errorCode)[:80] if event.HasField('errorCode') else None}
 
@@ -313,30 +393,18 @@ def run(config: dict[str, str]) -> None:
             return
         try:
             volume = int(command['volume_cents'])
-            if volume < symbol_rules['min_volume_cents'] or volume > symbol_rules['max_volume_cents'] or \
-                    (volume - symbol_rules['min_volume_cents']) % symbol_rules['step_volume_cents']:
-                raise ValueError('volume')
-            side = {'BUY': 1, 'SELL': 2}[command['side']]
-            order_type = {'MARKET': 1, 'LIMIT': 2}[command['order_type']]
-            args = dict(ctidTraderAccountId=account_id, symbolId=symbol_id,
-                        orderType=order_type, tradeSide=side, volume=volume,
-                        clientOrderId=ident, label='GoldDesk-DEMO')
-            if order_type == 2:
-                args['limitPrice'] = float(command['limit_price'])
-                if command.get('sl') is not None:
-                    args['stopLoss'] = float(command['sl'])
-                if command.get('tp') is not None:
-                    args['takeProfit'] = float(command['tp'])
+            closing=command.get('intent')=='CLOSE'
+            if closing:
+                args=close_request_args(command,account_id,account['positions'])
+                request=ProtoOAClosePositionReq(**args)
             else:
-                if command.get('relative_sl') is not None:
-                    args['relativeStopLoss'] = int(command['relative_sl'])
-                if command.get('relative_tp') is not None:
-                    args['relativeTakeProfit'] = int(command['relative_tp'])
-            request = ProtoOANewOrderReq(**args)
+                request=build_open_request(command,ident,volume)
+            request_ids.add(ident)
             def order_received(message):
                 if message.payloadType == ProtoOAExecutionEvent().payloadType:
-                    result = execution_result(Protobuf.extract(message))
+                    result = execution_result(Protobuf.extract(message),ident)
                     emit('order_result', result or {'client_order_id': ident, 'status': 'UNKNOWN'})
+                    reactor.callLater(1,refresh_account);reactor.callLater(1,refresh_history)
                 elif message.payloadType == ProtoOAOrderErrorEvent().payloadType:
                     event = Protobuf.extract(message)
                     emit('order_result', {'client_order_id': ident, 'status': 'REJECTED',
@@ -352,6 +420,30 @@ def run(config: dict[str, str]) -> None:
         except Exception:
             emit('order_result', {'client_order_id': ident, 'status': 'UNKNOWN'})
 
+    def build_open_request(command,ident,volume):
+        if command.get('intent','OPEN')!='OPEN':raise ValueError('invalid intent')
+        if volume < symbol_rules['min_volume_cents'] or volume > symbol_rules['max_volume_cents'] or \
+                (volume - symbol_rules['min_volume_cents']) % symbol_rules['step_volume_cents']:
+            raise ValueError('volume')
+        side = {'BUY': 1, 'SELL': 2}[command['side']]
+        order_type = {'MARKET': 1, 'LIMIT': 2}[command['order_type']]
+        args = dict(ctidTraderAccountId=account_id, symbolId=symbol_id,
+                    orderType=order_type, tradeSide=side, volume=volume,
+                    clientOrderId=ident, label='GoldDesk-DEMO')
+        if order_type == 2:
+            args['limitPrice'] = float(command['limit_price'])
+            if command.get('sl') is not None:
+                args['stopLoss'] = float(command['sl'])
+            if command.get('tp') is not None:
+                args['takeProfit'] = float(command['tp'])
+        else:
+            if command.get('relative_sl') is not None:
+                args['relativeStopLoss'] = int(command['relative_sl'])
+            if command.get('relative_tp') is not None:
+                args['relativeTakeProfit'] = int(command['relative_tp'])
+        return ProtoOANewOrderReq(**args)
+
+
     def read_commands() -> None:
         for line in sys.stdin:
             try:
@@ -361,12 +453,19 @@ def run(config: dict[str, str]) -> None:
             except (json.JSONDecodeError, TypeError, ValueError):
                 continue
 
+    def publish_forming(label=None) -> None:
+        for key in ([label] if label else PERIODS):
+            frame=live_candles.frame(key)
+            if frame:emit('forming',{'interval':key,'forming':frame})
+
     def message_received(_client, message) -> None:
         if message.payloadType == ProtoOAExecutionEvent().payloadType:
-            result = execution_result(Protobuf.extract(message))
+            correlation=getattr(message,'clientMsgId','')
+            result = execution_result(Protobuf.extract(message),correlation if correlation in request_ids else None)
             if result:
                 emit('order_event', result)
                 reactor.callLater(1, refresh_account)
+                reactor.callLater(1, refresh_history)
             return
         if message.payloadType != ProtoOASpotEvent().payloadType:
             return
@@ -379,6 +478,9 @@ def run(config: dict[str, str]) -> None:
             spot_parts['ask'] = event.ask
         if event.HasField('timestamp'):
             spot_parts['timestamp'] = event.timestamp
+        if event.HasField('bid') and event.HasField('timestamp'):
+            live_candles.observe(int(event.bid),int(event.timestamp),digits,int(time.time()*1000))
+            publish_forming()
         if 'bid' in spot_parts and 'ask' in spot_parts:
             quote = decode_spot_quote(spot_parts['bid'], spot_parts['ask'],
                                       spot_parts.get('timestamp', 0), int(time.time() * 1000))

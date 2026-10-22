@@ -6,6 +6,21 @@ import {createElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {PoolEvidence,CaseEvidence} from '../src/SimilarityEvidence';
 
+test('dual path evidence shows two candle paths and state without legacy indicator rerank',()=>{
+ const r=new DemoEngine().retrieve('BUY','FIRST','.1');
+ r.comparison={...r.comparison!,mode:'candidate_market',method:'dual_path_structure_v1',basis:'direction_and_dual_path',
+  reason:'相同前高低狀態優先'};
+ const item={...r.cases[0],retrieval_method:'dual_path_structure_v1' as const,candidate_tier:'full' as const,
+  path_rank:.1,hour_path_rank:.2,path_distance_pct:.12,hour_path_distance_pct:.3,
+  structure_label:'前20棒區間內',query_structure_label:'前20棒區間內',structure_match:true,volatility_ratio:1.4};
+ const panel=renderToStaticMarkup(createElement(PoolEvidence,{pool:r}));
+ const detail=renderToStaticMarkup(createElement(CaseEvidence,{item}));
+ assert.match(panel,/雙週期/);assert.match(panel,/一小時/);
+ assert.doesNotMatch(panel,/前 15|技術指標＋固定型態|三段走勢型態相同的案例提前/);
+ assert.match(detail,/0.120/);assert.match(detail,/0.300/);assert.match(detail,/1.40/);
+ assert.doesNotMatch(detail,/技術指標|與本次型態相同/);
+});
+
 test('public demo explicitly reports direction-only synthetic evidence',()=>{
  const r=new DemoEngine().retrieve('BUY','FIRST','.1');
  assert.equal(r.comparison?.mode,'operation_only');
