@@ -67,8 +67,8 @@ export function BrokerAccountView({market,activity,tab,error='',onTab=()=>{},onP
  </section>;
 }
 
-export default function BrokerAccountPanel({market}:{market:DemoMarket|null}){
- const [tab,setTab]=useState<Tab>('positions'),[offset,setOffset]=useState(0);
+export default function BrokerAccountPanel({market,initialTab='positions'}:{market:DemoMarket|null;initialTab?:Tab}){
+ const [tab,setTab]=useState<Tab>(initialTab),[offset,setOffset]=useState(0);
  const {activity,error}=useBrokerActivity(offset);
  return <BrokerAccountView market={market} activity={activity} error={error} tab={tab} onTab={setTab} onPage={setOffset}/>;
 }

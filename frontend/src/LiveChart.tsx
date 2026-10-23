@@ -48,6 +48,6 @@ export default function LiveChart({light,market}:{light:boolean;market:DemoMarke
     {provisional>0&&<p className="fine forming-provisional">最近 {provisional} 根已結束棒仍為本機觀測值（量可能不完整），等待券商原生收棒取代。</p>}
     <div className="live-chart">{brokerChart?<LiveCandleChart bars={displayBars} light={light} interval={interval}/>:barsPending?<div className="chart-loading">正在讀取 cTrader DEMO 行情…</div>:<div className="tradingview-host" ref={host}/>}</div>
     {!brokerChart&&<div className="live-attribution"><a href="https://www.tradingview.com/symbols/XAUUSD/?exchange=OANDA" target="_blank" rel="noopener noreferrer">XAUUSD 圖表</a><span>{import.meta.env.MODE==='pages'?'由 TradingView 提供；與合成回放行情來源不同':'由 TradingView 提供；與 cTrader DEMO 報價來源不同'}</span></div>}
-    <div className="limitations"><p>{import.meta.env.MODE==='pages'?'TradingView 的更新時間依資料供應商；請以圖表上的來源與時間為準。':'實體與影線隨實際 Bid 更新；均線含形成中棒。歷史量為券商 tick 量，形成中量為本機接收數，並非全球成交量。'}</p><p>{import.meta.env.MODE==='pages'?'TradingView 外部圖不進入公開合成回放的案例排名。':'形成中棒只供繪圖，案例檢索仍只用已收 K 線；斷線不補量、不模擬價格。'}</p></div>
+    <details className="live-chart-help"><summary>行情來源與量能說明</summary><div className="limitations"><p>{import.meta.env.MODE==='pages'?'TradingView 的更新時間依資料供應商；請以圖表上的來源與時間為準。':'實體與影線隨實際 Bid 更新；均線含形成中棒。歷史量為券商 tick 量，形成中量為本機接收數，並非全球成交量。'}</p><p>{import.meta.env.MODE==='pages'?'TradingView 外部圖不進入公開合成回放的案例排名。':'形成中棒只供繪圖，案例檢索仍只用已收 K 線；斷線不補量、不模擬價格。'}</p></div></details>
   </section>;
 }

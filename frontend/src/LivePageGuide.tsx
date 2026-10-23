@@ -1,0 +1,13 @@
+import type {ReactNode} from 'react';
+import type {DemoMarket} from './demoMarket';
+import type {Side,LiveRetrievalMethod} from './types';
+type Props={market:DemoMarket|null;publicMode:boolean;side:Side;method:LiveRetrievalMethod;onSide:(side:Side)=>void;onMethod:(method:LiveRetrievalMethod)=>void;onAssistant:()=>void;onAccount:()=>void;onReplay:()=>void;onReplayCases:()=>void;onReplayOrder:()=>void;children:ReactNode};
+export default function LivePageGuide({market,publicMode,side,method,onSide,onMethod,onAssistant,onAccount,onReplay,onReplayCases,onReplayOrder,children}:Props){
+ const a=market?.account,current=market?.connection_status==='CONNECTED'&&a?.status==='CURRENT',pnl=current&&a?.pnl_status==='CURRENT';
+ return <aside id="order-panel" className="order-panel live-guide" aria-label="即時看盤說明"><header className="pd-guide-heading"><span>MARKET CONTEXT</span><h2>盤面與案例</h2><p>{publicMode?'外部參考行情；回放與案例在各自的工作區。':'先觀察盤面，再到交易對話討論與準備委託。'}</p></header>
+  {publicMode?<div className="pd-guide-actions"><button className="primary full" onClick={onReplayCases}>查看回放案例</button><button className="full" onClick={onReplayOrder}>使用模擬下單</button></div>:<><button className="primary full" onClick={onAssistant}>開啟交易對話與委託</button><section className="pd-guide-account"><header><strong>DEMO 帳戶</strong><small>{current?'已同步':'等待連線'}</small></header><dl><div><dt>餘額</dt><dd>{current?a.balance??'—':'—'} {a?.currency??''}</dd></div><div><dt>淨值</dt><dd>{pnl?a.equity??'—':'—'} {a?.currency??''}</dd></div><div><dt>黃金持倉／待成交</dt><dd>{current?`${a.positions.length}／${a.pending_orders.length}`:'—'}</dd></div></dl><button className="text-button" onClick={onAccount}>查看持倉與紀錄</button></section>
+   <div id="live-cases" className="pd-guide-cases"><div className="live-side-switch" role="group" aria-label="案例比較方向"><button type="button" className={side==='BUY'?'active':''} aria-pressed={side==='BUY'} onClick={()=>onSide('BUY')}>做多案例</button><button type="button" className={side==='SELL'?'active':''} aria-pressed={side==='SELL'} onClick={()=>onSide('SELL')}>做空案例</button></div>{children}</div>
+  </>}
+  <details className="pd-guide-help"><summary>來源與檢索設定</summary>{publicMode?<p>TradingView 是外部參考圖，不參與合成回放盤面的案例排序；公開站沒有私人券商帳戶服務。</p>:<><label>案例檢索方法<select value={method} onChange={e=>onMethod(e.target.value as LiveRetrievalMethod)}><option value="context_contract_v1">情境規則：逐項通過才保留</option><option value="dual_path_structure_v1">對照：雙週期最近路徑</option><option value="path_indicator_pattern_v1">原法：路徑＋指標＋型態</option></select></label><p>即時盤面與回放帳戶獨立。案例只使用已收 K 線；委託仍須草稿檢查與人工確認。</p></>}</details><button className="full pd-back-replay" onClick={onReplay}>前往歷史回放</button>
+ </aside>;
+}

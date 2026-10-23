@@ -45,6 +45,7 @@ def build_live_context(snapshot,*,now=None,retrieval=None):
     context=dict(source='ctrader_demo_xauusd',as_of_utc=utc(now),status='UNAVAILABLE',reason='尚未取得有效即時報價',facts=[],frames=[])
     q=snapshot.get('quote') or {}
     try:
+        if not isinstance(q.get('source_time_utc'),str):raise ValueError('missing quote timestamp')
         quote_time=datetime.fromisoformat(q['source_time_utc'].replace('Z','+00:00'))
         if quote_time.tzinfo is None:raise ValueError('missing source timezone')
         age=(datetime.fromtimestamp(now,timezone.utc)-quote_time).total_seconds()

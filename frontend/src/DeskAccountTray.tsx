@@ -1,0 +1,13 @@
+import {useState} from 'react';
+import type {DemoMarket} from './demoMarket';
+import BrokerClosePanel from './BrokerClosePanel';
+import BrokerAccountPanel from './BrokerAccountPanel';
+export default function DeskAccountTray({market}:{market:DemoMarket|null}){
+ const [tab,setTab]=useState<'positions'|'pending'|'history'>('positions');
+ const a=market?.account,fresh=market?.connection_status==='CONNECTED'&&a?.status==='CURRENT',pnl=fresh&&a?.pnl_status==='CURRENT';
+ const quoteFresh=market?.connection_status==='CONNECTED'&&market.quote.status==='CURRENT'&&typeof market.quote.age_seconds==='number'&&market.quote.age_seconds>=0&&market.quote.age_seconds<=5;
+ const positions=fresh?a.positions:[],pending=fresh?a.pending_orders:[],currency=a?.currency??'';
+ return <section className="pd-account-tray" aria-label="DEMO 持倉與紀錄"><header><div role="tablist" aria-label="帳戶紀錄">{(['positions','pending','history'] as const).map(k=><button role="tab" id={'pd-tab-'+k} aria-controls="pd-account-content" aria-selected={tab===k} type="button" key={k} onClick={()=>setTab(k)}>{k==='positions'?`持倉 (${fresh?positions.length:'—'})`:k==='pending'?`待成交 (${fresh?pending.length:'—'})`:'下單紀錄'}</button>)}</div><small>cTrader DEMO {currency}</small></header><div id="pd-account-content" role="tabpanel" aria-labelledby={'pd-tab-'+tab}>
+ {tab==='history'?<BrokerAccountPanel market={market} initialTab="history"/>:!fresh?<p className="pd-empty-account">等待券商帳戶連線，暫無可確認的持倉資訊。</p>:tab==='positions'?positions.length?<div className="pd-table-scroll"><table><thead><tr><th>商品／編號</th><th>方向</th><th>手數</th><th>進場價</th><th>現價</th><th>未實現淨損益 {currency}</th><th>停損</th><th>停利</th><th>操作</th></tr></thead><tbody>{positions.map(p=><tr key={p.id}><td>XAUUSD<small>{p.id}</small></td><td className={p.side==='BUY'?'positive':'negative'}>{p.side==='BUY'?'做多':'做空'}</td><td>{p.lot??'—'}</td><td>{p.entry}</td><td>{quoteFresh?(p.side==='BUY'?market.quote.bid:market.quote.ask):'—'}</td><td className={pnl&&Number(p.net_pnl)>0?'positive':pnl&&Number(p.net_pnl)<0?'negative':''}>{pnl?p.net_pnl??'—':'—'}</td><td>{p.sl??'—'}</td><td>{p.tp??'—'}</td><td><BrokerClosePanel market={market} positionId={p.id}/></td></tr>)}</tbody></table>{!pnl&&<p className="fine">損益更新中。</p>}</div>:<p className="pd-empty-account">目前沒有 XAUUSD DEMO 持倉。</p>:pending.length?<div className="pd-table-scroll"><table><thead><tr><th>訂單編號</th><th>方向</th><th>手數</th><th>限價</th><th>停損</th><th>停利</th></tr></thead><tbody>{pending.map(p=><tr key={p.id}><td>{p.id}</td><td>{p.side==='BUY'?'做多':'做空'}</td><td>{p.lot??'—'}</td><td>{p.limit_price??'—'}</td><td>{p.sl??'—'}</td><td>{p.tp??'—'}</td></tr>)}</tbody></table></div>:<p className="pd-empty-account">目前沒有 XAUUSD DEMO 待成交委託。</p>}
+ </div></section>;
+}

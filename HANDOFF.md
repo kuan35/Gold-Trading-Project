@@ -1,5 +1,17 @@
 # Gold Desk 交接紀錄
 
+## 2026-10-23：最新工作台與前後端分工交接
+
+本次以 c9a3396 為基準，同步最新深灰金色聊天工作台及即時／回放／案例等分頁；31個精確白名單路徑，另更新本交接紀錄。新增 DeskChrome／DeskRouteFrame、帳戶 tray、唯讀文字紀錄、趨勢支持／反向訊號、圖表共用色票與分頁樣式，保留共用草稿、固定快照、確認／版本／防重送與 UNKNOWN。後端僅修正啟動時 quote 時間戳缺值回 UNAVAILABLE，沒有改相似規則或 API。
+
+[TEAM_HANDOFF.md](TEAM_HANDOFF.md) 是共同入口；[前端](docs/team_handoff_20261023/FRONTEND.md)、[後端](docs/team_handoff_20261023/BACKEND.md) 各有模組位置、已完成／待辦、驗收與可貼給 Codex 的任務。兩位 clone 相同 commit，再各開 codex/frontend-deploy、codex/backend-deploy 分支。架站順序與受控資料需求見 [DEPLOYMENT.md](docs/team_handoff_20261023/DEPLOYMENT.md)。
+
+發布包 fresh 驗證：`python -B -X utf8 -m pytest -q backend/tests research/test_context_similarity_ab.py research/test_assistant_case_acceptance.py` 得462 passed、1 skipped；`npm test` 得101 passed；`npm run build` 及 `npm run build:pages` 成功。保留原 chunk 大小與 FastAPI/httpx 提示。前兩輪已完成本機桌面與手機互動驗收，本次重跑公開包測試／建置；沒有真 DEMO 下單、平倉或外部模型呼叫。
+
+既有公開三份data JSON未改；私人案例包、金鑰、帳戶設定、提交日誌、原始資料與QA未加入。掃描命中的兩項key字串已逐一核對為遮蔽功能的固定合成測試值；其餘無憑證模式命中。文件連結與diff空白另檢查，收據留原工作區private目錄。
+
+一般 build＋FastAPI 包含完整新聊天工作台；Pages 仍為靜態展示入口，保留原瀏覽器聊天與合成回放。推送會觸發 verify 及 Pages workflow，是否成功以此 commit 的 Actions 為準；完整受保護雲端後端仍待同學部署，登入／資源隔離／持久資料／單owner串流是下一步。相似檢索獨立盲評未完成，不報準確率。branch main；提交以本條紀錄所在 git commit 為準。
+
 ## 2026-10-23：同步最新產品程式與架站交接
 
 入口：[TEAM_HANDOFF.md](TEAM_HANDOFF.md)，包含可直接貼給前端／後端同學Codex的任務。[架站工作](docs/team_handoff_20261023/DEPLOYMENT.md)仍待實作及驗收，這次推送不是完整雲端後端已部署的聲明。

@@ -1,3 +1,4 @@
+import {chartTheme} from './chartTheme';
 import {useEffect,useRef} from 'react';
 import {CandlestickSeries,ColorType,createChart,HistogramSeries,LineSeries,type UTCTimestamp,type IChartApi,type ISeriesApi} from 'lightweight-charts';
 import type {Bar} from './types';
@@ -12,13 +13,13 @@ export default function LiveCandleChart({bars,light,interval}:{bars:Bar[];light:
  const host=useRef<HTMLDivElement>(null),controller=useRef<Controller|null>(null),previous=useRef<Bar[]>([]),drawn=useRef<Bar|null>(null),raf=useRef<number|undefined>(undefined);
  useEffect(()=>{
   if(!host.current)return;
-  const background=light?'#ffffff':'#191e26',text=light?'#49595d':'#b4bfce',grid=light?'#e9eef0':'#2a303b';
-  const chart=createChart(host.current,{autoSize:true,layout:{background:{type:ColorType.Solid,color:background},textColor:text,fontFamily:'Segoe UI, Microsoft JhengHei, sans-serif',fontSize:11,attributionLogo:true},grid:{vertLines:{color:grid},horzLines:{color:grid}},timeScale:{timeVisible:true,borderColor:grid,rightOffset:5},rightPriceScale:{borderColor:grid},crosshair:{vertLine:{labelBackgroundColor:'#42767b'},horzLine:{labelBackgroundColor:'#42767b'}}});
-  const candles=chart.addSeries(CandlestickSeries,{upColor:'#6ab5a3',downColor:'#d68485',borderUpColor:'#6ab5a3',borderDownColor:'#d68485',wickUpColor:'#6ab5a3',wickDownColor:'#d68485',priceFormat:{type:'price',precision:2,minMove:0.01}});
+  const palette=chartTheme(light),{background,text,grid}=palette;
+  const chart=createChart(host.current,{autoSize:true,layout:{background:{type:ColorType.Solid,color:background},textColor:text,fontFamily:'Segoe UI, Microsoft JhengHei, sans-serif',fontSize:11,attributionLogo:true},grid:{vertLines:{color:grid},horzLines:{color:grid}},timeScale:{timeVisible:true,borderColor:grid,rightOffset:5},rightPriceScale:{borderColor:grid},crosshair:{vertLine:{labelBackgroundColor:palette.crosshair},horzLine:{labelBackgroundColor:palette.crosshair}}});
+  const candles=chart.addSeries(CandlestickSeries,{upColor:palette.up,downColor:palette.down,borderUpColor:palette.up,borderDownColor:palette.down,wickUpColor:palette.up,wickDownColor:palette.down,priceFormat:{type:'price',precision:2,minMove:0.01}});
   candles.priceScale().applyOptions({scaleMargins:{top:.08,bottom:.22}});
   const volume=chart.addSeries(HistogramSeries,{priceFormat:{type:'volume'},priceScaleId:'',priceLineVisible:false,lastValueVisible:false});
   volume.priceScale().applyOptions({scaleMargins:{top:.82,bottom:0}});
-  const lines=['#dab976','#8baaca'].map(color=>chart.addSeries(LineSeries,{color,lineWidth:1,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false}));
+  const lines=[palette.ma20,palette.ma60].map(color=>chart.addSeries(LineSeries,{color,lineWidth:1,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false}));
   controller.current={chart,candles,volume,lines};previous.current=[];drawn.current=null;
   return()=>{if(raf.current!==undefined)cancelAnimationFrame(raf.current);controller.current=null;chart.remove();};
  },[light,interval]);

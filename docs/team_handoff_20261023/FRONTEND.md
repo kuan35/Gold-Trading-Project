@@ -2,9 +2,26 @@
 
 先讀 [共同入口](README.md) 與API契約。目標是將目前React工作台接到同學部署的真後端，保留聊天與委託共用草稿流程。
 
+## 這次接手的最新介面
+
+已包含參考圖的深灰金色三欄聊天工作台，以及即時看盤、回放、案例詳情、提醒與帳戶分頁的統一樣式。沿用 React／TypeScript／Vite／Lightweight Charts，沒有新增 UI 框架。實作與驗收見 [聊天工作台](../product_conversation_desk_20261023.md)、[其他分頁](../secondary_pages_20261023.md)。請延續這一版，先接通服務，避免另寫一套草稿。
+
+以下路徑從公開 repo 根目錄起算（原開發工作區才有外層 `product/`）：
+
+| 入口 | 接手時要保留的行為 |
+|---|---|
+| `frontend/src/DeskRouteFrame.tsx`、`DeskChrome.tsx` | 共用外框、導覽與行情頁首；保持 children 位置，切頁不能重掛載聊天而清空草稿 |
+| `ConversationWorkspace.tsx`、`ConversationReply.tsx` | 固定上下界、可調大小聊天；短答、支持／相反訊號、案例卡；詳細資料收合 |
+| `deskConversations.ts` | 瀏覽器唯讀文字歷史，上限12段／每段20輪；不儲存或還原可執行草稿、提案、確認 key；尚非後端多人會話 |
+| `SharedTicket.tsx`、`ConversationOrderReview.tsx` | 聊天與側欄共用草稿；改數值簡短回饋，方向變動重查，最終仍須人工確認 |
+| `DeskAccountTray.tsx`、`BrokerAccountPanel.tsx` | 真 DEMO 持倉、待成交、紀錄；未連線不當零筆，過期損益不當最新值；可見頁才掛載帳戶區，避免重複 ID |
+| `LivePageGuide.tsx`、`productDesk.css`、`secondaryPages.css`、`chartTheme.ts` | 其他分頁、圖表色票與手機版；舊 CSS 優先度曾造成工具列遮蔽與 K 線高度不足，改版須重驗 |
+
+完整新聊天工作台位於一般 build，使用 FastAPI；`build:pages` 仍為另一個靜態展示入口。Pages 有新配色與其他分頁樣式，不會因此取得本機 cTrader、帳戶、歷史文字儲存或新聊天工作台的全部能力。切勿只看 Pages 就認為程式缺少本機功能。
+
 ## 負責範圍
 
-product/frontend。先盤點App、ConversationWorkspace／Reply／Charts／Resize、SharedTicket、ConversationOrderReview、CaseComparison／Operations、demoMarket、useLiveCandles、BrokerAccountPanel。不要整頁另寫第二份草稿與確認流程。
+`frontend/`。先盤點App、ConversationWorkspace／Reply／Charts／Resize、SharedTicket、ConversationOrderReview、CaseComparison／Operations、demoMarket、useLiveCandles、BrokerAccountPanel。不要整頁另寫第二份草稿與確認流程。
 
 ## 執行順序
 
@@ -21,4 +38,4 @@ product/frontend。先盤點App、ConversationWorkspace／Reply／Charts／Resiz
 
 ## 可直接貼給Codex
 
-「我是前端負責人。請依共同入口與本文件，延續product/frontend接同學後端。先核對API、認證及真後端build模式，修復整合缺口，保留現有共享草稿、固定快照、案例與人工確認流程。未約定的後端需求列契約差異，不另做瀏覽器假成交來補介面。」
+「我是前端負責人。請先讀 AGENTS.md、HANDOFF.md、TEAM_HANDOFF.md、docs/team_handoff_20261023/FRONTEND.md 及 API_CONTRACT.md，延續 frontend/ 接同學後端。先跑 npm test、npm run build 與 npm run build:pages，核對認證及一般 build 的 API／SSE 接線。保留目前深灰金色工作台、跨頁共用草稿、固定快照、唯讀文字紀錄、案例與人工確認。手機版驗聊天捲動與大小調整、圖表高度、表格不撐寬頁面；報價與回覆不得覆蓋尚未提交的欄位。未約定的後端需求列契約差異，不另做假成交補介面。交付 PR、測試紀錄、預覽網址及仍缺的後端設定；真 DEMO 最終確認由帳戶擁有者操作。」

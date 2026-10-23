@@ -1,3 +1,4 @@
+import {chartTheme} from './chartTheme';
 import {useEffect,useRef} from 'react';
 import {createChart,CandlestickSeries,LineSeries,ColorType,createSeriesMarkers,type UTCTimestamp,type Logical} from 'lightweight-charts';
 import {layerCoordinate} from './analysisChartCoordinates';
@@ -7,11 +8,11 @@ export type AnalysisFrame={bars:Omit<Bar,'volume'>[];layers:Layer[];quality:unkn
 export default function AnalysisChart({frame,light,ariaLabel,focus}:{frame:AnalysisFrame;light:boolean;ariaLabel:string;focus?:string}){
  const host=useRef<HTMLDivElement>(null),overlay=useRef<SVGSVGElement>(null);
  useEffect(()=>{if(!host.current||!frame.bars.length)return;
-  const ink=light?'#24394a':'#b7c7d5',line=light?'#c9d5dd':'#243b4c';
-  const chart=createChart(host.current,{autoSize:true,layout:{background:{type:ColorType.Solid,color:light?'#ffffff':'#0d1b2a'},textColor:ink},grid:{vertLines:{color:line},horzLines:{color:line}},timeScale:{timeVisible:true,secondsVisible:false},rightPriceScale:{borderColor:line}});
-  const candles=chart.addSeries(CandlestickSeries,{upColor:'#64d6a4',downColor:'#ed8589',borderVisible:false,wickUpColor:'#64d6a4',wickDownColor:'#ed8589'});
+  const palette=chartTheme(light),ink=palette.text,line=palette.grid;
+  const chart=createChart(host.current,{autoSize:true,layout:{background:{type:ColorType.Solid,color:palette.background},textColor:ink},grid:{vertLines:{color:line},horzLines:{color:line}},timeScale:{timeVisible:true,secondsVisible:false},rightPriceScale:{borderColor:line}});
+  const candles=chart.addSeries(CandlestickSeries,{upColor:palette.up,downColor:palette.down,borderVisible:false,wickUpColor:palette.up,wickDownColor:palette.down});
   candles.setData(frame.bars.map(b=>({...b,time:b.time as UTCTimestamp})));
-  for(const [period,color] of [[20,'#efbd69'],[60,'#8eafcb']] as const){const s=chart.addSeries(LineSeries,{color,lineWidth:1,lastValueVisible:false,priceLineVisible:false});s.setData(frame.bars.flatMap((b,i)=>i<period-1?[]:[{time:b.time as UTCTimestamp,value:frame.bars.slice(i-period+1,i+1).reduce((n,v)=>n+v.close,0)/period}]));}
+  for(const [period,color] of [[20,palette.ma20],[60,palette.ma60]] as const){const s=chart.addSeries(LineSeries,{color,lineWidth:1,lastValueVisible:false,priceLineVisible:false});s.setData(frame.bars.flatMap((b,i)=>i<period-1?[]:[{time:b.time as UTCTimestamp,value:frame.bars.slice(i-period+1,i+1).reduce((n,v)=>n+v.close,0)/period}]));}
   for(const l of frame.layers.filter(l=>l.kind==='line'&&l.price!==undefined)){const price=Number(l.price);if(Number.isFinite(price))candles.createPriceLine({price,color:l.id===focus?(light?'#1b344a':'#f8f9fc'):l.id.startsWith('draft.')?'#b1a4e3':l.id.includes('support')?'#64d6a4':'#efbd69',lineWidth:l.id===focus?2:1,lineStyle:2,axisLabelVisible:true,title:l.label});}
   createSeriesMarkers(candles,frame.layers.filter(l=>l.kind==='marker'&&l.time&&frame.bars.some(b=>b.time===l.time)).map(l=>({time:l.time as UTCTimestamp,position:'aboveBar' as const,color:'#efbd69',shape:'circle' as const,text:l.label})).sort((a,b)=>a.time-b.time));
   const paint=()=>{const svg=overlay.current;if(!svg)return;svg.replaceChildren();for(const l of frame.layers.filter(l=>l.kind==='region')){
