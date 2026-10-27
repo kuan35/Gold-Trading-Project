@@ -7,6 +7,7 @@ from .live_assistant import build_live_context
 from .case_context import build_case_context
 from .analysis_visuals import build_analysis_visuals
 from .case_operations import build_case_operations
+from .case_scenarios import build_scenarios
 
 
 def chart_bars(rows,span,cutoff,count):
@@ -25,13 +26,13 @@ def chart_bars(rows,span,cutoff,count):
     return result
 
 
-def prepare_analysis(snapshot,side,retrieval=None,query=None,*,profiles=None,now=None,operation_sources=None):
+def prepare_analysis(snapshot,side,retrieval=None,query=None,*,profiles=None,now=None,operation_sources=None,draft=None,input_revision=None,forward_store=None):
     context=build_live_context(snapshot,now=now,retrieval=retrieval)
     if retrieval is not None and 'case_comparison' not in context:
         detail=build_case_context(retrieval)
         context['facts'].extend(detail.pop('facts'));context['case_comparison']=detail
     method=(retrieval or {}).get('comparison',{}).get('method','context_contract_v1')
-    sid=snapshot_fingerprint(snapshot,side,method,analysis_time=context['as_of_utc'],include_cases=retrieval is not None,validity=context['status']);query=query or {}
+    sid=snapshot_fingerprint(snapshot,side,method,analysis_time=context['as_of_utc'],include_cases=retrieval is not None,validity=context['status'],draft=draft,input_revision=input_revision);query=query or {}
     context.update(snapshot_id=sid,query_as_of_utc=query.get('as_of'))
     if context.get('case_comparison') is not None:
         context['case_comparison'].update(snapshot_id=sid,query_as_of_utc=query.get('as_of'))
@@ -48,4 +49,7 @@ def prepare_analysis(snapshot,side,retrieval=None,query=None,*,profiles=None,now
         profile=(profiles or {}).get(item['case_id']) or {};bars=profile.get('pre_entry_bars') or {}
         charts['cases'].append(dict(ref=item['ref'],as_of_utc=profile.get('as_of'),clock_status='UNKNOWN',alignment='PROJECT_REFERENCE',
             **{interval:chart_bars(bars.get(interval,[]),span,profile.get('as_of'),n) for interval,span,n in [('5m',300,60),('1h',3600,20)]}))
-    return dict(snapshot_id=sid,context=context,charts=charts,operations=operations)
+    summary,outcomes,facts=build_scenarios(snapshot,context,query,side,draft=draft,input_revision=input_revision,forward_store=forward_store)
+    context['outcome_analysis']=summary
+    context['facts'].extend(facts)
+    return dict(snapshot_id=sid,context=context,charts=charts,operations=operations,outcomes=outcomes)

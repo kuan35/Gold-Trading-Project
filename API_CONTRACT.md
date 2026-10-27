@@ -1,5 +1,30 @@
 # Frontend API contract v1
 
+## 2026-10-27 後續5分鐘與統一圖表（本機更新）
+
+中檔thresholds現為.25/.50/.12/2；末段准入與score正規化分母同步，舊凍結研究不覆寫。`outcome_analysis.cases[].horizons/scenarios`及快照outcomes現在都含`5`,`30`,`60`，5分鐘為首根完整五分棒（1根）。離線側檔method升為`case_forward_outcomes_v2`，舊v1不冒充提供5分鐘，需重建。
+
+charts端點仍只含進場前query／cases；前端另讀同一快照outcomes，以同ref、同期間接歷史後續。後續K線不寫回query或檢索特徵。切換只顯示目前request key的資料；回傳快照／案例／期間不符即拒絕。圖表可顯示歷史未來，但查詢盤面未來保持空白。
+
+
+## 2026-10-27 歷史後續情境與本筆草稿風險（本機）
+
+`POST /api/assistant/live-chat` 可加 `draft:{side?,order_type?,lot,limit_price,sl,tp}` 與 `input_revision:int|null`；欄位沿ConversationDraftInput、extra forbid。`POST /api/broker/drafts` 可加input_revision，建立委託後以同一報價與欄位保留分析。下單確認／版本／防重送權限不變。分析快照fingerprint加草稿六欄與input_revision／合約大小，防止相同行情的不同草稿共用舊風險。
+
+MarketReply新增 `outcome_analysis:{status,draft_risk,input_revision,matched_cases,displayed_cases,basis:'DISPLAYED_CASES_ONLY',cases:[{ref,horizons:{'5':HistoricalSummary,'30':...,'60':...},scenarios:{'5':Scenario,'30':...,'60':...}}]}`。matched_cases仍為完整檢索池去重數，後續僅呈現最多五個展示案例，沒有全池後續分布宣稱。後續本身不參與檢索；中檔末段容忍的後續微調見本檔最上方，公開Pages未同步。
+
+HistoricalSummary含status/reason/minutes/anchor_time/end_time/source/basis/side/change_pct/mae_pct/mfe_pct/clock_status/alignment，無bars。錨點為`ceil(case_as_of/300)*300`首根完整五分棒開盤，不是原成交價；固定1、6或12根連續棒、observed_minutes=5且OHLC合法才可用。change_pct依BUY／SELL方向調整，mae_pct／mfe_pct非負；所有百分比、價格、金額以有限十進位字串傳輸，未知null、不補0。source為HistData BID；PROJECT_REFERENCE／UNKNOWN維持。每個觀察期end_time都須不晚於查詢截止；尚未完整發生回NOT_YET_KNOWN，不回傳該期bars與指標。
+
+`draft_risk`含status（AVAILABLE／INCOMPLETE／INVALID／UNAVAILABLE）、reason、side、lot、order_type、entry_price、quantity_oz、contract_units_per_lot、stop_price、target_price、stop_loss_usd、reward_risk、conditional_on_fill、scope:'THIS_DRAFT_ONLY'、currency:'USD'、assumption。券商合約規格缺失不假設100oz；市價採同快照Ask(BUY)/Bid(SELL)，限價採指定價並明示假設已成交。停損距離名目損失不保證成交損失，未含成本／既有持倉／保證金。
+
+Scenario含status（AVAILABLE／UNAVAILABLE／SIDE_MISMATCH）、reason、end_pnl_usd、mae_loss_usd、mfe_profit_usd、stop_nominal_loss_usd、touch_state/touch_label、first_touch_minutes、gap_at_first_touch、executed_pnl_usd:null、conditional_on_fill、path_basis:'RETURN_PCT_REBASED'、mae_basis:'FULL_PATH_WITHOUT_EXIT'。以完整歷史百分比路徑平移到本筆擬進場價、乘券商盎司單位；最大逆向損失是在未套退出的完整路徑，不是已觸發停損後損益。SL／TP觸價只依OHLC判定STOP_FIRST／TARGET_FIRST／BOTH_SAME_BAR／NEITHER／NO_LEVELS；同棒先後未知、跳空不假定可於SL成交。討論方向與草稿不同不投射；沒有匹配案例仍保留盤面及draft_risk。
+
+`GET /api/assistant/snapshots/{snapshot_id}/outcomes?case_ref=案例甲&minutes=5|30|60`：與其他快照路由相同loopback client／Host／Origin限制、成功no-store。只讀原快照選中ref；未知ref404、minutes其他值422、失效／重啟409，不刷新行情或案例。回 `{snapshot_id,case_ref,query_as_of_utc,history,scenario}`；history額外含anchor_price與已收bars（OHLC轉float僅繪圖）。不得回傳case ID、帳號、檔名或私密路徑。圖表手動展開、5/30/60切換與案例選擇均固定原分析。
+
+私人`case_forward_outcomes.json`由`scripts/build_case_outcomes.py`離線建立；來源沿candidate sidecar的同一CSV，cases／profiles／bars三個SHA綁定，runtime檔案異動重驗。缺檔／失配／不完整保留MISSING／STALE／GAPPED_WINDOW／INCOMPLETE_MINUTES等原因。本輪全10887 profiles建置，非獨立交易數。
+
+LLM新增`history.outcome`與`draft.risk`事實模板、token及定性basis；精確價格／手數／損益保留本機代入。模型不得計算、選例、改草稿／確認委託或把事後觀察當預測。數字或引用不通過驗證時回程式摘要，不重試供應者。多週期程式fallback逐段驗證，模型敘事段數上限不變。
+
 ## 2026-10-23 即時量能（本機）
 
 原生技術盤面各週期新增`volume_activity:{status,last,mean20,ratio,baseline_count,relation}`；數量／平均／倍率皆十進位字串或null，relation為ABOVE／BELOW／EQUAL或null。status為AVAILABLE／INSUFFICIENT_HISTORY／GAPPED_BASELINE／UNKNOWN_VOLUME／ZERO_BASELINE。最後21根已收棒需連續；ratio=末根tick量／此前20根均量，形成棒排除。真實0保持0，均量0不除。
@@ -63,7 +88,7 @@
 
 新增 `rule_status`: `PASSED|NO_RULE_MATCH|NO_COMPARABLE_CASES|UNCERTAIN_EVENT|INSUFFICIENT_DATA`。`similarity_sufficiency=RULE_PASSED` 只代表通過固定試驗條件，人工校準仍false；其餘無通過回NO_MATCH，資料不足回INSUFFICIENT_DATA。資料不足保留 `query_status=insufficient` 和 `query_reason`，即使券商行情本身已就緒也不能覆寫。空但資料可用時 `candidate_market_unavailable_reason=null`。
 
-`comparison` 新增 `thresholds={d5:0.25,d1h:0.50,dtail:0.10,vol_ratio:2}`、`query_event_stage/label`、`query_tail_direction`、`eligible_rows`、`passed_rows`、`passed_unique`、`rejections`、`first_rejection`、`rejection_labels`。拒絕可重疊計數，`first_rejection`才是每筆只計第一個原因。`total`為全部通過且去重池，歷史損益分布只取此池，每次最多展示五筆。
+`comparison` 新增 `thresholds={d5:0.25,d1h:0.50,dtail:0.12,vol_ratio:2}`、`query_event_stage/label`、`query_tail_direction`、`eligible_rows`、`passed_rows`、`passed_unique`、`rejections`、`first_rejection`、`rejection_labels`。拒絕可重疊計數，`first_rejection`才是每筆只計第一個原因。`total`為全部通過且去重池，歷史損益分布只取此池，每次最多展示五筆。
 
 案例新增 `retrieval_method`、`event_stage/label`、`query_event_stage/label`、`tail_direction`、`query_tail_direction`、`tail_path_distance_pct`、`context_check={passed,score_max,score_sum,thresholds}`；保留 `path_distance_pct`、`hour_path_distance_pct`、`volatility_ratio`。路徑差是百分點，波動是較大／較小倍率，分數非機率。草稿確認、防重送及交易權限不改。API仍用十進位字串傳財務金額；float僅用無單位差距與排名。
 

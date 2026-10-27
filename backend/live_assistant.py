@@ -34,6 +34,7 @@ ATR只表示該週期每根真實波幅的平滑平均，沒有歷史基準不�
 使用者問該買賣／保證走勢時，說明現有結構和不確定處，不提供買賣指令、目標獲利、保證、勝率或下單時機。你沒有草稿確認、送單或平倉權限。
 語氣自然，少用制式聲明，不加emoji、不顯示思考過程，不使用Markdown表格或HTML。'''
 LIVE_SYSTEM+='''\n量能使用券商原生已收棒tick量與前期均量，是報價活躍度，不是實際成交手數、買賣資金或全球成交量。量能問題優先引用volume事實；盤面總覽可簡短交代量比。volume_state與volume_note_state均由程式判斷，保留缺量／缺棒／零基準原因，不把較活躍推成主力流入或突破有效。只以token填入數值，不自行計算。\n歷史案例只依history事實解釋：說明通過的是哪些既定條件、差距及容忍，不把排名改成機率，也不以盈虧評價。沒有通過、沒有合格池、事件不明確、缺資料是不同情況。沒有案例時仍提供盤面摘要。analysis_mode為draft_snapshot時，所有資料是草稿建立時的固定快照，不能稱為目前行情，也不能授權送單。'''
+LIVE_SYSTEM+='''\nhistory.outcome是已選案例的事後固定觀察，不是檢索條件或未來預測；不要將它說成交易員實際持倉損益、整個匹配池分布或新單勝率。最大逆向情境損失是未套停損退出的完整路徑，不可說成停損後一定損失。draft.risk只算新增本筆，不含既有倉位；限價情境假設已成交，不能稱會觸價成交。若同根棒碰SL/TP，先後未知；缺資料不補零。只引用已提供token與程式狀態，不自行計算、不建議放寬停損或增加手數。沒有案例時仍說明盤面與可用草稿風險。'''
 
 
 def utc(t):return datetime.fromtimestamp(t,timezone.utc).isoformat()
@@ -125,6 +126,11 @@ def relevant_ids(context,question):
     ids.extend(p+'.quality' for p in selected)
     ids.append('limits')
     ids.extend(i for i in by_id if i.startswith('history.'))
+    ids.extend(i for i in by_id if i.startswith('draft.'))
+    if 'history.outcome' in by_id and re.search(r'後續|逆向|情境|回撤|草稿風險|停損|停利',question):
+        # The long per-axis ledger remains in the local evidence panel. Keep
+        # the narrative focused on the first case's usable scenario instead.
+        ids=[i for i in ids if not i.startswith('history.case')]
     return [i for i in ids if i in by_id]
 
 
@@ -142,7 +148,7 @@ def fallback_sections(context,question):
     ids=relevant_ids(context,question)
     groups={}
     for i in ids:groups.setdefault(i if i.startswith('history.case') else i.split('.')[0],[]).append(i)
-    return [dict(title='目前報價' if key=='quote' else '資料範圍' if key=='limits' else '歷史案例判定' if key=='history' else '歷史案例'+('甲' if key.endswith('1') else '乙') if key.startswith('history.case') else LABELS[{'f5':'5m','f15':'15m','f1':'1h'}[key]],
+    return [dict(title='目前報價' if key=='quote' else '資料範圍' if key=='limits' else '歷史案例判定' if key=='history' else '本筆草稿風險' if key=='draft' else '歷史案例'+('甲' if key.endswith('1') else '乙') if key.startswith('history.case') else LABELS[{'f5':'5m','f15':'15m','f1':'1h'}[key]],
         text='\n'.join(by_id[i]['text'] for i in members),fact_ids=members) for key,members in groups.items()]
 
 
@@ -227,7 +233,7 @@ def respond_context(context,question,*,enabled=False,previous_questions=None,fro
     base=dict(source=context['source'],as_of_utc=context['as_of_utc'],quote_time_utc=context.get('quote_time_utc'),
         market_status='FROZEN' if frozen else context['status'],draft=None,followups=FOLLOWUPS+['有哪些相似案例？差異在哪？'],evidence=context['facts'],model=None,
         provider='local_market_rules',llm_status='not_requested')
-    base.update(snapshot_id=context.get('snapshot_id'),query_as_of_utc=context.get('query_as_of_utc'),case_comparison=context.get('case_comparison'),analysis_mode='draft_snapshot' if frozen else 'live')
+    base.update(snapshot_id=context.get('snapshot_id'),query_as_of_utc=context.get('query_as_of_utc'),case_comparison=context.get('case_comparison'),outcome_analysis=context.get('outcome_analysis'),analysis_mode='draft_snapshot' if frozen else 'live')
     if context['status']!='CURRENT':return dict(base,llm_status='market_unavailable',sections=[],message='草稿建立時未保留通過有效性檢查的券商報價，因此無法解讀當時即時價位；沒有改用新的行情。' if frozen else '暫時無法分析：'+str(context.get('reason') or '尚未取得有效報價')+' 沒有用歷史回放代替即時行情。')
     if re.search(r'(?:買進|賣出|下單|平倉|確認).*(?:\d+\.?\d*\s*手|直接|全部|確認)|直接.*(?:買|賣|平倉)',question):
         return dict(base,llm_status='read_only',sections=[],message='即時盤面助手只解釋數據。下單或平倉請使用DEMO持倉／委託區建立草稿，再由你確認。')
@@ -248,7 +254,10 @@ def respond_context(context,question,*,enabled=False,previous_questions=None,fro
                 if frozen:prefix='以下回看草稿建立時快照，並非現在行情。\n\n'+prefix
                 return dict(base,llm_status='partial_grounding' if repaired else 'ok',provider='groq_market_analysis',sections=sections,message=prefix+'\n\n'.join(s['title']+'\n'+s['text'] for s in sections))
             except (ValueError,KeyError,TypeError):base['llm_status']='invalid_grounding'
-    sections=render_sections(raw,context['facts'])
+    # Program sections are a deterministic ledger, not a model's length-limited
+    # narrative. Validate each section without letting an extra risk group
+    # turn an otherwise valid all-period fallback into an API error.
+    sections=[render_sections([section],context['facts'])[0] for section in raw]
     if frozen:
         for section in sections:
             if section['title']=='目前報價':section['title']='草稿當時報價'

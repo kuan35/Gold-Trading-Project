@@ -59,11 +59,11 @@ B中在共同子集的末段差較低、波動倍率較接近1，但完整5分�
 
 ## 可直接開啟的本機產物
 
-- [10頁六格K線PDF：查詢／A／B中×5分／1h](../private/context_similarity_ab_20261021/十日_AB六格K線對照.pdf)
-- [十日走勢總覽](../private/context_similarity_ab_20261021/十日_AB走勢總覽.png)
-- [覆蓋與消融圖](../private/context_similarity_ab_20261021/Figure_1_覆蓋與條件消融.png)
-- [相同查詢的差距對照](../private/context_similarity_ab_20261021/Figure_2_共同查詢差距.png)
-- [51查詢逐項CSV](../private/context_similarity_ab_20261021/comparison.csv)／[本機完整結果](../private/context_similarity_ab_20261021/report.md)
+- 10頁六格K線PDF：查詢／A／B中×5分／1h（私人附件，未公開）
+- 十日走勢總覽（私人附件，未公開）
+- 覆蓋與消融圖（私人附件，未公開）
+- 相同查詢的差距對照（私人附件，未公開）
+- 51查詢逐項CSV（私人附件，未公開）／本機完整結果（私人附件，未公開）
 
 以上逐案圖與結果只留私人目錄，未推送公開站。評分表目前是空白，沒有新增人工相似標籤。既有查詢資料、人工未校準與原始時鐘UNKNOWN的限制保留；這是可重跑的方法對照，非交易獲利或相似準確率驗證。
 

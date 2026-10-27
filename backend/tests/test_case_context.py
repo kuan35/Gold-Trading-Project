@@ -7,7 +7,7 @@ from backend.case_context import build_case_context
 def retrieval(status='PASSED'):
     return dict(rule_status=status,total=2,query_side='BUY',query_as_of_utc=1800000000,
         comparison=dict(method='context_contract_v1',eligible_rows=8,query_event_label='區間內活動',query_tail_direction='上行',
-            thresholds=dict(d5=.25,d1h=.5,dtail=.1,vol_ratio=2),rejections={'five_path':3},reason='program reason'),
+            thresholds=dict(d5=.25,d1h=.5,dtail=.12,vol_ratio=2),rejections={'five_path':3},reason='program reason'),
         cases=[dict(id='PRIVATE_CASE',group='PRIVATE_GROUP',profit='9999',account='ACCOUNT',side='BUY',
             path_distance_pct=.12,hour_path_distance_pct=.2,tail_path_distance_pct=.04,volatility_ratio=1.3,
             event_label='區間內活動',tail_direction='上行',context_check={'passed':True})] if status=='PASSED' else [])

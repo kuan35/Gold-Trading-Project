@@ -6,11 +6,15 @@ from threading import RLock
 from .engine import DomainError
 
 
-def snapshot_fingerprint(snapshot,side,method='context_contract_v1',*,analysis_time=None,include_cases=None,validity=None):
+def snapshot_fingerprint(snapshot,side,method='context_contract_v1',*,analysis_time=None,include_cases=None,validity=None,draft=None,input_revision=None):
     q=snapshot.get('quote') or {}
     safe=dict(side=side,method=method,analysis_time=analysis_time,include_cases=include_cases,validity=validity,connection=snapshot.get('connection_status'),
         quote={k:q.get(k) for k in ('source_time_utc','bid','ask','status')},bars=snapshot.get('bars'),
         schedule=(snapshot.get('symbol') or {}).get('trading_schedule'))
+    if draft is not None or input_revision is not None:
+        safe['draft']={key:(draft or {}).get(key) for key in ('side','lot','order_type','limit_price','sl','tp')}
+        safe['input_revision']=input_revision
+        safe['contract']=(snapshot.get('symbol') or {}).get('lot_size_cents')
     return hashlib.sha256(json.dumps(safe,sort_keys=True,separators=(',',':'),default=str).encode()).hexdigest()
 
 

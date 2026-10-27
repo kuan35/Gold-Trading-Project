@@ -11,7 +11,8 @@ from .dual_path_retrieval import _path
 
 LIMITS={
     'strict':dict(d5=.15,d1h=.30,dtail=.06,vol_ratio=1.5),
-    'medium':dict(d5=.25,d1h=.50,dtail=.10,vol_ratio=2.),
+    # 2026-10-27: user-selected local tail adjustment; old experiments retain their frozen limits.
+    'medium':dict(d5=.25,d1h=.50,dtail=.12,vol_ratio=2.),
     'loose':dict(d5=.40,d1h=.80,dtail=.16,vol_ratio=3.),
 }
 

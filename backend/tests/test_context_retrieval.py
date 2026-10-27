@@ -34,7 +34,7 @@ def test_private_default_uses_context_rules_and_deduplicates():
     assert r['rule_status']=='PASSED'
     assert r['total']==1 and r['wins']==1
     assert r['cases'][0]['context_check']['passed'] is True
-    assert r['comparison']['thresholds']==dict(d5=.25,d1h=.5,dtail=.1,vol_ratio=2.)
+    assert r['comparison']['thresholds']==dict(d5=.25,d1h=.5,dtail=.12,vol_ratio=2.)
     assert r['comparison']['parameters_validated'] is False
 
 

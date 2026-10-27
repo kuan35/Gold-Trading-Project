@@ -15,6 +15,9 @@ test('arrows sit outside candles and keep action and executed price in label',()
   const sell=displayMarker({...base,position:'aboveBar',shape:'arrowDown',action:'CLOSE'},[]);
   assert.equal(sell.position,'aboveBar');assert.equal(sell.shape,'arrowDown');
   assert(sell.text?.includes('出場'));
+  const boundary=displayMarker({...base,time:600,position:'aboveBar',shape:'circle',text:'歷史後續起點',price:undefined,action:undefined},[]);
+  assert.equal(boundary.shape,'circle');
+  assert.equal(boundary.position,'aboveBar');
 });
 
 test('market details renders generated direction, reasons and each plain-language reading',()=>{

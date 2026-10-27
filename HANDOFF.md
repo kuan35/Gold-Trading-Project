@@ -1,5 +1,12 @@
 # Gold Desk 交接紀錄
 
+## 2026-10-27 — 後端架站交接與本機新版原碼同步（Codex）
+
+- 以原研究工作區 `product/` 精確白名單同步產品原碼：`backend/` 的後續情境／5分鐘側檔／0.12中檔規則、`frontend/src/` 聊天工作台與同案例前後K線、相關測試、`scripts/build_case_outcomes.py`、`API_CONTRACT.md`及直接相關文件。新增 `docs/team_handoff_20261027/BACKEND_DEPLOYMENT.md`，明定先照現有React介面接齊後端、驗收後再加額外介面，並寫明GitHub共編與Render部署分支。公開 `frontend/public/data/` 三檔未擴大或更改。
+- 此提交只交付程式與文件；GitHub Pages仍是合成瀏覽器示範。私人案例、行情與新 `case_forward_outcomes.json` v2、帳戶憑證、金鑰、SQLite與QA不入Git；資料擁有者本機另備受控 `GoldDesk_PRIVATE_CASE_DATA_20261027_v2.zip`，交接前驗證包內SHA。來源時鐘仍UNKNOWN，PROJECT_REFERENCE與人評未完成的界線不變。
+- 在公開checkout執行 `python -B -X utf8 -m pytest -q backend/tests research/test_context_similarity_ab.py research/test_assistant_case_acceptance.py`：509 passed、1 skipped、既有Starlette提示；`frontend/npm test`：110 passed；`npm run build`及`npm run build:pages`成功（既有chunk大小提示）。首次受限環境阻斷本機測試通訊，已停止該程序並在允許本機通訊的環境完整重跑通過。`git diff --cached --check`通過，61個暫存檔經白名單與憑證樣式掃描；根工作區243份原始報表及根PDF／PNG／DOCX／m4a SHA-256零變更。
+- branch `main`／commit N/A（本條記錄寫於提交前）。阻礙：完整雲端後端、使用者授權與持久資料尚由後端同學實作；公開Pages成功不代表DEMO連線。下一步：同學依新交接文件開 `codex/` 分支，交付受保護的常駐服務、PR與實際驗收網址。
+
 ## 2026-10-23：最新工作台與前後端分工交接
 
 本次以 c9a3396 為基準，同步最新深灰金色聊天工作台及即時／回放／案例等分頁；31個精確白名單路徑，另更新本交接紀錄。新增 DeskChrome／DeskRouteFrame、帳戶 tray、唯讀文字紀錄、趨勢支持／反向訊號、圖表共用色票與分頁樣式，保留共用草稿、固定快照、確認／版本／防重送與 UNKNOWN。後端僅修正啟動時 quote 時間戳缺值回 UNAVAILABLE，沒有改相似規則或 API。

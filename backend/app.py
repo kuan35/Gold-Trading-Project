@@ -22,6 +22,7 @@ from .demo_market_stream import stream as demo_market_stream
 from .live_assistant import respond_live,respond_context,build_live_context
 from .case_analysis import prepare_analysis
 from .analysis_snapshots import SnapshotStore
+from .forward_outcomes import HistoricalOutcomeStore
 from .conversation_intent import interpret_message
 import os
 import time as timing
@@ -30,6 +31,7 @@ app=FastAPI(title='Gold Trading Project',version='0.1.0')
 engine=Engine()
 broker_orders=BrokerOrders(demo_market_stream)
 analysis_snapshots=SnapshotStore()
+case_forward_store=HistoricalOutcomeStore(ROOT/'private')
 
 
 class Body(BaseModel):
@@ -61,6 +63,7 @@ class BrokerDraftInput(Body):
     sl:str|None=None
     tp:str|None=None
     retrieval_method:Literal['context_contract_v1','dual_path_structure_v1','path_indicator_pattern_v1']='context_contract_v1'
+    input_revision:int|None=Field(default=None,ge=0)
 
 
 class BrokerConfirmInput(Body):
@@ -95,6 +98,8 @@ class LiveChatInput(Body):
     previous_questions:list[Annotated[str,Field(max_length=600)]]=Field(default_factory=list,max_length=4)
     side:Literal['BUY','SELL']='BUY'
     include_cases:bool=True
+    draft:ConversationDraftInput|None=None
+    input_revision:int|None=Field(default=None,ge=0)
 
 
 class DraftChatInput(Body):
@@ -261,10 +266,10 @@ def broker_demo_draft(request: Request, body: BrokerDraftInput):
     snapshot = demo_market_stream.query_snapshot()
     captured_at=datetime.now(timezone.utc).timestamp()
     retrieval, query = _live_retrieval(snapshot, body.side, body.retrieval_method)
-    bundle=prepare_analysis(snapshot,body.side,retrieval,query,profiles=getattr(engine.cases,'candidate_profiles',{}),now=captured_at,operation_sources=_analysis_operation_sources(retrieval))
     draft=broker_orders.create(snapshot, side=body.side, lot=body.lot,
                                 order_type=body.order_type, limit_price=body.limit_price,
                                 sl=body.sl, tp=body.tp, retrieval=retrieval)
+    bundle=prepare_analysis(snapshot,body.side,retrieval,query,profiles=getattr(engine.cases,'candidate_profiles',{}),now=captured_at,operation_sources=_analysis_operation_sources(retrieval),draft=body.model_dump(),input_revision=body.input_revision,forward_store=case_forward_store)
     saved=analysis_snapshots.put(bundle,draft_id=draft['id'])
     reply=respond_context(saved['context'],'說明草稿建立時的盤面支持與相反依據、案例差異',enabled=False,frozen=True)
     return JSONResponse(content=dict(draft,analysis_snapshot_id=saved['snapshot_id'],analysis_as_of_utc=saved['context']['as_of_utc'],analysis_reply=reply),headers={'Cache-Control':'no-store'})
@@ -378,7 +383,7 @@ def live_chat(request:Request,body:LiveChatInput):
         if build_live_context(snapshot,now=now)['status']=='CURRENT':retrieval,query=_live_retrieval(snapshot,body.side)
         else:retrieval=context_unavailable('BROKER_QUOTE_UNAVAILABLE')
         retrieval=dict(retrieval,query_side=body.side)
-    bundle=prepare_analysis(snapshot,body.side,retrieval,query,profiles=getattr(engine.cases,'candidate_profiles',{}),now=now,operation_sources=_analysis_operation_sources(retrieval))
+    bundle=prepare_analysis(snapshot,body.side,retrieval,query,profiles=getattr(engine.cases,'candidate_profiles',{}),now=now,operation_sources=_analysis_operation_sources(retrieval),draft=body.draft.model_dump() if body.draft else None,input_revision=body.input_revision,forward_store=case_forward_store)
     saved=analysis_snapshots.put(bundle)
     return JSONResponse(content=respond_context(saved['context'],body.message,enabled=body.llm_enabled,previous_questions=body.previous_questions),
         headers={'Cache-Control':'no-store'})
@@ -439,6 +444,20 @@ def analysis_operations(request:Request,snapshot_id:str,case_ref:str=Query(min_l
     if row is None:return JSONResponse(status_code=404,content={'detail':'此快照未保留該案例操作明細；請重新提問，不會改讀新資料。'})
     return JSONResponse(content=dict(row,snapshot_id=snapshot_id,case_ref=case_ref,
         as_of_utc=bundle['context']['as_of_utc'],clock_status='UNKNOWN',source='trader_history'),headers={'Cache-Control':'no-store'})
+
+
+@app.get('/api/assistant/snapshots/{snapshot_id}/outcomes')
+def analysis_outcomes(request:Request,snapshot_id:str,case_ref:str=Query(min_length=1,max_length=64),minutes:int=Query(default=60)):
+    if not _local_broker_access(request):return JSONResponse(status_code=403,content={'detail':'歷史後續情境僅供本機查看'})
+    if minutes not in (5,30,60):raise DomainError('觀察期僅支援5、30或60分鐘',422)
+    bundle=analysis_snapshots.get(snapshot_id)
+    row=bundle.get('outcomes',{}).get(case_ref,{}).get(str(minutes))
+    if row is None:return JSONResponse(status_code=404,content={'detail':'此原快照沒有該案例後續資料；未改挑其他案例。'})
+    # Decimal strings stay authoritative. Only chart coordinates become floats.
+    history=dict(row['history'])
+    history['bars']=[dict(time=b['time'],**{k:float(b[k]) for k in ('open','high','low','close')}) for b in history.get('bars',[])]
+    return JSONResponse(content=dict(row,history=history,snapshot_id=snapshot_id,case_ref=case_ref,
+        query_as_of_utc=bundle['context'].get('query_as_of_utc')),headers={'Cache-Control':'no-store'})
 
 
 @app.get('/api/assistant/acceptance/{filename}')

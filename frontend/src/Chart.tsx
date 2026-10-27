@@ -4,8 +4,8 @@ import {CandlestickSeries,ColorType,createChart,createSeriesMarkers,HistogramSer
 import type {Bar,Marker} from './types';
 import {displayMarker} from './chartMarkers';
 const EMPTY_MARKERS:Marker[]=[];const EMPTY_IDS:string[]=[];
-type Props = {bars:Array<Omit<Bar,'volume'>&{volume?:number}>;markers?:Marker[];light:boolean;averages?:boolean;showVolume?:boolean;focusIds?:string[];ariaLabel?:string};
-export default function Chart({bars,markers=EMPTY_MARKERS,light,averages=true,showVolume=true,focusIds=EMPTY_IDS,ariaLabel='黃金 K 線與操作標記，時間依回放行情來源顯示'}:Props) {
+type Props = {bars:Array<Omit<Bar,'volume'>&{volume?:number}>;markers?:Marker[];light:boolean;averages?:boolean;showVolume?:boolean;focusIds?:string[];ariaLabel?:string;paddingBars?:number};
+export default function Chart({bars,markers=EMPTY_MARKERS,light,averages=true,showVolume=true,focusIds=EMPTY_IDS,paddingBars=10,ariaLabel='黃金 K 線與操作標記，時間依回放行情來源顯示'}:Props) {
   const host = useRef<HTMLDivElement>(null);
   useEffect(()=>{
     if(!host.current) return;
@@ -31,12 +31,12 @@ export default function Chart({bars,markers=EMPTY_MARKERS,light,averages=true,sh
       if(!host.current?.clientWidth||!host.current.clientHeight)return;
       chart.timeScale().fitContent();
       // Leave room after the last candle for arrows and their execution labels.
-      if(bars.length)chart.timeScale().setVisibleLogicalRange({from:0,to:bars.length+10});
+      if(bars.length)chart.timeScale().setVisibleLogicalRange({from:0,to:bars.length+paddingBars});
     };
     const resize=new ResizeObserver(fitBars);
     resize.observe(host.current);
     fitBars();
     return ()=>{resize.disconnect();chart.remove();};
-  },[bars,markers,light,averages,focusIds,showVolume]);
+  },[bars,markers,light,averages,focusIds,showVolume,paddingBars]);
   return <div ref={host} className="chart-canvas" role="img" aria-label={ariaLabel}/>;
 }

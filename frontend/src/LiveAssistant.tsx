@@ -3,8 +3,9 @@ import LiveVolumeAnalysis from './LiveVolumeAnalysis';
 import {api} from './api';
 import type {Side} from './types';
 import CaseComparison,{type CaseComparisonData} from './CaseComparison';
+import CaseOutcomePanel from './CaseOutcomePanel';import DraftScenarioRisk from './DraftScenarioRisk';import type {OutcomeAnalysis} from './caseOutcomes';
 
-export type MarketReply={message:string;provider:string;llm_status:string;model:string|null;source:string;market_status:string;as_of_utc:string;quote_time_utc:string|null;snapshot_id?:string|null;query_as_of_utc?:number|null;analysis_mode?:string;case_comparison?:CaseComparisonData|null;
+export type MarketReply={message:string;provider:string;llm_status:string;model:string|null;source:string;market_status:string;as_of_utc:string;quote_time_utc:string|null;snapshot_id?:string|null;query_as_of_utc?:number|null;analysis_mode?:string;case_comparison?:CaseComparisonData|null;outcome_analysis?:OutcomeAnalysis|null;
  sections:{title:string;text:string;fact_ids:string[];source?:'program'|'model'}[];followups:string[];evidence:{id:string;text:string;values:Record<string,string>}[];draft:null};
 const stamp=(value:string|null)=>value?new Date(value).toLocaleString('zh-TW',{hour12:false})+'（台灣）':'未提供';
 const factText=(fact:MarketReply['evidence'][number])=>fact.text.replace(/\{\{([a-z0-9_]+)\}\}/g,(_,key)=>fact.values[key]??'資料不足');
@@ -18,6 +19,7 @@ export function LiveAssistantReply({reply,onFollowup}:{reply:MarketReply;onFollo
   {reply.sections.map((section,i)=><section key={i}><h3>{section.title}</h3><p>{section.text}</p></section>)}
   <LiveVolumeAnalysis reply={reply}/>
   {reply.case_comparison&&<CaseComparison key={reply.snapshot_id} comparison={reply.case_comparison} snapshotId={reply.snapshot_id??null}/>}
+  {reply.outcome_analysis&&<><DraftScenarioRisk analysis={reply.outcome_analysis}/><CaseOutcomePanel analysis={reply.outcome_analysis} snapshotId={reply.snapshot_id??null}/></>}
   {!!reply.evidence.length&&<details className="live-assistant-evidence"><summary>查看數據依據與限制</summary><p className="fine">數值與引用由程式核對；文字解讀不代表已驗證預測。指標取已收棒，報價時間與棒收盤時間不同。</p>{reply.evidence.filter(f=>used.has(f.id)).map(f=><p key={f.id}><small>{f.id}</small> {factText(f)}</p>)}</details>}
   {onFollowup&&reply.market_status==='CURRENT'&&<div className="live-followups">{reply.followups.map(text=><button key={text} type="button" onClick={()=>onFollowup(text)}>{text}</button>)}</div>}
  </article>;
