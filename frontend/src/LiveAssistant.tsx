@@ -1,7 +1,9 @@
 import {buildDialogueMemory} from './dialogueMemory';
+import {goldQuestionKind,type MacroSnapshot,type GoldRelation} from './macroEventModel';
 import {useEffect,useRef,useState,type FormEvent} from 'react';
 import LiveVolumeAnalysis from './LiveVolumeAnalysis';
 import type {Side} from './types';
+import {MacroEvents,GoldInfluence,Source} from './MacroEvents';
 import AssistantControl,{useAssistantSettings} from './AssistantControl';
 import {selectionLabel} from './modelSettings';
 import {isModelAnalysis,analysisLabel} from './assistantProvider';
@@ -9,17 +11,19 @@ import CaseComparison,{type CaseComparisonData} from './CaseComparison';
 import CaseOutcomePanel from './CaseOutcomePanel';import DraftScenarioRisk from './DraftScenarioRisk';import type {OutcomeAnalysis} from './caseOutcomes';
 
 export type MarketReply={message:string;provider:string;llm_status:string;model:string|null;requested_effort?:string|null;source:string;market_status:string;as_of_utc:string;quote_time_utc:string|null;snapshot_id?:string|null;query_as_of_utc?:number|null;analysis_mode?:string;case_comparison?:CaseComparisonData|null;outcome_analysis?:OutcomeAnalysis|null;
- sections:{title:string;text:string;fact_ids:string[];source?:'program'|'model'}[];followups:string[];evidence:{id:string;text:string;values:Record<string,string>}[];draft:null};
+ sections:{title:string;text:string;fact_ids:string[];source?:'program'|'model'}[];followups:string[];evidence:{id:string;text:string;values:Record<string,string>}[];draft:null;macro_context?:MacroSnapshot|null;gold_relation?:GoldRelation|null;knowledge_sources?:string[]};
 const stamp=(value:string|null)=>value?new Date(value).toLocaleString('zh-TW',{hour12:false})+'（台灣）':'未提供';
 const factText=(fact:MarketReply['evidence'][number])=>fact.text.replace(/\{\{([a-z0-9_]+)\}\}/g,(_,key)=>fact.values[key]??'資料不足');
 
 export function LiveAssistantReply({reply,onFollowup}:{reply:MarketReply;onFollowup?:(text:string)=>void}){
  const used=new Set(reply.sections.flatMap(section=>section.fact_ids));
+ if(reply.market_status==='INFORMATION')return <article className="live-assistant-reply"><h3>黃金知識與事件</h3>{reply.sections.map((s,i)=><section key={i}><h4>{s.title}</h4><p>{s.text}</p></section>)}{reply.gold_relation&&<GoldInfluence relation={reply.gold_relation}/>} {reply.macro_context&&<MacroEvents snapshot={reply.macro_context}/>} {reply.knowledge_sources?.map(url=><Source key={url} url={url} label="知識來源"/>)}{onFollowup&&<div className="live-followups">{reply.followups.map(q=><button type="button" key={q} onClick={()=>onFollowup(q)}>{q}</button>)}</div>}</article>;
  return <article className="live-assistant-reply">
   <div className="live-reply-meta"><strong>{isModelAnalysis(reply.provider)?`${analysisLabel(reply.provider)}${reply.llm_status==='partial_grounding'?'＋程式盤面解讀':' 盤面解讀'}`:'程式盤面解讀'}</strong><span>cTrader DEMO · XAUUSD · {reply.market_status==='FROZEN'?'草稿建立快照（非即時更新）':reply.market_status==='CURRENT'?'即時資料快照':'行情未就緒'}</span></div>
   <p className="fine">報價 {stamp(reply.quote_time_utc)} · 分析快照 {stamp(reply.as_of_utc)}{reply.model?` · ${selectionLabel(reply.model,reply.requested_effort)}`:''}</p>
   {reply.llm_status!=='ok'&&<p className="live-assistant-status" role="status">{reply.message.split('\n\n')[0]}</p>}
   {reply.sections.map((section,i)=><section key={i}><h3>{section.title}</h3><p>{section.text}</p></section>)}
+  {reply.gold_relation&&<GoldInfluence relation={reply.gold_relation}/>} {reply.macro_context&&<MacroEvents snapshot={reply.macro_context}/>}
   <LiveVolumeAnalysis reply={reply}/>
   {reply.case_comparison&&<CaseComparison key={reply.snapshot_id} comparison={reply.case_comparison} snapshotId={reply.snapshot_id??null}/>}
   {reply.outcome_analysis&&<><DraftScenarioRisk analysis={reply.outcome_analysis}/><CaseOutcomePanel analysis={reply.outcome_analysis} snapshotId={reply.snapshot_id??null}/></>}
@@ -44,7 +48,8 @@ export default function LiveAssistant({side}:{side:Side}){
   setMessages(items=>[...items,{question:text}]);request.current=new AbortController();
   const timer=window.setTimeout(()=>request.current?.abort(),180000);
   try{
-   const response=await fetch('/api/assistant/live-chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:text,llm_enabled:true,...assistantSettings.requestOptions,previous_questions,conversation_id:threadId.current,conversation:buildDialogueMemory(messages,threadId.current),side:querySide,include_cases:includeCases}),signal:request.current.signal});
+   const gold=Boolean(goldQuestionKind(text));
+   const response=await fetch(gold?'/api/assistant/gold-chat':'/api/assistant/live-chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:text,llm_enabled:true,...assistantSettings.requestOptions,conversation_id:threadId.current,conversation:buildDialogueMemory(messages,threadId.current),...(!gold?{previous_questions,side:querySide,include_cases:includeCases,include_macro:true}:{})}),signal:request.current.signal});
    const result=await response.json();if(!response.ok)throw Error(typeof result.detail==='string'?result.detail:'即時盤面分析失敗');
    setMessages(items=>items.map((item,i)=>i===index?{...item,reply:result}:item));
   }catch(e){if(request.current?.signal.aborted)setError('分析逾時或已取消，可重新提問；沒有送出交易。');else setError(e instanceof Error?e.message:'無法取得盤面說明');}

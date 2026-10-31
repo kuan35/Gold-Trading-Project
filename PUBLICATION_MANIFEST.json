@@ -34,8 +34,8 @@
       "sha256": "5fa956bbd0d5796b79ceee98d950fe22079e698c418728623183d86088b31402"
     },
     "API_CONTRACT.md": {
-      "bytes": 57729,
-      "sha256": "ef927cc5f51755319aaa807c66d2aaaed1fc6f680b859df1d334e6ed642e670a"
+      "bytes": 59181,
+      "sha256": "2e7ff8d4e0196abee2a921049e179d5cf22431835b82b941f9747423b5c90bdd"
     },
     "CLAUDE.md": {
       "bytes": 233,
@@ -46,16 +46,16 @@
       "sha256": "fb9146faef463f12e665b4d25468be5b87dde9107ee49eb2cf54dd2ae469ba2f"
     },
     "HANDOFF.md": {
-      "bytes": 3776,
-      "sha256": "8e6fe624587253796852d94bf386663d614b4f6c2bd2197e4c1b5b23069c8889"
+      "bytes": 5696,
+      "sha256": "cb38ffd3a10c0c94d25cb01efad6821371710ff7d0e97312b3e98d4e96acf91c"
     },
     "LICENSE": {
       "bytes": 1279,
       "sha256": "ab7995d6bf0627cfa86d27461f31d83e22cf0e967fe7b4c21cfc0008c625e183"
     },
     "README.md": {
-      "bytes": 2435,
-      "sha256": "3cd96f9734f35e711fecc5dd6d46747effb13152f8dab6153b5cfdd492c49125"
+      "bytes": 2600,
+      "sha256": "b5d2029e1abeab3c2807cd196af1e35830f81b668b2350961a8528377983430f"
     },
     "TEAM_HANDOFF.md": {
       "bytes": 7990,
@@ -78,8 +78,8 @@
       "sha256": "ddd2faaeae54f4b94e12ca3be2ef6e752b352ee8967ea2b1b69a2751d6659a32"
     },
     "backend/app.py": {
-      "bytes": 30853,
-      "sha256": "da746a948c9f44d8f98727e34e5850fdf328e7a02ab54d3ff2763771b9211c2c"
+      "bytes": 32560,
+      "sha256": "5d266d10b05cdc0246ee637d5ed20251cf996d83eff77e593cbd1bbbef38472a"
     },
     "backend/assistant.py": {
       "bytes": 28373,
@@ -202,8 +202,8 @@
       "sha256": "38b023516eb342a1cc1793e5ac8cfbd1c5ca076463fa5163ac64a3d39d54c74d"
     },
     "backend/live_assistant.py": {
-      "bytes": 27435,
-      "sha256": "37e36d6ab8ad44249550f4e1c85af3efa0cbb632e9cbc883903a3b3248508b51"
+      "bytes": 28019,
+      "sha256": "dfbf1ef8055606e4179f189840da4692f71b3edfcf1353902a6a94ea37134774"
     },
     "backend/live_candidate_profile.py": {
       "bytes": 4782,
@@ -212,6 +212,22 @@
     "backend/live_readonly.py": {
       "bytes": 1025,
       "sha256": "3e1b23a441093e90d5f509d03d26133a12d4b76660f732faab58f084bbb456b2"
+    },
+    "backend/macro_assistant.py": {
+      "bytes": 9170,
+      "sha256": "01884ec3acc6acadaa28e327dc81b64ccce7e80971e401bf3579c000e647ef55"
+    },
+    "backend/macro_calendar.py": {
+      "bytes": 9335,
+      "sha256": "f85aded7faed06ca37ac4f206f34de210ad50c11678db26c55d3fbe5a296c79c"
+    },
+    "backend/macro_grounding.py": {
+      "bytes": 907,
+      "sha256": "ba1453add5b08ced59216b67caf8e354231e918bf26c47881f742519e4c5a03f"
+    },
+    "backend/macro_knowledge.py": {
+      "bytes": 7870,
+      "sha256": "69aac19ac711878b8e6d8357635b03de3cb3a4e520f5fa71752ef1cf58851006"
     },
     "backend/market.py": {
       "bytes": 2323,
@@ -473,6 +489,18 @@
       "bytes": 1023,
       "sha256": "8dfa393893ef8dcde88989ecc724c889a01f131a4fcdd6ca4f31dc4a7bce32d8"
     },
+    "backend/tests/test_macro_api.py": {
+      "bytes": 1571,
+      "sha256": "4e8b0bce5444a0536a71fcf241a8c6a2ea0f249b3cb515917d9bab2309d02d48"
+    },
+    "backend/tests/test_macro_assistant.py": {
+      "bytes": 5823,
+      "sha256": "54fe0520e7b0e101a3c597ab6324aef497dbb504adbd6a76d3b26d5bedd094a2"
+    },
+    "backend/tests/test_macro_calendar.py": {
+      "bytes": 4342,
+      "sha256": "bcc51cf48f534ad165204893b05f5f53e96ad342f48538217007493170840a3a"
+    },
     "backend/tests/test_management_api_contract.py": {
       "bytes": 1701,
       "sha256": "303e76a692078383c375115cec11e8e563c6da0274c36bd80a1233ad541e1f96"
@@ -609,6 +637,10 @@
       "bytes": 2140,
       "sha256": "ece994c64d131aaf1fc7a3b77c6fa63b6bdc253d7847b7ec0ce9a82f17bc6934"
     },
+    "docs/gold_macro_assistant_20261101.md": {
+      "bytes": 3687,
+      "sha256": "5ad7a4e15687ee3d3e827bb8d7a44746b19a0f8cc8c6adef4c0e301c1018b774"
+    },
     "frontend/index.html": {
       "bytes": 330,
       "sha256": "b8e0dcf4dfb528603d5b665287adbf115f69a0b750832056053db6ec463a4091"
@@ -714,16 +746,16 @@
       "sha256": "100f1b06fa4d056ae77f8b54aa0ab4e64d6633395c1ad92d714852829ca4df80"
     },
     "frontend/src/ConversationReply.tsx": {
-      "bytes": 8020,
-      "sha256": "d41973fe4b194d59f284db304faafafa946aee3b4037be5a063c99294529aad7"
+      "bytes": 8579,
+      "sha256": "e35b0813827e56549e45e06680ae3fc2eec2e8c9a00c4be74fbaa6a29a5fad4f"
     },
     "frontend/src/ConversationResize.tsx": {
       "bytes": 2194,
       "sha256": "52bd171995b2566bc37f65470162f75972e3d83caa40fe31044ac0607d7a8a2a"
     },
     "frontend/src/ConversationWorkspace.tsx": {
-      "bytes": 18515,
-      "sha256": "87aafdb492810c72771f0fa5e0ec0fe046b769d039748d6fed6cb0f774408fdf"
+      "bytes": 19069,
+      "sha256": "ddba64cfa7d0dbbda5344c70fdde8f4f6328d7f172c2a7827e00b622831048dd"
     },
     "frontend/src/DeskAccountTray.tsx": {
       "bytes": 2981,
@@ -754,8 +786,8 @@
       "sha256": "06feef7b9b961f9c43c74a7c7f2a65b65a7e0b6a92009b77fc80e5b9a2d4c952"
     },
     "frontend/src/LiveAssistant.tsx": {
-      "bytes": 7847,
-      "sha256": "e2543904b8f086001be1c55c6da8aa578f44f73c940b7902b8771abc467b3413"
+      "bytes": 8951,
+      "sha256": "81d1a2f6b16b9d3b995b524489c4592ec4d990a682e2f0983043333d6ddd5d44"
     },
     "frontend/src/LiveCandleChart.tsx": {
       "bytes": 4945,
@@ -776,6 +808,10 @@
     "frontend/src/LiveVolumeAnalysis.tsx": {
       "bytes": 2201,
       "sha256": "966fb77bf785aedd745ffc7ca1734947fb3e348874595b8af644e0ffd9b23a39"
+    },
+    "frontend/src/MacroEvents.tsx": {
+      "bytes": 4538,
+      "sha256": "49d1956c653d54296d89ed580608caa7e5d5332ce2a6bf679800dca8d7f4ecb8"
     },
     "frontend/src/MarketDetails.tsx": {
       "bytes": 2720,
@@ -886,8 +922,8 @@
       "sha256": "40a466eba8b0024bba245af7d33f2627e32d768a464af6229543ffee590acd17"
     },
     "frontend/src/conversationArchive.ts": {
-      "bytes": 4723,
-      "sha256": "b5ae1a400c9480069de7b0984a799e86390e3ea0f875098f80f06f1c07090bb9"
+      "bytes": 5763,
+      "sha256": "0a22c0b965a0636bcecd8c812cb6c48f22dadfde2b9d4d7fc5359f7d4a707bea"
     },
     "frontend/src/conversationScroll.ts": {
       "bytes": 339,
@@ -941,9 +977,17 @@
       "bytes": 1807,
       "sha256": "c428a3a26303822d3c07edbc6add8b5c9c75e521e81d307a8ec6f0043ef6a650"
     },
+    "frontend/src/macroEventModel.ts": {
+      "bytes": 3462,
+      "sha256": "66544e2d34b141474adb57308256e19267efda6e0d7368381d48cd08cefc7817"
+    },
+    "frontend/src/macroEvents.css": {
+      "bytes": 2183,
+      "sha256": "f436321f8fa32a86327428810b60c6371c95654d659d4774cac7b95b80b3782e"
+    },
     "frontend/src/main.tsx": {
-      "bytes": 380,
-      "sha256": "574dc9c519aeedac7daf757d6706734d11d40adeed60b6b08743b16ccc73b6b7"
+      "bytes": 409,
+      "sha256": "c8dca1f81f44613ddca34f76c9d1db76be2b681eb3d78b862988cd14a7ffc1c4"
     },
     "frontend/src/modelSettings.ts": {
       "bytes": 2525,
@@ -1125,6 +1169,10 @@
       "bytes": 2012,
       "sha256": "dee1d3dd8221b96514c1246608b61bb58b4e81faf8ce399ff09e569cd81340e9"
     },
+    "frontend/tests/macro-events.test.ts": {
+      "bytes": 3841,
+      "sha256": "f852241e5bf3e19dd4e0c5f2931163360976d7c0fe312d4fd3cd08e2fa9b863d"
+    },
     "frontend/tests/model-settings.test.ts": {
       "bytes": 2277,
       "sha256": "4857f049c6ad2477ce1dfa8cec5bf1b432672058d4340cc1dbdbee89e2b44b1d"
@@ -1186,8 +1234,8 @@
       "sha256": "940ca0e4e9ee42e86cb5fce9df1a54296cfb6e95f5fa48089e6eb66c7ecb5f06"
     },
     "requirements.txt": {
-      "bytes": 76,
-      "sha256": "eb6e2a801d5857653698ed8b1cabf22d503530cfda1dfbce3976455822944bec"
+      "bytes": 100,
+      "sha256": "91dcd1183d6b03a89e820bcf66a2144a42b2682c79d4f982678bc282380906ef"
     },
     "research/assistant_case_acceptance.py": {
       "bytes": 18973,
@@ -1510,8 +1558,8 @@
       "sha256": "e73e44d06aab13dc725e2ac035ff5f4fcfc0825565f745febac6c3e46b4e8b2b"
     },
     "scripts/package_local.py": {
-      "bytes": 3046,
-      "sha256": "d510119d6716dab114e672f3e2fc5a90d318ecdb1c2cd58ec5ae8625d0951a9f"
+      "bytes": 3098,
+      "sha256": "d8b531d763ff7b332b37b36a1a88937918d8d734d114c3768ae3359754a58937"
     },
     "scripts/position_command_payloads.py": {
       "bytes": 2743,

@@ -2,6 +2,8 @@
 
 可在Windows或macOS本機執行的React＋FastAPI交易討論／歷史案例參考工具。
 保留聊天主入口、即時tick、按需K線、案例前後對照、DEMO草稿與持倉紀錄。
+本機另提供黃金知識與官方總經事件，每項事件說明條件式多空關聯；
+詳見[官方事件工具](docs/gold_macro_assistant_20261101.md)。
 
 ## 快速開始
 

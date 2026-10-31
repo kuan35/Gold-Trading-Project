@@ -1,5 +1,24 @@
 # Frontend API contract v1
 
+## 2026-11-01 黃金知識與官方事件
+
+GET `/api/assistant/macro-calendar?days=60`（1..60）僅本機可用，回固定Fed/BLS/BEA來源。
+回傳status、snapshot_id、as_of_utc、coverage、sources狀態／fetched_at_utc，及events／news。
+事件含topic、date、scheduled_at_utc（DATE_ONLY為null）、timing_precision、status、
+freshness、source_url、actual/consensus/previous（本版全為null）、gold_relation。
+gold_relation有title、mechanism、bullish、bearish、unknown、sources，均為條件式文字。
+
+POST `/api/assistant/gold-chat` 使用DialogueFields及message、llm_enabled；provider／
+模型選擇沿現有契約。不需要行情，回MarketReply的market_status=INFORMATION、
+analysis_mode=gold_knowledge或macro_events、draft=null、macro_context／gold_relation／
+knowledge_sources。明確委託指令不走此入口。來源失敗不填0，未涵蓋消息不稱無事件。
+
+LiveChatInput新增include_macro（舊客戶端預設false）；工作台設true，先讀事件再抓
+新報價，macro capture hash納入新snapshot_id並同步charts／case_comparison。
+當次macro_context存於原bundle，之後不以新資料更新舊快照。原檢索／委託權限不變。
+事件時間範圍在後端依Asia/Taipei篩選，先篩主題再截斷；回requested_window與
+selection_status，空範圍不是證明市場無重大事件。程式快取存private/macro，不公開。
+
 ## 2026-10-31 本機供應商逐請求選擇
 
 GET `/api/assistant/status?provider=codex|claude_code|program|openai_compatible` 查所選

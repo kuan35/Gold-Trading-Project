@@ -29,6 +29,9 @@ from .case_analysis import prepare_analysis
 from .analysis_snapshots import SnapshotStore
 from .forward_outcomes import HistoricalOutcomeStore
 from .conversation_intent import interpret_message
+from .macro_calendar import MacroCalendar
+from .macro_assistant import answer as gold_answer,augment_bundle,select_context
+from .macro_knowledge import question_kind
 import os
 import time as timing
 
@@ -38,6 +41,7 @@ broker_orders=BrokerOrders(demo_market_stream)
 analysis_snapshots=SnapshotStore()
 case_forward_store=HistoricalOutcomeStore(ROOT/'private')
 case_execution_store=ExecutionStore(ROOT/'private')
+macro_calendar=MacroCalendar(ROOT/'private'/'macro')
 
 
 class Body(BaseModel):
@@ -163,6 +167,7 @@ class LiveChatInput(DialogueFields):
     previous_questions:list[Annotated[str,Field(max_length=600)]]=Field(default_factory=list,max_length=4)
     side:Literal['BUY','SELL']='BUY'
     include_cases:bool=True
+    include_macro:bool=False
     draft:ConversationDraftInput|None=None
     input_revision:int|None=Field(default=None,ge=0)
 
@@ -172,6 +177,11 @@ class DraftChatInput(DialogueFields):
     message:str=Field(min_length=1,max_length=1500)
     llm_enabled:bool=False
     previous_questions:list[Annotated[str,Field(max_length=600)]]=Field(default_factory=list,max_length=4)
+
+
+class GoldChatInput(DialogueFields):
+    message:str=Field(min_length=1,max_length=1500)
+    llm_enabled:bool=False
 
 
 class ConversationDraftInput(Body):
@@ -473,6 +483,7 @@ def assistant_status(request:Request,provider:Literal['claude_code','codex','ope
 def live_chat(request:Request,body:LiveChatInput):
     if not _local_broker_access(request):
         return JSONResponse(status_code=403,content={'detail':'即時盤面對話僅供本機使用'})
+    macro=select_context(macro_calendar.snapshot(refresh=True),body.message) if body.include_macro else None
     snapshot=demo_market_stream.query_snapshot()
     now=_analysis_capture_time(snapshot);retrieval=None;query={}
     if body.include_cases:
@@ -480,9 +491,25 @@ def live_chat(request:Request,body:LiveChatInput):
         else:retrieval=context_unavailable('BROKER_QUOTE_UNAVAILABLE')
         retrieval=dict(retrieval,query_side=body.side)
     bundle=prepare_analysis(snapshot,body.side,retrieval,query,profiles=getattr(engine.cases,'candidate_profiles',{}),now=now,operation_sources=_analysis_operation_sources(retrieval),draft=body.draft.model_dump() if body.draft else None,input_revision=body.input_revision,forward_store=case_forward_store,execution_store=case_execution_store)
+    if macro is not None:bundle=augment_bundle(bundle,macro)
     saved=analysis_snapshots.put(bundle)
     return JSONResponse(content=respond_context(saved['context'],body.message,enabled=body.llm_enabled,previous_questions=body.previous_questions,conversation_id=body.conversation_id,conversation=[row.model_dump() for row in body.conversation],**_model_options(body)),
         headers={'Cache-Control':'no-store'})
+
+
+@app.get('/api/assistant/macro-calendar')
+def macro_events(request:Request,days:int=Query(default=60,ge=1,le=60)):
+    if not _local_broker_access(request):return JSONResponse(status_code=403,content={'detail':'事件查詢僅供本機使用'})
+    return JSONResponse(content=select_context(macro_calendar.snapshot(refresh=True,days=days),'接下來重大事件'),headers={'Cache-Control':'no-store'})
+
+
+@app.post('/api/assistant/gold-chat')
+def gold_chat(request:Request,body:GoldChatInput):
+    if not _local_broker_access(request):return JSONResponse(status_code=403,content={'detail':'黃金知識與事件對話僅供本機使用'})
+    kind=question_kind(body.message)
+    if kind is None:raise HTTPException(400,'此入口用於黃金知識與事件討論；明確委託請沿草稿確認流程。')
+    snapshot=macro_calendar.snapshot(refresh=True) if kind!='knowledge' else None
+    return JSONResponse(content=gold_answer(body.message,kind,snapshot,enabled=body.llm_enabled,conversation_id=body.conversation_id,conversation=[r.model_dump() for r in body.conversation],**_model_options(body)),headers={'Cache-Control':'no-store'})
 
 
 def _analysis_now():

@@ -7,4 +7,5 @@ import './workspaceRefresh.css';
 import './productDesk.css';
 import './secondaryPages.css';
 import './caseOutcomes.css';
+import './macroEvents.css';
 createRoot(document.getElementById('root')!).render(<React.StrictMode><App/></React.StrictMode>);

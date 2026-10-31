@@ -1,5 +1,25 @@
 # Gold Desk 本機產品交接
 
+## 2026-11-01 — 黃金知識與官方消息面，逐事件說明多空關聯
+
+- 新增macro_calendar／macro_knowledge／macro_assistant／macro_grounding；固定讀Fed
+  FOMC、政策及發言RSS、BLS與BEA發布ICS，15分鐘快取。每個事件及公告都有影響機制、
+  可能偏多／偏空的條件、未知及來源，不從標題宣稱當次鷹鴿或預測必漲跌。
+- 知識／消息可獨立於券商報價回答；今天／本週／下週按台灣日期、主題先篩再截取。
+  即時對話可把事件加入同一固定快照；不改案例檢索、原草稿／確認或LIVE唯讀限制。
+  UI新增「黃金事件／看多空關聯」及回覆卡，歷史聊天保存當次來源與狀態。
+- API：GET /api/assistant/macro-calendar；POST /api/assistant/gold-chat；live-chat新增
+  include_macro（預設false，相容舊客戶端）。API_CONTRACT與docs/gold_macro_assistant_20261101.md
+  說明欄位及限制。新增beautifulsoup4依賴，組員需重跑setup更新requirements。
+- BLS官方US-Eastern別名已轉America/New_York；BEA排除州縣年度數據；FOMC只提供日期時
+  不編精確倒數。尚無實際值／前值／市場共識，不計驚喜、不聲稱已判斷當次事件方向。
+- 測試：後端644 passed、1 skipped；前端154 passed；一般與Pages build成功。
+  一次獨立review後修正日期／主題先篩、今日消息意圖、無依據結果斷言；均有RED→GREEN。
+  詞句檢查只是有限防護，不是語義真實性證明。5個官方來源HTTP讀取成功，本機首頁／JS與
+  4個program查詢驗收成功；本輪未用模型額度、未送券商指令、未做瀏覽器點選驗收。
+- 公開包只含程式與說明，不含官方快取、私人收據或新增私人資料；原3份公開JSON不變。
+  原始資料／根目錄媒體243檔SHA另於本機檢查。PR仍未合併，Pages不等於本機功能。
+
 ## 2026-11-01 — 歷史聊天完整保存與安裝分支
 
 - 修正ConversationWorkspace／deskConversations：不再只存前兩段、1800字、20則及12串。

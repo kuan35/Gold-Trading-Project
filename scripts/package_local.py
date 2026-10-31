@@ -8,6 +8,7 @@ FILES.add('frontend/src/demo-data.json')
 FILES.add('docs/LOCAL_RELEASE_CHECK.md')
 FILES.add('HANDOFF.md')
 FILES.add('docs/conversation_history_20261031.md')
+FILES.add('docs/gold_macro_assistant_20261101.md')
 PUBLIC_DATA={'trader-cases.json','trader-market-index.json','synthetic-query-profiles.json'}
 def public_files(root=ROOT):
  root=Path(root).resolve();out=[]

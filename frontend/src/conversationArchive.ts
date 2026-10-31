@@ -45,6 +45,14 @@ export function archiveTurn(turn:ConversationTurn):ArchiveTurn{
    }
   }
   if(r.evidence.length)parts.push('詳細數據\n'+r.evidence.map(factText).join('\n'));
+  const macro=r.macro_context;
+  if(macro){
+   parts.push('消息範圍：'+macro.coverage+'；取得快照 '+macro.as_of_utc);
+   for(const e of macro.events){const g=e.gold_relation;parts.push(`${e.title} · ${e.scheduled_at_utc??e.date+'（時間待確認）'} · ${e.status}／${e.freshness}\n影響機制：${g.mechanism}\n可能偏多：${g.bullish}\n可能偏空：${g.bearish}\n未知：${g.unknown}\n來源：${e.source_url}`);}
+   for(const n of macro.news){const g=n.gold_relation;parts.push(`官方公告：${n.title}\n${n.summary}\n發布：${n.published_at_utc} · 取得：${n.fetched_at_utc} · ${n.freshness}\n影響機制：${g.mechanism}\n可能偏多：${g.bullish}\n可能偏空：${g.bearish}\n未知：${g.unknown}\n來源：${n.source_url}`);}
+  }
+  if(r.gold_relation){const g=r.gold_relation;parts.push(`影響機制：${g.mechanism}\n可能偏多：${g.bullish}\n可能偏空：${g.bearish}\n未知：${g.unknown}`);}
+  if(r.knowledge_sources?.length)parts.push('知識來源：'+r.knowledge_sources.join('\n'));
  }
  if(turn.error)parts.push(turn.error);
  return {question:turn.question,answer:parts.join('\n\n')||'回答尚未完成；重新開啟後可再次提問。',at:turn.at??r?.as_of_utc??new Date().toISOString()};
