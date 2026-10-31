@@ -23,3 +23,10 @@ test('unknown distance is not displayed as zero',()=>{
  const html=renderToStaticMarkup(createElement(CaseComparison,{comparison:next,snapshotId:'abc'}));
  assert.match(html,/資料不足/);assert.doesNotMatch(html,/0\.00000/);
 });
+
+test('native tick activity is a distinct fifth gate with query and history relative ratios',()=>{
+ const next:any=structuredClone(data);next.tick_volume={enabled:true,limit:'2',query_relative:'2',query_status:'AVAILABLE'};
+ next.cases[0].tick_activity={query_relative:'2',case_relative:'1.5',multiplier:'1.33333',limit:'2'};
+ const html=renderToStaticMarkup(createElement(CaseComparison,{comparison:next,snapshotId:'abc'}));
+ for(const text of ['報價活躍度','非成交量','目前量比','歷史量比','1.5'])assert.ok(html.includes(text),text);
+});

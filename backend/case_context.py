@@ -2,6 +2,7 @@
 from decimal import Decimal,InvalidOperation
 import re
 from .context_retrieval import METHOD,EVENT_LABELS,TAIL_LABELS,REJECTION_LABELS,THRESHOLDS
+from .tick_volume import LIMIT as TICK_LIMIT
 
 STATES={
  'PASSED':('有符合條件的案例','歷史案例通過目前情境試驗條件；不是完全相同或未來勝率。'),
@@ -72,6 +73,13 @@ def valid_pass(retrieval,comparison):
             for key,field,_,_ in AXES:
                 actual=Decimal(str(case[field]));limit=Decimal(str(limits[key]))
                 if not actual.is_finite() or actual<(1 if key=='vol_ratio' else 0) or actual>limit:return False
+            tick=comparison.get('tick_volume') or {}
+            if tick.get('enabled'):
+                check=case.get('tick_comparison') or {}
+                a,b,m=(Decimal(str(check.get(k))) for k in ('query_relative','case_relative','multiplier'))
+                if (tick.get('query_status')!='AVAILABLE' or Decimal(str(tick.get('limit')))!=TICK_LIMIT or
+                    not all(v.is_finite() and v>0 for v in (a,b,m)) or check.get('passed') is not True or
+                    a!=Decimal(str(tick.get('query_relative'))) or not 1<=m<=TICK_LIMIT or m!=max(a/b,b/a)):return False
         return True
     except (KeyError,TypeError,ValueError,ArithmeticError):return False
 
@@ -87,10 +95,16 @@ def build_case_context(retrieval,query=None,*,snapshot_id=None):
         query_state=dict(event=comparison.get('query_event_label','未知'),tail_direction=comparison.get('query_tail_direction','未知')),
         counts=dict(eligible=count(comparison.get('eligible_rows')),passed=count(retrieval.get('total')) if status=='PASSED' else None if status=='INSUFFICIENT_DATA' else 0,displayed=0),
         cases=[],rejections=[],facts=[],distribution=distribution(retrieval,status))
+    tick=comparison.get('tick_volume') or {'enabled':False}
+    result['tick_volume']={k:tick[k] for k in ('enabled','limit','query_status','query_reason','query_relative','ruleset') if k in tick}
     def fact(ident,text,values):result['facts'].append(dict(id=ident,text=text,values=values))
     fact('history.status','歷史案例判定：{{history_status_state}}。{{history_reason_state}}；操作方向{{history_side_state}}，通過{{history_count}}群。',
         dict(history_status_state=label,history_reason_state=reason,history_side_state=result['side'] if result['side'] in ('BUY','SELL') else '未指定',history_count=str(result['counts']['passed']) if result['counts']['passed'] is not None else '資料不足'))
     thresholds=comparison.get('thresholds') or {}
+    if tick.get('enabled'):
+        fact('history.tick_volume','已納入tick報價活躍度條件：目前量比{{tick_query_ratio}}，差距最多{{tick_limit}}倍。{{tick_basis_state}}',
+            dict(tick_query_ratio=tick.get('query_relative') or '無法比較',tick_limit=str(TICK_LIMIT),
+                tick_basis_state='量比是末根已收五分鐘tick數除以前20根均量；非成交量。歷史tick量是同來源的獨立原生參考，不是舊參考K線的成交量；缺量或缺棒不補零'))
     if status=='PASSED':
         for n,case in enumerate((retrieval.get('cases') or [])[:5],1):
             ref='案例'+'甲乙丙丁戊'[n-1];metrics=[];values={};pieces=[];differences=[]
@@ -102,13 +116,21 @@ def build_case_context(retrieval,query=None,*,snapshot_id=None):
                 values[f'hist{n}_{key}_limit']=tolerance if tolerance is not None else '資料不足'
                 pieces.append(axis+'差距{{hist'+str(n)+'_'+key+'}}'+unit+'，試驗容忍{{hist'+str(n)+'_'+key+'_limit}}'+unit+'。')
                 differences.append(f'{axis}：{actual}{unit}／容忍{tolerance}{unit}' if actual is not None and tolerance is not None else axis+'資料不足')
+            activity=None
+            if tick.get('enabled'):
+                check=case['tick_comparison'];actual=number(check['multiplier']);tolerance=number(TICK_LIMIT)
+                activity={k:check[k] for k in ('query_relative','case_relative','multiplier','limit')}
+                metrics.append(dict(key='tick_ratio',label='tick報價活躍度倍率',actual=actual,tolerance=tolerance,unit='倍',passed=True))
+                values.update({f'hist{n}_tick_ratio':actual,f'hist{n}_tick_ratio_limit':tolerance})
+                pieces.append('tick報價活躍度差距{{hist'+str(n)+'_tick_ratio}}倍，容忍{{hist'+str(n)+'_tick_ratio_limit}}倍。')
             event=case.get('event_label') if case.get('event_label') in EVENT_LABELS.values() else '未知'
             tail=case.get('tail_direction') if case.get('tail_direction') in TAIL_LABELS.values() else '未知'
             qevent=result['query_state']['event'];qtail=result['query_state']['tail_direction']
             similarities=['買賣方向相同','案例與查詢事件階段相同' if event==qevent and event!='未知' else '事件資料需核對',
                 '最近半小時方向不相反；不要求完全相同']
+            if activity:similarities.append('tick報價活躍度差距不超過2倍，非成交量')
             result['cases'].append(dict(ref=ref,case_id=case.get('id'),metrics=metrics,event=event,tail_direction=tail,
-                similarities=similarities,differences=differences,representative=representative(case)))
+                similarities=similarities,differences=differences,tick_activity=activity,representative=representative(case)))
             if n<=2:
                 values.update({f'hist{n}_event_state':event,f'hist{n}_tail_state':tail,f'hist{n}_query_tail_state':qtail})
                 fact('history.case'+str(n),ref+'符合目前情境條件，事件為{{hist'+str(n)+'_event_state}}；案例末段{{hist'+str(n)+'_tail_state}}、目前末段{{hist'+str(n)+'_query_tail_state}}。'+''.join(pieces)+'仍有差距，不是完全重疊；容忍尚未人工校準。',values)

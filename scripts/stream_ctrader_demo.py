@@ -18,9 +18,11 @@ from threading import Thread
 from scripts.check_ctrader_demo import decode_spot_quote, load_local_config
 from scripts.ctrader_account_payloads import money, decode_positions, decode_order, decode_deal, apply_unrealized, close_request_args
 from scripts.live_candles import LiveCandles
+from scripts.position_command_payloads import close_limit_args,protection_args,protection_ack,verify_close_ack
+from backend.order_binding import history_result
 
 
-PERIODS = {'5m': (5, 5, 2), '15m': (7, 15, 5), '1h': (9, 60, 12)}
+PERIODS = {'5m': (5, 5, 7), '15m': (7, 15, 21), '1h': (9, 60, 60)}
 
 
 def emit(kind: str, data: dict) -> None:
@@ -54,7 +56,7 @@ def decode_symbol_schedule(symbol) -> dict:
                           for start, end in intervals]}
 
 
-def run(config: dict[str, str]) -> None:
+def run(config: dict[str, str], *, readonly_live: bool=False) -> None:
     from ctrader_open_api import Client, EndPoints, Protobuf, TcpProtocol
     from ctrader_open_api.messages.OpenApiCommonMessages_pb2 import ProtoHeartbeatEvent
     from ctrader_open_api.messages.OpenApiMessages_pb2 import (
@@ -70,11 +72,14 @@ def run(config: dict[str, str]) -> None:
         ProtoOASpotEvent, ProtoOASymbolByIdReq, ProtoOASymbolByIdRes,
         ProtoOASymbolsListReq, ProtoOASymbolsListRes,
         ProtoOATraderReq, ProtoOATraderRes,
-        ProtoOANewOrderReq, ProtoOAClosePositionReq, ProtoOAExecutionEvent, ProtoOAOrderErrorEvent,
+        ProtoOANewOrderReq, ProtoOAClosePositionReq, ProtoOAAmendPositionSLTPReq, ProtoOACancelOrderReq,ProtoOAExecutionEvent, ProtoOAOrderErrorEvent,
     )
     from twisted.internet import reactor
 
-    client = Client(EndPoints.PROTOBUF_DEMO_HOST, EndPoints.PROTOBUF_PORT, TcpProtocol)
+    client = Client(EndPoints.PROTOBUF_LIVE_HOST if readonly_live else EndPoints.PROTOBUF_DEMO_HOST, EndPoints.PROTOBUF_PORT, TcpProtocol)
+    if readonly_live:
+        from scripts.live_readonly_policy import ReadOnlyClient
+        client=ReadOnlyClient(client)
     account_id: int | None = None
     symbol_id: int | None = None
     digits = 2
@@ -89,6 +94,7 @@ def run(config: dict[str, str]) -> None:
     asset_names: dict[int, str] = {}
     order_ids: dict[int, str] = {}
     request_ids: set[str] = set()
+    request_commands: dict[str,dict] = {}
     stopping = False
     position_ids: set[str] = set()
     account_generation = 0
@@ -158,7 +164,7 @@ def run(config: dict[str, str]) -> None:
         account['all_pending_orders_count']=len(response.order)
         account['status']='CURRENT'
         account['updated_at_utc']=datetime.now(timezone.utc).isoformat()
-        account['account_key']=sha256(f'ctrader-demo:{account_id}'.encode()).hexdigest()[:24]
+        account['account_key']=sha256(f'ctrader-{"live" if readonly_live else "demo"}:{account_id}'.encode()).hexdigest()[:24]
         account['pnl_status']='LOADING'
         account['equity']=account['net_unrealized_pnl']=account['xau_net_unrealized_pnl']=None
         if not position_ids:
@@ -216,7 +222,9 @@ def run(config: dict[str, str]) -> None:
             for row in rows:
                 if row['client_order_id']:
                     order_ids[int(row['order_id'])]=row['client_order_id']
-                    emit('order_event',{k:row.get(k) for k in ('client_order_id','order_id','position_id','status','execution_price','updated_at_utc')})
+                    command=request_commands.get(row['client_order_id'])
+                    context=dict(command,closing_side=command.get('side')) if command else None
+                    emit('order_event',history_result(row,context))
 
     def refresh_history() -> None:
         if account_id is None or symbol_id is None or not symbol_rules:return
@@ -245,7 +253,7 @@ def run(config: dict[str, str]) -> None:
         for label, (period, minutes, days) in PERIODS.items():
             now_ms = int(time.time() * 1000)
             request = ProtoOAGetTrendbarsReq(ctidTraderAccountId=account_id,
-                symbolId=symbol_id, period=period, count=120,
+                symbolId=symbol_id, period=period, count=500,
                 fromTimestamp=now_ms - days * 86400000, toTimestamp=now_ms)
             send(request, f'bars_{label}', lambda msg, key=label, span=minutes:
                  bars_received(msg, key, span))
@@ -267,7 +275,7 @@ def run(config: dict[str, str]) -> None:
                 if seed:
                     live_candles.seed(label,seed)
                     publish_forming(label)
-        bars[label] = dict(sorted(bars[label].items())[-120:])
+        bars[label] = dict(sorted(bars[label].items())[-500:])
         emit('bars', {'interval': label, 'bars': list(bars[label].values()),
                       'source': 'ctrader_demo_xauusd', 'closed_only': True})
 
@@ -295,6 +303,7 @@ def run(config: dict[str, str]) -> None:
                                         step_volume_cents=int(symbol.stepVolume), digits=digits)
                     symbol_rules['trading_schedule'] = decode_symbol_schedule(symbol)
                     emit('symbol', dict(symbol_rules))
+                    emit('tick_volume_source',{'source_key':sha256(f'ctrader-{"live" if readonly_live else "demo"}:{account_id}:{symbol_id}'.encode()).hexdigest()})
                     emit('status', {'status': 'CONNECTED', 'scope': scope,
                                     'orders_enabled': selected_demo and scope == 'TRADE'})
         send(ProtoOAAssetListReq(ctidTraderAccountId=account_id), 'assets', asset_listed)
@@ -342,6 +351,11 @@ def run(config: dict[str, str]) -> None:
                       key=lambda item: item.ctidTraderAccountId)
         requested = config.get('CTRADER_ACCOUNT_ID', '')
         selected = next((item for item in demo if str(item.ctidTraderAccountId) == requested), None) if requested else (demo[0] if demo else None)
+        if readonly_live:
+            from scripts.live_readonly_policy import select_live
+            try:selected=select_live(response.ctidTraderAccount,requested)
+            except ValueError:
+                failed('live_account_not_found');return
         if selected is None:
             failed('demo_account_not_found')
             return
@@ -362,6 +376,9 @@ def run(config: dict[str, str]) -> None:
              clientSecret=config['CTRADER_CLIENT_SECRET']), 'application_auth', app_authorized)
 
     def execution_result(event,request_ident=None) -> dict | None:
+        command=request_commands.get(request_ident,{})
+        if command.get('intent')=='PROTECT':
+            return dict(protection_ack(event,command,account_id),client_order_id=request_ident)
         if int(event.ctidTraderAccountId) != account_id or not event.HasField('order'):
             return None
         order = event.order
@@ -373,15 +390,27 @@ def run(config: dict[str, str]) -> None:
             client_order_id=str(order.clientOrderId) if order.HasField('clientOrderId') else ''
         if not client_order_id.startswith('gd-'):
             return None
-        order_ids[int(order.orderId)] = client_order_id
         event_type = int(event.executionType)
+        if event_type==8 and not request_ident:return None
+        if command.get('intent')=='CANCEL':
+            original=order_ids.get(int(order.orderId))
+            if original and original!=request_ident and event_type in (3,11):
+                prior=execution_result(event,original)
+                if prior:emit('order_event',prior)
+            status={5:'CANCELLED',7:'REJECTED',8:'REJECTED'}.get(event_type,'UNKNOWN')
+            return dict(client_order_id=request_ident,status=status,order_id=str(order.orderId),position_id=position_id)
+        order_ids[int(order.orderId)] = client_order_id
         status = {2: 'ACCEPTED', 3: 'FILLED', 5: 'CANCELLED', 6: 'EXPIRED',
-                  7: 'REJECTED', 11: 'PARTIALLY_FILLED'}.get(event_type, 'UNKNOWN')
-        return {'client_order_id': client_order_id, 'status': status,
+                  7: 'REJECTED', 8:'REJECTED',11: 'PARTIALLY_FILLED'}.get(event_type, 'UNKNOWN')
+        result={'client_order_id': client_order_id, 'status': status,
                 'order_id': str(order.orderId),
                 'position_id': position_id,
                 'execution_price': str(order.executionPrice) if order.HasField('executionPrice') else None,
                 'error_code': str(event.errorCode)[:80] if event.HasField('errorCode') else None}
+        command=request_commands.get(client_order_id,{})
+        if command.get('intent')=='CLOSE' and command.get('order_type')=='LIMIT':
+            result=verify_close_ack(result,event,command)
+        return result
 
     def handle_command(command: dict) -> None:
         ident = str(command.get('client_order_id', ''))
@@ -394,16 +423,41 @@ def run(config: dict[str, str]) -> None:
         try:
             volume = int(command['volume_cents'])
             closing=command.get('intent')=='CLOSE'
-            if closing:
+            protection=command.get('intent')=='PROTECT';cancelling=command.get('intent')=='CANCEL'
+            limit_close=closing and command.get('order_type')=='LIMIT'
+            cancelled_original=None
+            if protection:
+                request=ProtoOAAmendPositionSLTPReq(**protection_args(command,account_id,account['positions'],digits))
+            elif cancelling:
+                pending=next((o for o in account.get('pending_orders',[]) if o.get('id')==command.get('order_id') and o.get('position_id')==command.get('position_id') and o.get('intent')=='CLOSE' and o.get('order_type')=='LIMIT'),None)
+                if pending is None:raise ValueError('pending order changed')
+                cancelled_original=order_ids.get(int(command['order_id']))
+                request=ProtoOACancelOrderReq(ctidTraderAccountId=account_id,orderId=int(command['order_id']))
+            elif limit_close:
+                request=ProtoOANewOrderReq(**close_limit_args(command,account_id,symbol_id,account['positions'],digits),clientOrderId=ident,label='Gold Desk DEMO close')
+            elif closing:
                 args=close_request_args(command,account_id,account['positions'])
                 request=ProtoOAClosePositionReq(**args)
             else:
                 request=build_open_request(command,ident,volume)
             request_ids.add(ident)
+            request_commands[ident]=dict(command)
             def order_received(message):
                 if message.payloadType == ProtoOAExecutionEvent().payloadType:
-                    result = execution_result(Protobuf.extract(message),ident)
-                    emit('order_result', result or {'client_order_id': ident, 'status': 'UNKNOWN'})
+                    event=Protobuf.extract(message)
+                    result = protection_ack(event,command,account_id) if protection else execution_result(event,ident)
+                    if limit_close and result:
+                        result=verify_close_ack(result,event,command)
+                        if result.get('error_code')=='UNVERIFIED_CLOSE_ORDER' and event.HasField('order') and int(event.executionType)==2:
+                            # Quarantine an unexpected non-closing pending order;
+                            # never retry it as an ordinary reverse entry.
+                            client.send(ProtoOACancelOrderReq(ctidTraderAccountId=account_id,orderId=int(event.order.orderId)),responseTimeoutInSeconds=12).addErrback(lambda _:None)
+                    if cancelling and result:
+                        if cancelled_original and result['status'] in ('CANCELLED','FILLED','PARTIALLY_FILLED','EXPIRED'):
+                            emit('order_event',dict(result,client_order_id=cancelled_original))
+                        if cancelled_original:order_ids[int(command['order_id'])]=cancelled_original
+                        if result['status'] not in ('CANCELLED','REJECTED'):result=dict(result,status='UNKNOWN')
+                    emit('order_result',dict(result or {'status':'UNKNOWN'},client_order_id=ident))
                     reactor.callLater(1,refresh_account);reactor.callLater(1,refresh_history)
                 elif message.payloadType == ProtoOAOrderErrorEvent().payloadType:
                     event = Protobuf.extract(message)
@@ -493,14 +547,15 @@ def run(config: dict[str, str]) -> None:
                 decoded = decode_bar(item, digits, PERIODS[label][1], int(time.time() * 1000))
                 if decoded:
                     bars[label][decoded['time']] = decoded
-                    bars[label] = dict(sorted(bars[label].items())[-120:])
+                    bars[label] = dict(sorted(bars[label].items())[-500:])
                     emit('bars', {'interval': label, 'bars': list(bars[label].values()),
                                   'source': 'ctrader_demo_xauusd', 'closed_only': True})
 
     client.setConnectedCallback(connected)
     client.setMessageReceivedCallback(message_received)
     client.startService()
-    Thread(target=read_commands, daemon=True, name='ctrader-demo-command-reader').start()
+    if not readonly_live:
+        Thread(target=read_commands, daemon=True, name='ctrader-demo-command-reader').start()
     reactor.callLater(10, heartbeat)
     reactor.run(installSignalHandlers=False)
 

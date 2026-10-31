@@ -7,6 +7,9 @@ from decimal import Decimal
 from .context_rules import market_features, pair_metrics, evaluate_rows, LIMITS
 from .dual_path_retrieval import DualPathIndex, _profit_sign, unavailable as dual_unavailable
 from .candidate_retrieval import summarize_candidate_tier
+from .compact_market import distinct_rows
+from .tick_volume import compare_tick,RULESET,LIMIT
+from collections import Counter
 
 METHOD = 'context_contract_v1'
 THRESHOLDS = LIMITS['medium']
@@ -22,6 +25,10 @@ REJECTION_LABELS = {
     'tail_path':'最近半小時路徑差距超過容忍', 'tail_direction':'最近半小時方向明顯相反',
     'volatility':'波動倍率超過容忍', 'event_unknown':'事件階段不明確',
     'event_stage':'目前事件階段不同',
+    'tick_volume_ratio':'tick報價活躍度差距超過2倍',
+    'tick_volume_unavailable':'歷史tick量資料不足或基準有缺棒',
+    'tick_volume_source':'tick量來源不一致，無法比較',
+    'tick_volume_query':'查詢tick量資料不足，無法比較',
 }
 
 
@@ -31,20 +38,24 @@ def description(features):
             f"ATR／價格 {features['atr_pct']:.4f}%")
 
 
-def unavailable(reason):
+def unavailable(reason,*,tick_enabled=True):
     result = dual_unavailable(reason)
     result.update(rule_status='INSUFFICIENT_DATA', similarity_sufficiency='INSUFFICIENT_DATA',
                   sufficiency=dict(status='insufficient',label='盤面資料不足',reasons=[reason],
                                    matched_groups=0,is_success_probability=False))
     result['comparison'].update(method=METHOD,basis='context_rules',thresholds=dict(THRESHOLDS),
                                 parameters_validated=False,eligible_rows=0,passed_rows=0,
-                                passed_unique=0,rejections={},rejection_labels=REJECTION_LABELS)
+                                passed_unique=0,rejections={},rejection_labels=REJECTION_LABELS,
+                                ruleset=RULESET if tick_enabled else 'context_price_v1',
+                                tick_volume=dict(enabled=tick_enabled,limit=str(LIMIT),query_status='UNAVAILABLE',query_reason=reason,query_relative=None))
     return result
 
 
 class ContextIndex(DualPathIndex):
-    def __init__(self,cases,profiles):
+    def __init__(self,cases,profiles,*,tick_volume_store=None):
         super().__init__(cases,profiles)
+        self.profiles=profiles
+        self.tick_volume_store=tick_volume_store
         self.features = {}
         for case in self.cases:
             try:
@@ -60,20 +71,44 @@ class ContextIndex(DualPathIndex):
             q = market_features(query)
             pool,counts = self.eligible(query,side,exclude_group)
         except (KeyError,TypeError,ValueError,ArithmeticError) as exc:
-            return unavailable(str(exc) or 'CONTEXT_QUERY_UNAVAILABLE')
+            return unavailable(str(exc) or 'CONTEXT_QUERY_UNAVAILABLE',tick_enabled=self.tick_volume_store is not None)
         measured = [dict(case_id=case['id'],group=case['group'],
                          **pair_metrics(q,self.features[case['id']])) for case in pool]
         evaluated = evaluate_rows(measured,self.descriptions,THRESHOLDS,top_k=len(pool) or 1)
         ranked = evaluated['rows']
+        tick=dict(enabled=self.tick_volume_store is not None)
+        volume_rejections=Counter()
+        if self.tick_volume_store is not None:
+            qtick=query.get('tick_volume') or dict(status='UNAVAILABLE',reason='QUERY_VOLUME_UNAVAILABLE')
+            tick.update(ruleset=RULESET,limit=str(LIMIT),query_status=qtick.get('status'),query_reason=qtick.get('reason'),
+                query_relative=qtick.get('relative_volume_ratio') if qtick.get('status')=='AVAILABLE' else None,
+                basis='券商原生報價活躍度，非成交量；歷史tick量為獨立原生資料參考，不貼入舊OHLC')
+            retained=[]
+            reference=self.tick_volume_store.capture() if callable(getattr(self.tick_volume_store,'capture',None)) else self.tick_volume_store.reference
+            if qtick.get('status')!='AVAILABLE':volume_rejections['tick_volume_query']=len(evaluated['_passed_rows'])
+            else:
+                for row in evaluated['_passed_rows']:
+                    cframe=reference(row['case_id'],self.profiles[row['case_id']])
+                    check=compare_tick(qtick,cframe)
+                    if check['passed']:retained.append(dict(row,tick_comparison=check))
+                    else:
+                        key='tick_volume_ratio' if check['reason']=='TICK_RATIO_EXCEEDS_LIMIT' else 'tick_volume_source' if check['reason']=='SOURCE_MISMATCH' else 'tick_volume_unavailable'
+                        volume_rejections[key]+=1
+            ranked=distinct_rows(retained,self.descriptions,top_k=None)
+            tick.update(retained_rows=len(retained))
         summary = summarize_candidate_tier(ranked,self.lookup)
         counts_out = summary['counts']; known = summary['total']-counts_out['unknown']
         status = ('UNCERTAIN_EVENT' if q['event']=='BOUNDARY_UNKNOWN' else
-                  'NO_COMPARABLE_CASES' if not pool else 'PASSED' if ranked else 'NO_RULE_MATCH')
+                  'NO_COMPARABLE_CASES' if not pool else
+                  'INSUFFICIENT_DATA' if tick.get('enabled') and tick.get('query_status')!='AVAILABLE' else
+                  'INSUFFICIENT_DATA' if tick.get('enabled') and not ranked and (volume_rejections['tick_volume_unavailable'] or volume_rejections['tick_volume_source']) else
+                  'PASSED' if ranked else 'NO_RULE_MATCH')
         reason = {
             'PASSED':'各項差距均通過目前試驗容忍；按最大標準化差距、合計及編號排序，群與盤面時點去重。',
             'NO_COMPARABLE_CASES':'沒有同方向、已成熟且觀察窗口不重疊的完整雙週期歷史案例。',
             'NO_RULE_MATCH':'有可比較的歷史案例，但沒有案例通過全部情境條件；未補入未通過的近鄰。',
             'UNCERTAIN_EVENT':'當前收盤位於參考區間邊界附近，事件階段尚不明確，暫不判定符合案例。',
+            'INSUFFICIENT_DATA':'查詢或歷史五分鐘原生tick量不可比較（來源／缺量／連續基準不足），未沿用不含量能的舊結果。',
         }[status]
         displayed = []
         for row in ranked[:top_k]:
@@ -92,6 +127,9 @@ class ContextIndex(DualPathIndex):
                 match_reasons=['買賣方向相同','事件階段相同','末段方向不相反','雙週期與末段路徑、波動均通過試驗容忍'],
                 differences=['通過自定試驗規則，不是經人工校準的相似機率',
                              '參考行情依來源時間模型定位；券商原始時鐘尚未獨立核實'])
+            if tick['enabled']:
+                safe['tick_comparison']=row['tick_comparison']
+                safe['match_reasons'].append('五分鐘相對tick報價活躍度差距不超過2倍')
             displayed.append(safe)
         passed = status=='PASSED'
         return dict(total=len(ranked),wins=counts_out['win'],losses=counts_out['loss'],flat=counts_out['flat'],
@@ -102,11 +140,11 @@ class ContextIndex(DualPathIndex):
             query_status='candidate_only',query_reason=None,candidate_market_unavailable_reason=None,
             comparison=dict(mode='candidate_market',method=METHOD,basis='context_rules',alignment_scope='PROJECT_REFERENCE',
                 clock_status='UNKNOWN',independent_clock_verified=False,market_features_enabled=True,parameters_validated=False,
-                thresholds=dict(THRESHOLDS),query_market_text=description(q),query_event_stage=q['event'],
+                thresholds=dict(THRESHOLDS),tick_volume=tick,ruleset=RULESET if tick['enabled'] else 'context_price_v1',query_market_text=description(q),query_event_stage=q['event'],
                 query_event_label=EVENT_LABELS[q['event']],query_tail_direction=TAIL_LABELS[q['tail_direction']],
-                full_pool=len(pool),eligible_rows=len(pool),passed_rows=evaluated['passed_rows'],passed_unique=len(ranked),
+                full_pool=len(pool),eligible_rows=len(pool),context_passed_rows=evaluated['passed_rows'],passed_rows=tick.get('retained_rows',evaluated['passed_rows']),passed_unique=len(ranked),
                 excluded_overlap_rows=counts['excluded_overlap_rows'],excluded_invalid_profiles=self.invalid_profiles,
-                rejections=evaluated['rejections'],first_rejection=evaluated['first_rejection'],
+                rejections=dict(Counter(evaluated['rejections'])+volume_rejections),first_rejection=dict(Counter(evaluated['first_rejection'])+volume_rejections),
                 rejection_labels=REJECTION_LABELS,reason=reason),
             sufficiency=dict(status='limited' if passed else 'insufficient',label='符合試驗情境條件' if passed else '本次無符合案例',
                 reasons=[reason,'容忍值尚未經新日期人工校準'],matched_groups=len(displayed),is_success_probability=False),

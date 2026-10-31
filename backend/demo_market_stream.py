@@ -19,7 +19,7 @@ from .demo_quote_bridge import CONFIG, PRODUCT, sanitize_quote_result
 
 
 _ORDER_PROGRESS = {'UNKNOWN': 0, 'ACCEPTED': 1, 'PARTIALLY_FILLED': 2,
-                   'REJECTED': 3, 'CANCELLED': 3, 'EXPIRED': 3, 'FILLED': 4}
+                   'REJECTED': 3, 'CANCELLED': 3, 'EXPIRED': 3, 'FILLED': 4,'APPLIED':4}
 
 
 def _advance_order(previous: dict | None, incoming: dict) -> dict:
@@ -30,7 +30,8 @@ def _advance_order(previous: dict | None, incoming: dict) -> dict:
 
 
 class DemoMarketStream:
-    def __init__(self) -> None:
+    def __init__(self, *, config_path=CONFIG, module='scripts.stream_ctrader_demo') -> None:
+        self.config_path,self.module=config_path,module
         self._lock = Lock()
         self._process: subprocess.Popen | None = None
         self._retry_after = 0.0
@@ -43,11 +44,13 @@ class DemoMarketStream:
         self._history: dict[str, dict] = {}
         self._symbol: dict | None = None
         self._orders_enabled = False
+        self._tick_volume_source_key = None
         self._order_results: dict[str, dict] = {}
+        self._commands:dict[str,dict]={}
         self._waiting: dict[str, Event] = {}
 
     def _start(self) -> None:
-        if not CONFIG.is_file():
+        if not self.config_path.is_file():
             self._status = 'NOT_CONFIGURED'
             return
         if self._process is not None and self._process.poll() is None:
@@ -62,12 +65,13 @@ class DemoMarketStream:
         self._history = {}
         self._forming = {}
         self._symbol = None
+        self._tick_volume_source_key = None
         self._orders_enabled = False
         self._status = 'CONNECTING'
         try:
             flags = subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0
             process = subprocess.Popen(
-                [sys.executable, '-u', '-m', 'scripts.stream_ctrader_demo'],
+                [sys.executable, '-u', '-m', self.module],
                 cwd=PRODUCT, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                 text=True, encoding='utf-8', bufsize=1, creationflags=flags)
         except OSError:
@@ -97,6 +101,8 @@ class DemoMarketStream:
                         self._orders_enabled = bool(data.get('orders_enabled'))
                     elif kind == 'symbol':
                         self._symbol = data
+                    elif kind == 'tick_volume_source':
+                        self._tick_volume_source_key = data.get('source_key')
                     elif kind == 'quote':
                         self._quote = sanitize_quote_result(
                             {'quote_status': data.get('freshness'), 'quote': data})
@@ -171,12 +177,14 @@ class DemoMarketStream:
             self._start()
             value = self._snapshot_locked()
             value['bars'] = deepcopy(self._bars)
+            value['tick_volume_source_key'] = self._tick_volume_source_key
             return value
 
     def place_order(self, command: dict, timeout: float = 15) -> dict:
         ident = str(command['client_order_id'])
         waiting = Event()
         with self._lock:
+            self._commands[ident]=deepcopy(command)
             self._start()
             if not self._snapshot_locked()['order_connection']:
                 return {'client_order_id': ident, 'status': 'REJECTED',
@@ -208,7 +216,11 @@ class DemoMarketStream:
             if data.get('status')=='CURRENT':
                 row=next((r for r in data.get('items',[]) if r.get('client_order_id')==ident),None)
                 if row:
-                    history={key:row.get(key) for key in ('client_order_id','order_id','position_id','status','execution_price','updated_at_utc')}
+                    from .order_binding import history_result
+                    command=self._commands.get(ident)
+                    context=dict(command,closing_side=command.get('side')) if command else None
+                    history=history_result(row,context)
+                    if not context and latest and latest.get('error_code')=='UNVERIFIED_CLOSE_ORDER':return deepcopy(latest)
                     latest=_advance_order(latest,history)
             return deepcopy(latest)
 

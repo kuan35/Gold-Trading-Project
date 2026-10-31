@@ -16,7 +16,7 @@ test('DEMO close control identifies its source and exposes a ready full-position
   assert.match(html,/>平倉<\/button>/);
   assert.match(html,/cTrader DEMO/);
   assert.match(html,/全部剩餘/);
-  assert.doesNotMatch(html,/<button[^>]*disabled/);
+  assert.doesNotMatch(html,/<button[^>]*disabled[^>]*>平倉<\/button>/);
   assert.equal(brokerCloseReady(market,'123'),true);
 });
 

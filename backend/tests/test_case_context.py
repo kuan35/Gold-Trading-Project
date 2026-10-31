@@ -101,7 +101,8 @@ def test_external_explanation_payload_does_not_include_new_local_representative_
     context=dict(source='ctrader_demo_xauusd',as_of_utc='2027-01-15T08:00:00+00:00',
         quote_time_utc='2027-01-15T08:00:00+00:00',status='CURRENT',facts=facts,case_comparison=detail)
     payloads=[]
-    def explain(_draft,_question,*,catalog,system_prompt):
+    def explain(_draft,_question,*,catalog,system_prompt,request_opt_in):
+        assert request_opt_in is True
         payloads.append(catalog)
         return dict(status='unavailable')
     monkeypatch.setattr(live_assistant,'explain_context',explain)

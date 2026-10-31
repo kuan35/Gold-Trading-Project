@@ -1,11 +1,14 @@
+import ChartWorkspaceTools,{type ChartRuntime} from './ChartWorkspaceTools';
 import {chartTheme} from './chartTheme';
-import {useEffect,useRef} from 'react';
+import {useEffect,useRef,useState} from 'react';
 import {createChart,CandlestickSeries,LineSeries,ColorType,createSeriesMarkers,type UTCTimestamp,type Logical} from 'lightweight-charts';
 import {layerCoordinate} from './analysisChartCoordinates';
 import type {Bar} from './types';
 export type Layer={id:string;kind:'line'|'region'|'marker';label:string;price?:string;time?:number;start_time?:number;end_time?:number;high?:string;low?:string};
 export type AnalysisFrame={bars:Omit<Bar,'volume'>[];layers:Layer[];quality:unknown};
-export default function AnalysisChart({frame,light,ariaLabel,focus}:{frame:AnalysisFrame;light:boolean;ariaLabel:string;focus?:string}){
+export default function AnalysisChart({frame,light,ariaLabel,focus,scope}:{frame:AnalysisFrame;light:boolean;ariaLabel:string;focus?:string;scope?:string}){
+ const [toolsRuntime,setToolsRuntime]=useState<ChartRuntime|null>(null);
+ const saved=useRef<{key:string;range:{from:number;to:number}|null}|null>(null);
  const host=useRef<HTMLDivElement>(null),overlay=useRef<SVGSVGElement>(null);
  useEffect(()=>{if(!host.current||!frame.bars.length)return;
   const palette=chartTheme(light),ink=palette.text,line=palette.grid;
@@ -20,8 +23,9 @@ export default function AnalysisChart({frame,light,ariaLabel,focus}:{frame:Analy
    const start=coordinate(l.start_time),end=coordinate(l.end_time),top=candles.priceToCoordinate(Number(l.high)),bottom=candles.priceToCoordinate(Number(l.low));
    if(start===null||end===null||top===null||bottom===null)continue;const rect=document.createElementNS('http://www.w3.org/2000/svg','rect');rect.setAttribute('x',String(Math.min(start,end)));rect.setAttribute('y',String(Math.min(top,bottom)));rect.setAttribute('width',String(Math.max(2,Math.abs(end-start))));rect.setAttribute('height',String(Math.max(2,Math.abs(bottom-top))));rect.setAttribute('fill',l.id===focus?'#efbd6930':l.id.includes('recent')?'#64d6a414':'#efbd6915');rect.setAttribute('stroke',l.id===focus?(light?'#1b344a':'#f8f9fc'):l.id.includes('recent')?'#64d6a4':'#efbd69');rect.setAttribute('stroke-width',l.id===focus?'2':'1');rect.setAttribute('stroke-dasharray','4 4');svg.append(rect);
   }};
-  chart.timeScale().fitContent();chart.timeScale().subscribeVisibleLogicalRangeChange(paint);const ro=new ResizeObserver(()=>requestAnimationFrame(paint));ro.observe(host.current);const raf=requestAnimationFrame(paint);
-  return()=>{cancelAnimationFrame(raf);ro.disconnect();chart.remove();};
+  const state={chart,candles,active:true};setToolsRuntime(state);chart.timeScale().fitContent();
+  const sourceKey=frame.bars.map(b=>b.time).join(',');if(saved.current?.key===sourceKey&&saved.current.range)chart.timeScale().setVisibleLogicalRange(saved.current.range);chart.timeScale().subscribeVisibleLogicalRangeChange(paint);const ro=new ResizeObserver(()=>requestAnimationFrame(paint));ro.observe(host.current);const raf=requestAnimationFrame(paint);
+  return()=>{cancelAnimationFrame(raf);ro.disconnect();saved.current={key:sourceKey,range:chart.timeScale().getVisibleLogicalRange()};state.active=false;setToolsRuntime(null);chart.remove();};
  },[frame,light,focus]);
- return <div className="cw-chart-wrap"><div ref={host} className="cw-analysis-canvas" role="img" aria-label={ariaLabel}/><svg ref={overlay} className="cw-chart-overlay" aria-hidden="true"/></div>;
+ return <div className="cw-chart-wrap gd-chart-workspace" style={{height:440}}><ChartWorkspaceTools runtime={toolsRuntime} bars={frame.bars} scope={scope??`${ariaLabel}:${frame.bars[0]?.time}:${frame.bars.at(-1)?.time}`}/><div className="gd-chart-plot"><div ref={host} className="cw-analysis-canvas" role="img" aria-label={ariaLabel}/><svg ref={overlay} className="cw-chart-overlay" aria-hidden="true"/></div></div>;
 }

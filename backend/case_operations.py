@@ -1,6 +1,7 @@
 """Frozen local presentation of visible operations; never ranking/model input."""
 from decimal import Decimal,InvalidOperation
 from .case_context import representative
+from .trade_result import trade_result
 
 MAX_ROWS=100
 
@@ -25,12 +26,12 @@ def build_case_operations(source):
             side=rep['side'],lot=rep['lot'],entry=decimal_text(row.get('entry'),True),exit=decimal_text(row.get('exit'),True),
             profit=rep['profit'],currency=rep['currency'],result=rep['result'],
             role=row.get('role')[:80] if isinstance(row.get('role'),str) else None,
-            ordering_uncertain=row.get('ordering_uncertain') is True))
+            ordering_uncertain=row.get('ordering_uncertain') is True,price_result=trade_result(row)))
     truncated=len(rows)>MAX_ROWS or total is not None and total>len(rows)
     coverage=('COUNT_CONFLICT' if total is not None and total<len(rows) else
               'PARTIAL' if truncated else 'VISIBLE_ONLY')
     return dict(status='AVAILABLE' if displayed else 'UNAVAILABLE',representative=dict(representative(source),
-        entry=decimal_text(source.get('entry'),True),exit=decimal_text(source.get('exit'),True)),rows=displayed,
+        entry=decimal_text(source.get('entry'),True),exit=decimal_text(source.get('exit'),True),price_result=trade_result(source)),rows=displayed,
         provided_rows=len(rows),displayed_rows=len(displayed),reported_total=total,truncated=truncated,coverage=coverage,
         limitations=['僅為來源可見的同群操作序列，不保證完整帳戶、獨立決策或完整群組。',
                     '每列結果是原報表單筆結果；幣別逐列判斷，未載不繼承或補零，不合計成全群淨損益。',

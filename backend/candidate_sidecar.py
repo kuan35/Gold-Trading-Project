@@ -133,7 +133,9 @@ def load_candidate_sidecar(case_path, sidecar_path, private_root):
                     return {}, 'INVALID'
                 by_id[case_id] = marker
         ready = {case_id: dict(profile, reference_alignment='PROJECT_REFERENCE',
-                               reference_clock_basis=by_id[case_id]['candidate_clock_basis'])
+                               reference_clock_basis=by_id[case_id]['candidate_clock_basis'],
+                               reference_open_utc=_utc_second(by_id[case_id]['candidate_open_utc']),
+                               reference_close_utc=_utc_second(by_id[case_id]['candidate_close_utc']))
                  for case_id, profile in profiles.items()
                  if case_id in by_id and _reference_ready(by_id[case_id], profile)}
         return ready, 'READY'

@@ -12,11 +12,12 @@ from threading import RLock
 from uuid import uuid4
 
 from .engine import DomainError, amount, money
+from .position_management import PositionManagement
 
 
 D = Decimal
 JOURNAL = Path(__file__).resolve().parents[1] / 'private' / 'broker_demo_orders.sqlite3'
-KNOWN_RESULTS = {'UNKNOWN','ACCEPTED','PARTIALLY_FILLED','FILLED','REJECTED','CANCELLED','EXPIRED'}
+KNOWN_RESULTS = {'UNKNOWN','ACCEPTED','PARTIALLY_FILLED','FILLED','REJECTED','CANCELLED','EXPIRED','APPLIED'}
 
 def _known_result(value):
     return isinstance(value,str) and value in KNOWN_RESULTS
@@ -44,9 +45,9 @@ def _checked_snapshot(snapshot: dict) -> tuple[dict, dict, dict]:
 
 
 def _account_signature(account: dict) -> str:
-    positions = sorted((p['id'], p['side'], p['volume_units'], p.get('entry'))
+    positions = sorted((p['id'], p['side'], p['volume_units'], p.get('entry'),p.get('sl'),p.get('tp'),p.get('trailing_stop_loss'),p.get('guaranteed_stop_loss'))
                        for p in account.get('positions', []))
-    pending = sorted((p['id'], p['side'], p['volume_units'], p.get('limit_price'))
+    pending = sorted((p['id'], p['side'], p['volume_units'], p.get('limit_price'),p.get('intent'),p.get('position_id'),p.get('sl'),p.get('tp'))
                      for p in account.get('pending_orders', []))
     return json.dumps({'account_key':account.get('account_key'),'positions': positions, 'pending': pending}, separators=(',', ':'))
 
@@ -89,7 +90,7 @@ def _close_position(account: dict, position_id: str) -> tuple[dict, int]:
     return position, int(volume)
 
 
-class BrokerOrders:
+class BrokerOrders(PositionManagement):
     def __init__(self, stream, journal: Path = JOURNAL) -> None:
         self.stream = stream
         self.journal = journal
@@ -115,6 +116,10 @@ class BrokerOrders:
 
     def _refresh_result(self, db, draft_id: str, ident: str, stored: dict) -> dict:
         latest = self.stream.order_status(ident)
+        if isinstance(latest,dict) and latest.get('history_reconciled'):
+            from .order_binding import checked_close_history
+            context=json.loads(db.execute('SELECT context_json FROM submissions WHERE draft_id=?',(draft_id,)).fetchone()[0])
+            latest=checked_close_history(latest,latest,context)
         if isinstance(latest,dict) and _known_result(latest.get('status')) and latest['status']!='UNKNOWN':
             from .demo_market_stream import _advance_order
             updated = _advance_order(stored, latest)
@@ -142,6 +147,11 @@ class BrokerOrders:
                 return '既有送單回報紀錄無法核對；請先至 cTrader 核對，勿重送'
             current,previous=account.get('account_key'),context.get('account_key')
             if current and previous and current!=previous:continue
+            if stored.get('status')=='APPLIED':
+                try:
+                    if datetime.fromisoformat(account.get('updated_at_utc','').replace('Z','+00:00'))<=datetime.fromisoformat(stored.get('status_observed_at_utc','').replace('Z','+00:00')):
+                        return '請等待帳戶更新後再修改停損停利'
+                except (ValueError,TypeError):return '請等待帳戶更新後再修改停損停利'
             if _known_result(stored.get('status')) and stored['status']!='UNKNOWN':continue
             result=self._refresh_result(db,draft_id,ident,stored)
             if not _known_result(result.get('status')) or result['status']=='UNKNOWN':
@@ -249,26 +259,31 @@ class BrokerOrders:
             self.drafts[draft['id']] = draft
         return self._public_draft(draft)
 
-    def create_close(self, snapshot: dict, position_id: str) -> dict:
+    def create_close(self, snapshot: dict, position_id: str, *,order_type='MARKET',limit_price=None) -> dict:
         quote, account, symbol = _checked_snapshot(snapshot)
         position, volume_cents = _close_position(account, position_id)
         lot_size_cents = _positive_int(symbol.get('lot_size_cents'), '合約大小')
         bid, ask = amount(quote['bid'], '賣出價'), amount(quote['ask'], '買進價')
         if ask < bid:
             raise DomainError('券商雙向報價無效', 503)
+        if order_type not in ('MARKET','LIMIT'):raise DomainError('平倉單型無效')
+        limit=_price(limit_price,'平倉限價',symbol['digits']) if order_type=='LIMIT' else None
+        if order_type=='LIMIT' and (limit is None or (limit<=bid if position['side']=='BUY' else limit>=ask)):
+            raise DomainError('限價平倉須設定優於目前平倉報價的目標價')
         now = datetime.now(timezone.utc)
         draft = dict(id=uuid4().hex, revision=1, source='ctrader_demo_xauusd',
                      environment='demo', status='REVIEW', intent='CLOSE', action='CLOSE',
                      position_id=position_id, side=position['side'],
-                     lot=str(D(volume_cents) / lot_size_cents), order_type='MARKET',
+                     lot=str(D(volume_cents) / lot_size_cents), order_type=order_type,
                      price=str(bid if position['side'] == 'BUY' else ask),
-                     limit_price=None, sl=None, tp=None,
+                     limit_price=str(limit) if limit is not None else None, sl=None, tp=None,
                      created_at_utc=now.isoformat(), expires_at_utc=(now + timedelta(seconds=30)).isoformat(),
                      quote_time_utc=quote['source_time_utc'], account_signature=_account_signature(account),
                      account_key=account['account_key'], currency=account.get('currency'),
                      volume_cents=volume_cents, lot_size_cents=lot_size_cents, symbol_rules=dict(symbol),
                      explanation='確認後將以市價平倉此 cTrader DEMO 部位的全部剩餘數量；參考報價不等於實際成交價。')
         with self.lock:
+            if order_type=='LIMIT':draft['explanation']='確認後掛原部位綁定的反方向限價平倉單，等待指定價或更好價格；可於待成交區取消，實際接受與成交以券商回報為準。'
             with self._db() as db:
                 db.execute('BEGIN IMMEDIATE')
                 conflict = self._close_conflict(db, account, position_id)
@@ -310,6 +325,8 @@ class BrokerOrders:
             quote, account, symbol = _checked_snapshot(snapshot)
             if _account_signature(account) != draft['account_signature'] or symbol != draft['symbol_rules']:
                 raise DomainError('券商帳戶或商品規格已變，請重建草稿', 409)
+            if draft.get('intent') in ('PROTECT','CANCEL'):
+                return self._confirm_management(draft,key,quote,account,symbol)
             closing = draft.get('intent') == 'CLOSE'
             if closing:
                 position, volume_cents = _close_position(account, draft['position_id'])
@@ -320,7 +337,9 @@ class BrokerOrders:
             if abs(now_price - D(draft['price'] if draft['order_type'] == 'MARKET' else
                                  draft['limit_price'])) > D('0.50') and draft['order_type'] == 'MARKET':
                 raise DomainError('DEMO 報價變動超過 0.50 美元，請重建草稿', 409)
-            if draft['order_type'] == 'LIMIT' and (
+            if closing and draft['order_type']=='LIMIT' and (D(draft['limit_price'])<=amount(quote['bid'],'賣出價') if draft['side']=='BUY' else D(draft['limit_price'])>=amount(quote['ask'],'買進價')):
+                raise DomainError('平倉限價與最新報價關係已變，請重建草稿',409)
+            if not closing and draft['order_type'] == 'LIMIT' and (
                 draft['side'] == 'BUY' and D(draft['limit_price']) >= amount(quote['ask'], '買進價') or
                 draft['side'] == 'SELL' and D(draft['limit_price']) <= amount(quote['bid'], '賣出價')):
                 raise DomainError('指定限價與最新報價關係已變，請重建草稿', 409)
@@ -331,6 +350,7 @@ class BrokerOrders:
             if closing:
                 command = {'client_order_id': ident, 'intent': 'CLOSE',
                            'position_id': draft['position_id'], 'volume_cents': draft['volume_cents']}
+                if draft['order_type']=='LIMIT':command.update(order_type='LIMIT',limit_price=draft['limit_price'],side='SELL' if draft['side']=='BUY' else 'BUY')
             elif draft['order_type'] == 'MARKET':
                 reference = D(draft['price'])
                 for name, field in (('sl', 'relative_sl'), ('tp', 'relative_tp')):
@@ -345,8 +365,9 @@ class BrokerOrders:
                        'message': '已保留防重送紀錄；券商回報待確認。'}
             with self._db() as db:
                 db.execute('BEGIN IMMEDIATE')
-                conflict = self._close_conflict(db, account, draft['position_id']) if closing else self._uncertain_submission(db,account)
-                context={key:draft.get(key) for key in ('intent','position_id','side','lot','order_type','price','limit_price','sl','tp','account_key','currency')}
+                conflict = self._close_conflict(db,account,draft['position_id']) if closing else None
+                if not conflict:conflict=self._uncertain_submission(db,account)
+                context={key:draft.get(key) for key in ('intent','position_id','side','lot','volume_cents','order_type','price','limit_price','sl','tp','account_key','currency')}
                 if not conflict:
                     db.execute('INSERT INTO submissions (draft_id,idempotency_key,client_order_id,status,result_json,created_at_utc,context_json) VALUES (?,?,?,?,?,?,?)',
                                (draft_id, key, ident, 'UNKNOWN', json.dumps(initial),

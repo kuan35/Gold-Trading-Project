@@ -93,7 +93,7 @@ def evaluate_rows(rows,descriptions,limits,*,components='full',top_k=5):
     key=lambda r:(r['score_max'],r['score_sum'],r['case_id'])
     passed.sort(key=key);scored.sort(key=key)
     unique=distinct_rows(passed,descriptions,top_k=None)
-    return dict(rows=unique[:top_k],passed_rows=len(passed),passed_unique=len(unique),
+    return dict(rows=unique[:top_k],_passed_rows=passed,passed_rows=len(passed),passed_unique=len(unique),
                 rejections=dict(sorted(rejections.items())),first_rejection=dict(sorted(first_rejection.items())),
                 nearest_rejected=[r for r in scored if r['reasons']][:10],
                 _passed_ids={r['case_id'] for r in passed})

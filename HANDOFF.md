@@ -1,34 +1,32 @@
-# Gold Desk 交接紀錄
+# Gold Desk 本機產品交接
 
-## 2026-10-27 — 後端架站交接與本機新版原碼同步（Codex）
+## 2026-10-31 — Windows／macOS 分發與Codex接頭
 
-- 以原研究工作區 `product/` 精確白名單同步產品原碼：`backend/` 的後續情境／5分鐘側檔／0.12中檔規則、`frontend/src/` 聊天工作台與同案例前後K線、相關測試、`scripts/build_case_outcomes.py`、`API_CONTRACT.md`及直接相關文件。新增 `docs/team_handoff_20261027/BACKEND_DEPLOYMENT.md`，明定先照現有React介面接齊後端、驗收後再加額外介面，並寫明GitHub共編與Render部署分支。公開 `frontend/public/data/` 三檔未擴大或更改。
-- 此提交只交付程式與文件；GitHub Pages仍是合成瀏覽器示範。私人案例、行情與新 `case_forward_outcomes.json` v2、帳戶憑證、金鑰、SQLite與QA不入Git；資料擁有者本機另備受控 `GoldDesk_PRIVATE_CASE_DATA_20261027_v2.zip`，交接前驗證包內SHA。來源時鐘仍UNKNOWN，PROJECT_REFERENCE與人評未完成的界線不變。
-- 在公開checkout執行 `python -B -X utf8 -m pytest -q backend/tests research/test_context_similarity_ab.py research/test_assistant_case_acceptance.py`：509 passed、1 skipped、既有Starlette提示；`frontend/npm test`：110 passed；`npm run build`及`npm run build:pages`成功（既有chunk大小提示）。首次受限環境阻斷本機測試通訊，已停止該程序並在允許本機通訊的環境完整重跑通過。`git diff --cached --check`通過，61個暫存檔經白名單與憑證樣式掃描；根工作區243份原始報表及根PDF／PNG／DOCX／m4a SHA-256零變更。
-- branch `main`／commit N/A（本條記錄寫於提交前）。阻礙：完整雲端後端、使用者授權與持久資料尚由後端同學實作；公開Pages成功不代表DEMO連線。下一步：同學依新交接文件開 `codex/` 分支，交付受保護的常駐服務、PR與實際驗收網址。
+安裝先讀README.md、AI_SETUP.md、docs/LOCAL_INSTALL.md；介面沿用frontend，
+後端沿用backend，不需要重建或先架雲端站。TEAM_HANDOFF.md的舊架站紀錄僅供背景。
 
-## 2026-10-23：最新工作台與前後端分工交接
+- 新增Codex官方CLI文字接頭，逐請求選擇Codex／Claude Code／程式解讀／API；
+  Codex模型與思考程度來自本人metadata。沒有自動付費推論或借用開發聊天。
+- Windows setup.ps1/start-local.ps1與macOS setup.sh/start-local.sh共用
+  scripts/local_app.py；保留.env、單worker、127.0.0.1:8765、診斷不印憑證。
+- scripts/data_bundle.py只匯出授權runtime資料；manifest、SHA、完整runtime載入、
+  路徑／大小／鎖／還原驗證。私人包另行由資料擁有者分享，不公開上GitHub。
+- 每人自己的cTrader DEMO與官方CLI登入；個人OAuth、refresh、量能來源重建詳見
+  安裝指南。不得為了跨帳戶可用而移除tick source檢查。LIVE維持唯讀。
+- 公開程式MIT，資料與第三方另依DATA_POLICY.md及THIRD_PARTY_NOTICES.md。
+  用scripts/package_local.py準備精確白名單，勿git add作者研究工作區或private。
 
-本次以 c9a3396 為基準，同步最新深灰金色聊天工作台及即時／回放／案例等分頁；31個精確白名單路徑，另更新本交接紀錄。新增 DeskChrome／DeskRouteFrame、帳戶 tray、唯讀文字紀錄、趨勢支持／反向訊號、圖表共用色票與分頁樣式，保留共用草稿、固定快照、確認／版本／防重送與 UNKNOWN。後端僅修正啟動時 quote 時間戳缺值回 UNAVAILABLE，沒有改相似規則或 API。
+驗證：獨立Windows安裝包執行python -m scripts.local_app setup（含pip、npm ci、
+build）與重跑成功，doctor為synthetic_demo／program／券商未設定；首頁與JS HTTP200。
+完整後端pytest621 passed，frontend npm test143 passed，npm run build及build:pages成功。
+原作者工作區完整620 passed、1 skipped；私人包379檔還原，11,902案例／10,887參考
+盤面與進出場／後續／量能索引通過。未使用原始對帳單作安裝必需檔。
 
-[TEAM_HANDOFF.md](TEAM_HANDOFF.md) 是共同入口；[前端](docs/team_handoff_20261023/FRONTEND.md)、[後端](docs/team_handoff_20261023/BACKEND.md) 各有模組位置、已完成／待辦、驗收與可貼給 Codex 的任務。兩位 clone 相同 commit，再各開 codex/frontend-deploy、codex/backend-deploy 分支。架站順序與受控資料需求見 [DEPLOYMENT.md](docs/team_handoff_20261023/DEPLOYMENT.md)。
+一次獨立review發現部分但SHA正確的包也可覆寫案例，已回歸測試重現並修正為
+匯入前驗完整runtime；收據寫入失敗亦還原。清潔安裝還發現缺demo-data.json，
+已補精確白名單與回歸測試。既有Starlette/httpx棄用與大bundle提示保留。
 
-發布包 fresh 驗證：`python -B -X utf8 -m pytest -q backend/tests research/test_context_similarity_ab.py research/test_assistant_case_acceptance.py` 得462 passed、1 skipped；`npm test` 得101 passed；`npm run build` 及 `npm run build:pages` 成功。保留原 chunk 大小與 FastAPI/httpx 提示。前兩輪已完成本機桌面與手機互動驗收，本次重跑公開包測試／建置；沒有真 DEMO 下單、平倉或外部模型呼叫。
-
-既有公開三份data JSON未改；私人案例包、金鑰、帳戶設定、提交日誌、原始資料與QA未加入。掃描命中的兩項key字串已逐一核對為遮蔽功能的固定合成測試值；其餘無憑證模式命中。文件連結與diff空白另檢查，收據留原工作區private目錄。
-
-一般 build＋FastAPI 包含完整新聊天工作台；Pages 仍為靜態展示入口，保留原瀏覽器聊天與合成回放。推送會觸發 verify 及 Pages workflow，是否成功以此 commit 的 Actions 為準；完整受保護雲端後端仍待同學部署，登入／資源隔離／持久資料／單owner串流是下一步。相似檢索獨立盲評未完成，不報準確率。branch main；提交以本條紀錄所在 git commit 為準。
-
-## 2026-10-23：同步最新產品程式與架站交接
-
-入口：[TEAM_HANDOFF.md](TEAM_HANDOFF.md)，包含可直接貼給前端／後端同學Codex的任務。[架站工作](docs/team_handoff_20261023/DEPLOYMENT.md)仍待實作及驗收，這次推送不是完整雲端後端已部署的聲明。
-
-同步React聊天工作台與可調聊天大小、共用草稿、固定快照、案例對照、cTrader形成棒／已收棒、持倉／損益／紀錄／確認式平倉、Groq盤面解讀與tick量分析，以及context_contract_v1核心和相關測試。Pages繼續使用獨立合成回放及舊公開索引；一般build才接FastAPI。既有公開data三檔未改。
-
-未包含private/、憑證、原始對帳單、私人行情／索引、委託日誌及QA。乾淨clone可以示範啟動，不等於真實案例側檔與券商已設定；資料需求見DEPLOYMENT.md。原工作區保留完整本機收據與原件SHA驗證。
-
-乾淨發布包重跑：Python後端與兩份研究回歸458 passed、1 skipped；前端npm ci後86 passed；一般build及build:pages成功。修正一項圖集路由測試對本機private圖集的依賴，改為暫存合成fixture，仍驗證白名單／存取限制／缺檔，不上傳私人圖集。既有前端chunk大小提示與FastAPI httpx警告保留。沒有真帳戶送單或外部模型呼叫。新增verify.yml讓同學PR自動驗證兩端，Pages workflow保留。
-
-公開檔案掃描無禁入路徑／憑證模式，既有三個公開資料檔雜湊保持相同。真實案例最小受控資料包已在擁有者本機另行準備，沒有進GitHub；同學須私下取得，再執行loader完整性檢查。推送提交請以GitHub Actions和git log核對。
-
-下一步：兩位先clone相同commit、各開分支，後端先做授權／隔離／耐久部署，前端配合API與SSE認證，再共同驗收測試站。獨立盲評尚未完成，切勿將程式通過當人工相似準確率。
+macOS：shell語法已檢查並提供Windows/macOS CI矩陣，未做實體Mac執行。
+Codex：metadata確認可用，原生假模型隔離測試完成，未做真實付費推論。
+cTrader：本輪未替組員做OAuth／下載／送單。瀏覽器點選與視覺驗收未執行。
+下一步：本人選擇GitHub整合方式後推送，檢查Mac CI，再由各組員本機登入驗收。
