@@ -1,5 +1,22 @@
 # Gold Desk 本機產品交接
 
+## 2026-11-01 — 歷史聊天完整保存與安裝分支
+
+- 修正ConversationWorkspace／deskConversations：不再只存前兩段、1800字、20則及12串。
+  conversationArchive轉成唯讀完整文字，含全部段落、案例／差異、量比、情境與錯誤。
+  仍不保存委託ID／確認key或可重送動作；圖表不是離線備份。
+- schema v2沿用原localStorage key、自動讀v1、記住activeId，重整回原串。
+  不自動刪舊串；超過容量明示未保存並保留先前磁碟資料，桌機／窄螢幕均有警告。
+  問題尚未完成即先保存；舊版已截掉並關閉頁面的文字不能復原。
+- ArchivedConversationReply讓長歷史文字可展開。過往紀錄不套用到當前委託；
+  原有近6則LLM去識別上下文上限不變。詳見docs/conversation_history_20261031.md。
+- README／AI_SETUP／LOCAL_INSTALL明確指定codex/local-distribution-20261031；
+  尚未合併main前，直接clone預設main不含本輪更新。
+- 新增先RED的conversation-archive測試，更新舊截斷預期；最後npm test150 passed，
+  npm run build與build:pages均成功。未改後端API，未呼叫模型或券商。
+  原安裝版Windows／macOS GitHub CI已全部成功；本輪更新後由PR重跑。
+  下一步組員依PR分支安裝、用本人資料／登入驗收；聊天只存在同瀏覽器同origin。
+
 ## 2026-10-31 — Windows／macOS 分發與Codex接頭
 
 安裝先讀README.md、AI_SETUP.md、docs/LOCAL_INSTALL.md；介面沿用frontend，

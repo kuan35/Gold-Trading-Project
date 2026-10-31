@@ -6,6 +6,8 @@ AGENTS.md、DATA_POLICY.md、docs/LOCAL_INSTALL.md。沿用現有React/FastAPI�
 
 1. 確認目前目錄是產品根目錄（有backend、frontend、requirements.txt）。公開
    clone沒有外層product；原研究工作區才需要先cd product。
+   本輪預覽版請明確clone codex/local-distribution-20261031分支，確認有setup.ps1／
+   setup.sh。未合併main前，不可把預設main的較舊程式說成已安裝本輪功能。
 2. 記錄git commit。檢查Python3.11+與Node.js24 LTS；不要修改全域執行政策。
 3. Windows執行setup.ps1；macOS執行sh setup.sh。它建立專案venv、npm ci及
    一般build，不是build:pages。不要覆蓋既有.env或private資料。

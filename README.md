@@ -8,6 +8,13 @@
 先安裝Python3.11與Node.js24 LTS，再clone本repo。
 公開repo根目錄就是產品根目錄，不需要再cd product。
 
+本輪版本位於 `codex/local-distribution-20261031` 分支；尚未合併main時請用：
+
+```sh
+git clone --branch codex/local-distribution-20261031 https://github.com/kuan35/Gold-Trading-Project.git
+cd Gold-Trading-Project
+```
+
 | 系統 | 安裝 | 啟動 |
 |---|---|---|
 | Windows PowerShell | `.\setup.ps1` | `.\start-local.ps1` |

@@ -15,11 +15,11 @@ test('bad or future storage is preserved rather than silently overwritten',()=>{
  }
  assert.deepEqual(decodeArchive(null),{items:[],writable:true,error:''});
 });
-test('archive has bounded conversations and turns and masks accidental provider keys',()=>{
+test('archive preserves conversations, turns and long answers while masking provider keys',()=>{
  let items=Array.from({length:18},(_,i)=>makeArchiveEntry('c'+i,[{question:'q'+i,answer:'a',at:'2026-10-23T01:00:00Z'}],i));
  items=mergeArchive(items,makeArchiveEntry('latest',Array.from({length:28},()=>({question:'gsk_exampleSuperSecretToken1234567890',answer:'x'.repeat(4000),at:'2026-10-23T01:00:00Z'})),100));
- assert.equal(items.length,12);assert.equal(items[0].id,'latest');assert.equal(items[0].turns.length,20);
- assert.ok(items[0].turns.every(t=>t.answer.length<=1800));assert.doesNotMatch(encodeArchive(items),/exampleSuperSecret/);
+ assert.equal(items.length,19);assert.equal(items[0].id,'latest');assert.equal(items[0].turns.length,28);
+ assert.ok(items[0].turns.every(t=>t.answer.length===4000));assert.doesNotMatch(encodeArchive(items),/exampleSuperSecret/);
  assert.equal(mergeArchive(items,items[0]).filter(i=>i.id==='latest').length,1);
 });
 test('numeric edits give a concise delta while direction changes still refresh market cases',()=>{

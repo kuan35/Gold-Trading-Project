@@ -4,10 +4,14 @@
 是本機FastAPI＋一般Vite build；GitHub Pages是不同的靜態展示。
 
 ```sh
-git clone https://github.com/kuan35/Gold-Trading-Project.git
+git clone --branch codex/local-distribution-20261031 https://github.com/kuan35/Gold-Trading-Project.git
 cd Gold-Trading-Project
 git rev-parse HEAD
 ```
+
+這是本輪PR的安裝分支。尚未合併main時，只clone預設main會取得較舊版本，
+不能據此判定本輪安裝失敗。把完整分支網址一併交給組員的coding agent。
+後續合併後可改用main；完整功能仍須本人AI登入與DEMO、授權私人案例包。
 
 Windows PowerShell：
 

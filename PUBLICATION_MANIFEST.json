@@ -30,8 +30,8 @@
       "sha256": "06d89ec65520ca38b52d810a618d3e3fab92a6a6159c51c57b5b17dcd7ed6c28"
     },
     "AI_SETUP.md": {
-      "bytes": 1993,
-      "sha256": "b60ae7f952d3162c84b508525514c714bc917240f72063542daf1048328cb3de"
+      "bytes": 2188,
+      "sha256": "5fa956bbd0d5796b79ceee98d950fe22079e698c418728623183d86088b31402"
     },
     "API_CONTRACT.md": {
       "bytes": 57729,
@@ -46,16 +46,16 @@
       "sha256": "fb9146faef463f12e665b4d25468be5b87dde9107ee49eb2cf54dd2ae469ba2f"
     },
     "HANDOFF.md": {
-      "bytes": 2397,
-      "sha256": "91205e112922bceb10daa18024f5271689fd65ca64d6979e6ef90d97ae8734b8"
+      "bytes": 3776,
+      "sha256": "8e6fe624587253796852d94bf386663d614b4f6c2bd2197e4c1b5b23069c8889"
     },
     "LICENSE": {
       "bytes": 1279,
       "sha256": "ab7995d6bf0627cfa86d27461f31d83e22cf0e967fe7b4c21cfc0008c625e183"
     },
     "README.md": {
-      "bytes": 2195,
-      "sha256": "267552e450e77d4f7c088e2d05482f87f7c459eb05c238513e4ba14694775e81"
+      "bytes": 2435,
+      "sha256": "3cd96f9734f35e711fecc5dd6d46747effb13152f8dab6153b5cfdd492c49125"
     },
     "TEAM_HANDOFF.md": {
       "bytes": 7990,
@@ -598,12 +598,16 @@
       "sha256": "90c66bbc94839288e42ee62f1d4ec581558f615da3369044e818b5384fbf2514"
     },
     "docs/LOCAL_INSTALL.md": {
-      "bytes": 5348,
-      "sha256": "31b9c7084105422fd2d369ea19e709d3cc52464e41a5edcf3fb038fdc25d5801"
+      "bytes": 5684,
+      "sha256": "34526c25a342c4ecbcd29d2aae14c2b201dfbd06a4b5d515552d066404ef24f2"
     },
     "docs/LOCAL_RELEASE_CHECK.md": {
       "bytes": 2007,
       "sha256": "f94528099fa691ad52ba5ed145cc381a76c665696e58e9e91b6bec9c085870bb"
+    },
+    "docs/conversation_history_20261031.md": {
+      "bytes": 2140,
+      "sha256": "ece994c64d131aaf1fc7a3b77c6fa63b6bdc253d7847b7ec0ce9a82f17bc6934"
     },
     "frontend/index.html": {
       "bytes": 330,
@@ -636,6 +640,10 @@
     "frontend/src/App.tsx": {
       "bytes": 61015,
       "sha256": "9a02a7765ff9918cb0913e3dffd380debdb3e4764d2e3cf464f0b25e41916d77"
+    },
+    "frontend/src/ArchivedConversationReply.tsx": {
+      "bytes": 493,
+      "sha256": "ba80f70a12d969b867ccddf666758c5dbe2f7fc4f70f8063094be1c92b799dca"
     },
     "frontend/src/AssistantControl.tsx": {
       "bytes": 4958,
@@ -714,8 +722,8 @@
       "sha256": "52bd171995b2566bc37f65470162f75972e3d83caa40fe31044ac0607d7a8a2a"
     },
     "frontend/src/ConversationWorkspace.tsx": {
-      "bytes": 18384,
-      "sha256": "bff4fd90a5c2b2b29aeec3aa946c3e4ebdf359f3f53d101bcdc06acdcec209e9"
+      "bytes": 18515,
+      "sha256": "87aafdb492810c72771f0fa5e0ec0fe046b769d039748d6fed6cb0f774408fdf"
     },
     "frontend/src/DeskAccountTray.tsx": {
       "bytes": 2981,
@@ -877,6 +885,10 @@
       "bytes": 271,
       "sha256": "40a466eba8b0024bba245af7d33f2627e32d768a464af6229543ffee590acd17"
     },
+    "frontend/src/conversationArchive.ts": {
+      "bytes": 4723,
+      "sha256": "b5ae1a400c9480069de7b0984a799e86390e3ea0f875098f80f06f1c07090bb9"
+    },
     "frontend/src/conversationScroll.ts": {
       "bytes": 339,
       "sha256": "90532fd6cb6e90ae21d174b18c8a7cf28e6c830d438228c1b797d5e2ac6b05ec"
@@ -906,8 +918,8 @@
       "sha256": "2baaeaa46f95a5c514db41e7ea8660557b70e2c93a208085bd8b5a5ba5becfa6"
     },
     "frontend/src/deskConversations.ts": {
-      "bytes": 4326,
-      "sha256": "975466660606fbdfc3daa46cf631bb77eebf28eb8838fa21c3cbbcc24b69100b"
+      "bytes": 5155,
+      "sha256": "9b2293025bf504505467943d5edac0cfa745b0fea971a4401957ea39fd7376b6"
     },
     "frontend/src/dialogueMemory.ts": {
       "bytes": 396,
@@ -1053,6 +1065,10 @@
       "bytes": 2644,
       "sha256": "45b2748409694e2f00586e6335fd4047a894cfd105e07889f49fa076df0b7eb0"
     },
+    "frontend/tests/conversation-archive.test.ts": {
+      "bytes": 7320,
+      "sha256": "15568577854571605ee8369836a2c5e28d0d84432a8cc3440c65c3bd204d366b"
+    },
     "frontend/tests/conversation-sizing.test.ts": {
       "bytes": 1574,
       "sha256": "b945b0c464808528d1cd54b535fefffa7b409e1e0f40360eb295c4c8b8222785"
@@ -1122,8 +1138,8 @@
       "sha256": "6a82bea8a07fa55d89e17d4bc729880bea1c1e1c8d9ec59562e606da8c53869a"
     },
     "frontend/tests/product-desk.test.ts": {
-      "bytes": 2720,
-      "sha256": "d8524cdc9de7d9e3cc2d082a19b737ec90fc7f899a12bf9955a7d4600bbe4aff"
+      "bytes": 2726,
+      "sha256": "c5c0edbaebebce5f1d78a97b9adc51f7e087b8c76aa333a99ff64faf7f20c7ce"
     },
     "frontend/tests/provider-selection.test.ts": {
       "bytes": 1289,
@@ -1494,8 +1510,8 @@
       "sha256": "e73e44d06aab13dc725e2ac035ff5f4fcfc0825565f745febac6c3e46b4e8b2b"
     },
     "scripts/package_local.py": {
-      "bytes": 2994,
-      "sha256": "ac4bda8b5f561ce54f1ab32720d4ef1f05210ed58d9130bac5ca5158ee1da657"
+      "bytes": 3046,
+      "sha256": "d510119d6716dab114e672f3e2fc5a90d318ecdb1c2cd58ec5ae8625d0951a9f"
     },
     "scripts/position_command_payloads.py": {
       "bytes": 2743,
