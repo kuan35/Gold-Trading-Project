@@ -4,7 +4,7 @@ import asyncio
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Literal,Annotated
-from fastapi import FastAPI, Request, Query
+from fastapi import FastAPI, Request, Query, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse,FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, ConfigDict
@@ -15,10 +15,15 @@ from .live_candidate_profile import profile_from_live_snapshot
 from .dual_path_retrieval import profile_from_live_dual_snapshot, METHOD as DUAL_METHOD, unavailable as dual_unavailable
 from .context_retrieval import METHOD as CONTEXT_METHOD, unavailable as context_unavailable
 from .broker_orders import BrokerOrders
-from .assistant import respond, llm_enabled, explain_draft
+from .assistant import respond, llm_enabled, explain_draft, model_configuration
 from .personal_rules import validate_rules, evaluate_rules
 from .technical import analyze as technical_analysis
 from .demo_market_stream import stream as demo_market_stream
+from .live_readonly import stream as live_readonly_stream
+from .execution_store import ExecutionStore
+from .case_review import review_cases,selected_charts
+from .tick_volume import tick_frame
+from .case_vision import preview as case_vision_preview
 from .live_assistant import respond_live,respond_context,build_live_context
 from .case_analysis import prepare_analysis
 from .analysis_snapshots import SnapshotStore
@@ -32,10 +37,43 @@ engine=Engine()
 broker_orders=BrokerOrders(demo_market_stream)
 analysis_snapshots=SnapshotStore()
 case_forward_store=HistoricalOutcomeStore(ROOT/'private')
+case_execution_store=ExecutionStore(ROOT/'private')
 
 
 class Body(BaseModel):
     model_config=ConfigDict(extra='forbid')
+
+
+class ClaudeSelection(Body):
+    model:Literal['sonnet','opus','haiku']|None=None
+    effort:Literal['low','medium','high','xhigh','max']|None=None
+    provider:Literal['claude_code','codex','openai_compatible','program']|None=None
+    codex_model:str|None=Field(default=None,max_length=101,pattern=r'^[A-Za-z0-9][A-Za-z0-9._:-]*$')
+    codex_effort:Literal['none','minimal','low','medium','high','xhigh','max','ultra']|None=None
+
+
+def _model_options(body):
+    selected=body.provider or os.getenv('GOLD_LLM_PROVIDER','openai_compatible')
+    if selected=='codex':
+        from .codex_local import configuration
+        info=configuration();model=body.codex_model or info.get('model');effort=body.codex_effort or info.get('default_effort','low')
+        if body.model or body.effort:raise HTTPException(status_code=422,detail='Codex請使用專用模型選項')
+        if model:
+            item=next((m for m in info.get('models',[]) if m['id']==model),None)
+            if not item or effort not in item['efforts']:raise HTTPException(status_code=422,detail='所選Codex模型或程度目前不可用')
+        return dict(provider='codex',model=model,effort=effort)
+    if body.codex_model or body.codex_effort:raise HTTPException(status_code=422,detail='目前沒有選擇Codex')
+    options={k:getattr(body,k) for k in ('model','effort') if getattr(body,k) is not None}
+    if options and selected!='claude_code':
+        raise HTTPException(status_code=422,detail='目前服務不是Claude Code，無法套用Claude模型選項')
+    if body.provider:options['provider']=body.provider
+    return options
+
+
+class CaseReviewInput(ClaudeSelection):
+    enabled:bool=False
+    vision:bool=False
+    case_ref:str|None=Field(default=None,min_length=1,max_length=64)
 
 
 class DraftInput(Body):
@@ -76,6 +114,22 @@ class CloseInput(Body):
     idempotency_key:str=Field(min_length=1,max_length=128)
 
 
+class BrokerCloseInput(Body):
+    order_type:Literal['MARKET','LIMIT']='MARKET'
+    limit_price:str|None=Field(default=None,max_length=30)
+
+
+class ReplayManagementInput(Body):
+    kind:Literal['LIMIT','PROTECT']
+    limit_price:str|None=Field(default=None,max_length=30)
+    changes:dict[Literal['sl','tp'],str|None]=Field(default_factory=dict,max_length=2)
+
+
+class ProtectionInput(Body):
+    sl:str|None=Field(default=None,max_length=30)
+    tp:str|None=Field(default=None,max_length=30)
+
+
 class StepInput(Body):
     bars:Literal[1,6,12]=1
 
@@ -92,7 +146,18 @@ class ChatInput(Body):
     personal_rules:list[dict]=Field(default_factory=list,max_length=50)
 
 
-class LiveChatInput(Body):
+class DialogueTurnInput(Body):
+    thread_id:str=Field(min_length=1,max_length=80)
+    question:str=Field(max_length=1500)
+    answer:str=Field(max_length=1800)
+
+
+class DialogueFields(ClaudeSelection):
+    conversation_id:str|None=Field(default=None,min_length=1,max_length=80)
+    conversation:list[DialogueTurnInput]=Field(default_factory=list,max_length=6)
+
+
+class LiveChatInput(DialogueFields):
     message:str=Field(min_length=1,max_length=1500)
     llm_enabled:bool=False
     previous_questions:list[Annotated[str,Field(max_length=600)]]=Field(default_factory=list,max_length=4)
@@ -102,7 +167,7 @@ class LiveChatInput(Body):
     input_revision:int|None=Field(default=None,ge=0)
 
 
-class DraftChatInput(Body):
+class DraftChatInput(DialogueFields):
     draft_id:str=Field(min_length=1,max_length=64)
     message:str=Field(min_length=1,max_length=1500)
     llm_enabled:bool=False
@@ -179,6 +244,14 @@ def _local_broker_access(request: Request) -> bool:
                                     'http://127.0.0.1:5173', 'http://localhost:5173')
 
 
+@app.get('/api/live-readonly')
+def live_readonly_market(request:Request):
+    if not _local_broker_access(request):return JSONResponse(status_code=403,content={'detail':'LIVE唯讀僅限本機'})
+    value=live_readonly_stream.query_snapshot()
+    value.pop('tick_volume_source_key',None)
+    return JSONResponse(content=value,headers={'Cache-Control':'no-store'})
+
+
 @app.get('/api/broker/market')
 def broker_demo_market(request: Request):
     if not _local_broker_access(request):
@@ -243,6 +316,8 @@ def _live_retrieval(snapshot: dict, side: str, method: str = CONTEXT_METHOD) -> 
         unavailable=context_unavailable if method==CONTEXT_METHOD else dual_unavailable if method==DUAL_METHOD else candidate_unavailable
         result = unavailable(query.get('reason', 'QUERY_UNAVAILABLE'))
     else:
+        if method==CONTEXT_METHOD:
+            query['tick_volume']=tick_frame((snapshot.get('bars') or {}).get('5m',[]),query['as_of'],snapshot.get('tick_volume_source_key'))
         with engine.lock:
             result = engine.cases.retrieve(side, 'FIRST', Decimal('0.10'), query['as_of'],
                                            query_candidate=query,retrieval_method=method)
@@ -269,7 +344,7 @@ def broker_demo_draft(request: Request, body: BrokerDraftInput):
     draft=broker_orders.create(snapshot, side=body.side, lot=body.lot,
                                 order_type=body.order_type, limit_price=body.limit_price,
                                 sl=body.sl, tp=body.tp, retrieval=retrieval)
-    bundle=prepare_analysis(snapshot,body.side,retrieval,query,profiles=getattr(engine.cases,'candidate_profiles',{}),now=captured_at,operation_sources=_analysis_operation_sources(retrieval),draft=body.model_dump(),input_revision=body.input_revision,forward_store=case_forward_store)
+    bundle=prepare_analysis(snapshot,body.side,retrieval,query,profiles=getattr(engine.cases,'candidate_profiles',{}),now=captured_at,operation_sources=_analysis_operation_sources(retrieval),draft=body.model_dump(),input_revision=body.input_revision,forward_store=case_forward_store,execution_store=case_execution_store)
     saved=analysis_snapshots.put(bundle,draft_id=draft['id'])
     reply=respond_context(saved['context'],'說明草稿建立時的盤面支持與相反依據、案例差異',enabled=False,frozen=True)
     return JSONResponse(content=dict(draft,analysis_snapshot_id=saved['snapshot_id'],analysis_as_of_utc=saved['context']['as_of_utc'],analysis_reply=reply),headers={'Cache-Control':'no-store'})
@@ -290,10 +365,22 @@ def broker_demo_order_status(request: Request, draft_id: str):
 
 
 @app.post('/api/broker/positions/{position_id}/close-draft')
-def broker_demo_close_draft(request:Request,position_id:str):
+def broker_demo_close_draft(request:Request,position_id:str,body:BrokerCloseInput|None=None):
     if not _local_broker_access(request):
         return JSONResponse(status_code=403,content={'detail':'DEMO 平倉僅供本機確認'})
-    return broker_orders.create_close(demo_market_stream.snapshot(),position_id)
+    return broker_orders.create_close(demo_market_stream.snapshot(),position_id,**(body.model_dump() if body else {}))
+
+
+@app.post('/api/broker/positions/{position_id}/protection-draft')
+def broker_protection_draft(request:Request,position_id:str,body:ProtectionInput):
+    if not _local_broker_access(request):return JSONResponse(status_code=403,content={'detail':'DEMO保護修改僅供本機確認'})
+    return broker_orders.create_protection(demo_market_stream.snapshot(),position_id,body.model_dump(exclude_unset=True))
+
+
+@app.post('/api/broker/pending/{order_id}/cancel-draft')
+def broker_cancel_pending_draft(request:Request,order_id:str):
+    if not _local_broker_access(request):return JSONResponse(status_code=403,content={'detail':'DEMO掛單取消僅供本機確認'})
+    return broker_orders.create_pending_cancel(demo_market_stream.snapshot(),order_id)
 
 
 @app.post('/api/broker/drafts/{draft_id}/cancel')
@@ -359,6 +446,16 @@ def close(position_id:str,body:CloseInput):
     return engine.close(position_id,body.idempotency_key)
 
 
+@app.post('/api/positions/{position_id}/management-draft')
+def replay_management_draft(position_id:str,body:ReplayManagementInput):
+    return engine.create_management(position_id,body.kind,body.limit_price,body.changes)
+
+
+@app.post('/api/positions/management/{draft_id}/confirm')
+def replay_management_confirm(draft_id:str,body:ConfirmInput):
+    return engine.confirm_management(draft_id,body.revision,body.idempotency_key)
+
+
 @app.post('/api/chat')
 def chat(body:ChatInput):
     rules=checked_rules(body.personal_rules)
@@ -366,11 +463,10 @@ def chat(body:ChatInput):
 
 
 @app.get('/api/assistant/status')
-def assistant_status(request:Request):
+def assistant_status(request:Request,provider:Literal['claude_code','codex','openai_compatible','program']|None=None):
     if not _local_broker_access(request):
         return JSONResponse(status_code=403,content={'detail':'本機助手設定僅供本機查看'})
-    return JSONResponse(content=dict(configured=bool(os.getenv('GOLD_LLM_API_KEY')),enabled=llm_enabled(),
-        model=os.getenv('GOLD_LLM_MODEL','未設定'),source='ctrader_demo_xauusd',read_only=True),headers={'Cache-Control':'no-store'})
+    return JSONResponse(content=dict(**model_configuration(provider),source='ctrader_demo_xauusd',read_only=True),headers={'Cache-Control':'no-store'})
 
 
 @app.post('/api/assistant/live-chat')
@@ -383,9 +479,9 @@ def live_chat(request:Request,body:LiveChatInput):
         if build_live_context(snapshot,now=now)['status']=='CURRENT':retrieval,query=_live_retrieval(snapshot,body.side)
         else:retrieval=context_unavailable('BROKER_QUOTE_UNAVAILABLE')
         retrieval=dict(retrieval,query_side=body.side)
-    bundle=prepare_analysis(snapshot,body.side,retrieval,query,profiles=getattr(engine.cases,'candidate_profiles',{}),now=now,operation_sources=_analysis_operation_sources(retrieval),draft=body.draft.model_dump() if body.draft else None,input_revision=body.input_revision,forward_store=case_forward_store)
+    bundle=prepare_analysis(snapshot,body.side,retrieval,query,profiles=getattr(engine.cases,'candidate_profiles',{}),now=now,operation_sources=_analysis_operation_sources(retrieval),draft=body.draft.model_dump() if body.draft else None,input_revision=body.input_revision,forward_store=case_forward_store,execution_store=case_execution_store)
     saved=analysis_snapshots.put(bundle)
-    return JSONResponse(content=respond_context(saved['context'],body.message,enabled=body.llm_enabled,previous_questions=body.previous_questions),
+    return JSONResponse(content=respond_context(saved['context'],body.message,enabled=body.llm_enabled,previous_questions=body.previous_questions,conversation_id=body.conversation_id,conversation=[row.model_dump() for row in body.conversation],**_model_options(body)),
         headers={'Cache-Control':'no-store'})
 
 
@@ -427,13 +523,26 @@ def draft_chat(request:Request,body:DraftChatInput):
     if not _local_broker_access(request):return JSONResponse(status_code=403,content={'detail':'草稿盤面對話僅供本機使用'})
     bundle=analysis_snapshots.for_draft(body.draft_id)
     return JSONResponse(content=respond_context(bundle['context'],body.message,enabled=body.llm_enabled,
-        previous_questions=body.previous_questions,frozen=True),headers={'Cache-Control':'no-store'})
+        previous_questions=body.previous_questions,frozen=True,conversation_id=body.conversation_id,conversation=[row.model_dump() for row in body.conversation],**_model_options(body)),headers={'Cache-Control':'no-store'})
 
 
 @app.get('/api/assistant/snapshots/{snapshot_id}/charts')
 def analysis_charts(request:Request,snapshot_id:str):
     if not _local_broker_access(request):return JSONResponse(status_code=403,content={'detail':'分析圖表僅供本機查看'})
     return JSONResponse(content=analysis_snapshots.get(snapshot_id)['charts'],headers={'Cache-Control':'no-store'})
+
+
+@app.get('/api/assistant/snapshots/{snapshot_id}/case-preview')
+def case_preview(request:Request,snapshot_id:str,case_ref:str|None=Query(default=None,min_length=1,max_length=64)):
+    if not _local_broker_access(request):return JSONResponse(status_code=403,content={'detail':'案例圖像僅供本機'})
+    bundle=analysis_snapshots.get(snapshot_id)
+    return JSONResponse(content=dict(case_vision_preview(selected_charts(bundle,case_ref)),snapshot_id=snapshot_id,case_ref=case_ref),headers={'Cache-Control':'no-store'})
+
+
+@app.post('/api/assistant/snapshots/{snapshot_id}/case-review')
+def case_review(request:Request,snapshot_id:str,body:CaseReviewInput):
+    if not _local_broker_access(request):return JSONResponse(status_code=403,content={'detail':'案例解讀僅供本機'})
+    return JSONResponse(content=review_cases(analysis_snapshots.get(snapshot_id),enabled=body.enabled,vision=body.vision,case_ref=body.case_ref,**_model_options(body)),headers={'Cache-Control':'no-store'})
 
 
 @app.get('/api/assistant/snapshots/{snapshot_id}/operations')

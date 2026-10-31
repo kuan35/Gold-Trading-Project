@@ -29,7 +29,32 @@ cases只是被選出供畫面展示的少數例子，不能把它們的最高／
 
 
 def llm_enabled() -> bool:
-    return os.getenv('GOLD_ENABLE_LLM', 'false').lower() == 'true' and bool(os.getenv('GOLD_LLM_API_KEY'))
+    if os.getenv('GOLD_ENABLE_LLM','false').lower()!='true':return False
+    return model_configuration()['configured']
+
+
+def model_configuration(provider=None) -> dict:
+    provider=provider or os.getenv('GOLD_LLM_PROVIDER','openai_compatible').strip()
+    enabled=os.getenv('GOLD_ENABLE_LLM','false').lower()=='true'
+    if provider=='program':return dict(provider='program',provider_label='程式解讀',model='',configured=True,enabled=False,reason='program_only',supports_vision=False)
+    if provider=='codex':
+        from .codex_local import configuration
+        info=configuration();ready=info['authenticated'] and bool(info.get('models'))
+        return dict(provider='codex',provider_label='Codex',model=info.get('model',''),configured=ready,enabled=enabled and ready,
+          reason=info['reason'],supports_vision=False,model_options=info.get('model_options',[]),models=info.get('models',[]),default_effort=info.get('default_effort','low'))
+    if provider=='claude_code':
+        from .claude_code import configuration,MODELS,EFFORTS
+        info=configuration();ready=info['authenticated']
+        return dict(provider=provider,provider_label='Claude Code',model=os.getenv('GOLD_CLAUDE_MODEL','sonnet'),
+          configured=ready,enabled=enabled and ready,reason=info['reason'],supports_vision=False,
+          model_options=list(MODELS),effort_options=list(EFFORTS),default_effort=os.getenv('GOLD_CLAUDE_EFFORT','medium'))
+    if provider=='openai_compatible':
+        ready=bool(os.getenv('GOLD_LLM_API_KEY'))
+        label='Groq' if urlsplit(os.getenv('GOLD_LLM_BASE_URL','')).hostname=='api.groq.com' else '語言模型'
+        return dict(provider=provider,provider_label=label,model=os.getenv('GOLD_LLM_MODEL','未設定'),
+          configured=ready,enabled=enabled and ready,reason='ready' if ready else 'missing_api_key',supports_vision=True)
+    return dict(provider=provider,provider_label='語言模型',model='未設定',configured=False,enabled=False,
+      reason='invalid_configuration',supports_vision=False)
 
 
 def scrub(text: str) -> str:
@@ -158,11 +183,34 @@ def build_context(engine: Engine, draft: dict | None = None, side: str | None = 
 
 
 def explain_context(context: dict, question: str, *, catalog: dict | None = None,
-                    system_prompt: str | None = None, response_format: dict | None = None) -> dict:
-    model=os.getenv('GOLD_LLM_MODEL','gpt-4.1-mini')
+                    system_prompt: str | None = None, response_format: dict | None = None,
+                    image_url: str | None = None, model_override: str | None = None,
+                    request_opt_in: bool = False, effort_override: str | None = None,provider_override:str|None=None) -> dict:
+    selected=provider_override or os.getenv('GOLD_LLM_PROVIDER','openai_compatible').strip()
+    model=(model_override or os.getenv('GOLD_CLAUDE_MODEL','sonnet')) if selected=='claude_code' else model_override or os.getenv('GOLD_LLM_MODEL','gpt-4.1-mini')
     result=dict(status='disabled',text=None,model=model)
-    if not llm_enabled():
+    if selected=='program' or os.getenv('GOLD_ENABLE_LLM','false').lower()!='true':
         return result
+    if selected not in ('claude_code','codex','openai_compatible'):return dict(result,status='invalid_configuration')
+    if selected in ('claude_code','codex'):
+        if selected=='claude_code':from .claude_code import complete,configuration
+        else:from .codex_local import complete,configuration
+        # Legacy replay routes auto-explain after draft creation. They have no
+        # request checkbox, so server configuration alone must not call Claude.
+        if not request_opt_in:return result
+        if image_url is not None:return dict(result,status='unsupported_image',provider=selected)
+        info=configuration()
+        if not info['authenticated']:
+            return dict(result,status='authentication_failed' if info['installed'] else 'cli_not_installed',provider=selected)
+        payload=catalog if catalog is not None else context
+        response=complete(system_prompt or (SELECT_SYSTEM if catalog is not None else SYSTEM),
+          scrub(question)+'\ncontext:\n'+json.dumps(payload,ensure_ascii=False),json_output=catalog is not None or response_format is not None,
+          model=model_override,effort=effort_override)
+        if response['status']=='ok' and catalog is None:
+            if unverified_claim(context,response['text']):return dict(response,status='unverified_claim',text=None)
+            response['text']=scrub(response['text'])
+        return response
+    if not model_configuration('openai_compatible')['configured']:return result
     base=os.getenv('GOLD_LLM_BASE_URL','https://api.openai.com/v1').rstrip('/')
     parsed=urlsplit(base)
     if parsed.scheme!='https' or not parsed.netloc or parsed.username or parsed.password or parsed.query or parsed.fragment:
@@ -182,6 +230,11 @@ def explain_context(context: dict, question: str, *, catalog: dict | None = None
         body={'model':model,'messages':[{'role':'system','content':system_prompt or (SELECT_SYSTEM if catalog is not None else SYSTEM)},
               {'role':'user','content':scrub(question)+'\ncontext:\n'+json.dumps(payload,ensure_ascii=False)}],
               token_field:budget}
+        if image_url is not None:
+            if not image_url.startswith('data:image/png;base64,') or len(image_url)>2_000_000:
+                return dict(result,status='invalid_image')
+            body['messages'][1]['content']=[{'type':'text','text':body['messages'][1]['content']},
+                {'type':'image_url','image_url':{'url':image_url}}]
         if catalog is not None:
             body['response_format']={'type':'json_object'}
         if response_format is not None:
@@ -247,6 +300,10 @@ def status_text(status: str) -> str:
             'rate_limited':'語言模型目前受額度或頻率限制，以下保留程式摘要。',
             'unverified_claim':'模型說明含未經資料支持的比例或極值，已改用程式摘要。',
             'timeout':'語言模型逾時，以下保留程式摘要。',
+            'cli_not_installed':'找不到官方 Claude Code；安裝並登入後可啟用，以下保留程式摘要。',
+            'cli_unavailable':'Claude Code 無法啟動，以下保留程式摘要。',
+            'busy':'模型正在處理另一個問題，以下先提供程式摘要。',
+            'unsupported_image':'目前 Claude Code 連接器只接受文字；可取消圖片後重試，以下保留程式摘要。',
             'invalid_selection':'模型未回傳有效資料引用，已改用程式整理重點。'}.get(status,'語言模型未取得完整回答，以下保留程式摘要。')
 
 

@@ -66,6 +66,7 @@ def test_opt_in_is_required_and_program_fallback_still_explains_frames(monkeypat
     monkeypatch.setattr(live,'explain_context',lambda *a,**k:pytest.fail('opt-in missing'))
     answer=live.respond_live(snapshot(),'說明一小時趨勢',enabled=False,now=NOW)
     assert answer['provider']=='local_market_rules' and answer['llm_status']=='not_requested'
+    assert '開啟Groq' not in answer['message']
     assert '一小時' in answer['message'] and answer['draft'] is None
     assert answer['sections'] and answer['source']=='ctrader_demo_xauusd'
 

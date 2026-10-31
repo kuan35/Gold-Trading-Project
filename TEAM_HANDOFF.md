@@ -1,5 +1,15 @@
 # Gold Desk 架站交接：交給同學與 Codex
 
+## 2026-10-31 最新：Windows／macOS 本機產品分發
+
+教授確認展示以本機穩定為主，以下舊雲端架站規劃只保留作歷史紀錄。新組員請先讀
+[安裝入口](README.md)、[給Codex／Claude的任務](AI_SETUP.md)及
+[完整安裝流程](docs/LOCAL_INSTALL.md)，沿現有React介面與FastAPI後端。
+公開程式碼與私人案例包分開；每人使用自己的cTrader DEMO及官方AI CLI登入。
+Codex／Claude Code可逐請求選供應商、模型、思考程度；不共用作者憑證或交易帳戶。
+Windows有本機測試；macOS提供shell入口與CI矩陣，實際Mac執行結果待組員驗收。
+不把GitHub Pages靜態展示當成完整本機產品，也不要求先部署Render。
+
 ## 2026-10-27 後端架站最新入口
 
 請後端同學先讀 [本輪完整架站交接](docs/team_handoff_20261027/BACKEND_DEPLOYMENT.md)。這份文件以現有 React 工作台為第一階段介面基準，列出對話、tick、案例、前後 K 線、委託、持倉與紀錄各自需要的後端能力；現有介面驗收後再擴充額外介面。`context_contract_v1` 本機中檔半小時容忍已改為 0.12，後續側檔升為 v2 並新增 5 分鐘。以下 2026-10-23 原交接保留為當時紀錄；測試數量與「最新」等字樣請以本輪 `HANDOFF.md` 和實際重新執行結果為準。

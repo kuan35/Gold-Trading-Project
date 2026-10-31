@@ -40,6 +40,8 @@ def decode_positions(positions,symbol_id,lot_size):
         entry=str(p.price) if p.HasField('price') else None,
         sl=str(p.stopLoss) if p.HasField('stopLoss') else None,
         tp=str(p.takeProfit) if p.HasField('takeProfit') else None,
+        trailing_stop_loss=bool(p.trailingStopLoss) if p.HasField('trailingStopLoss') else False,
+        guaranteed_stop_loss=bool(p.guaranteedStopLoss) if p.HasField('guaranteedStopLoss') else False,
         opened_at_utc=stamp(optional(p.tradeData,'openTimestamp')),
         gross_pnl=None,net_pnl=None) for p in positions
         if p.tradeData.symbolId==symbol_id and p.tradeData.tradeSide in (1,2)]

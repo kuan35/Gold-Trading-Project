@@ -11,6 +11,7 @@ from .context_retrieval import ContextIndex, METHOD as CONTEXT_METHOD, unavailab
 from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
+from .tick_volume import NativeTickStore
 
 ROOT = Path(__file__).resolve().parents[1]
 D = Decimal
@@ -21,6 +22,7 @@ LABELS = {'NO_OBSERVED_POSITION':'可見初始單','ADD_ADVERSE':'價格不利�
 
 class CaseStore:
     def __init__(self) -> None:
+        self.tick_volume_store=NativeTickStore(ROOT/'private')
         path = ROOT/'private'/'cases.json'
         self.source = 'trader_history' if path.exists() else 'synthetic_demo'
         payload=json.loads(path.read_text(encoding='utf-8')) if path.exists() else {}
@@ -150,7 +152,7 @@ class CaseStore:
                 return unavailable(status if status != 'READY' else 'QUERY_UNAVAILABLE')
             if method == CONTEXT_METHOD:
                 if not hasattr(self,'context_index'):
-                    self.context_index=ContextIndex(self.items,self.candidate_profiles)
+                    self.context_index=ContextIndex(self.items,self.candidate_profiles,tick_volume_store=getattr(self,'tick_volume_store',None))
                 return self.context_index.retrieve(query,side)
             if method == DUAL_METHOD:
                 if not hasattr(self,'dual_path_index'):

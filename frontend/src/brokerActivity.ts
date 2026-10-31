@@ -5,7 +5,7 @@ export type BrokerRecord={id?:string;draft_id?:string;client_order_id?:string|nu
  side?:string|null;lot?:string|null;filled_lot?:string|null;order_type?:string|null;status:string;
  price?:string|null;limit_price?:string|null;execution_price?:string|null;sl?:string|null;tp?:string|null;
  created_at_utc?:string|null;updated_at_utc?:string|null;executed_at_utc?:string|null;currency?:string|null;
- error_code?:string|null;account_scope?:string;intent?:'OPEN'|'CLOSE';role?:string;realized_gross_pnl?:string|null;commission?:string|null;swap?:string|null};
+ error_code?:string|null;account_scope?:string;intent?:'OPEN'|'CLOSE'|'PROTECT'|'CANCEL';role?:string;realized_gross_pnl?:string|null;commission?:string|null;swap?:string|null};
 export type BrokerHistory={status:string;items:BrokerRecord[];has_more:boolean;from_utc?:string;to_utc?:string;updated_at_utc?:string};
 export type BrokerActivity={source:'ctrader_demo_xauusd';environment:'demo';connection_status:string;account_scope:string;updated_at_utc:string;
  submissions:{items:BrokerRecord[];total:number;has_more:boolean;offset:number;limit:number};broker_orders:BrokerHistory;broker_deals:BrokerHistory};

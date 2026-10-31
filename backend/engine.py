@@ -10,6 +10,7 @@ from .technical import analyze as technical_analysis
 from .market_similarity import snapshot as market_snapshot
 from .candidate_bars import classify_coverage
 from .candidate_profile import profile_before_entry
+from .replay_management import ReplayManagement
 from pathlib import Path
 import json
 
@@ -36,7 +37,7 @@ def money(value: D) -> str:
     return str(value.quantize(D('.01')))
 
 
-class Engine:
+class Engine(ReplayManagement):
     def __init__(self) -> None:
         self.lock = threading.RLock()
         self.bars,self.data_source = load_bars()
@@ -301,6 +302,7 @@ class Engine:
         pnl=(price-D(p['entry']))*D(p['lot'])*100*(1 if p['side']=='BUY' else -1)
         self.balance+=pnl
         self.positions.remove(p)
+        self.pending_orders[:]=[o for o in self.pending_orders if o.get('position_id')!=p['id']]
         order=dict(id=uuid4().hex[:10],side='SELL' if p['side']=='BUY' else 'BUY',lot=p['lot'],price=money(price),
                    position_id=p['id'],status='FILLED',time=self.clock,action='CLOSE',pnl=money(pnl),reason=reason)
         self.orders.append(order)
@@ -348,6 +350,14 @@ class Engine:
                         self._close_at(p,target,'TAKE_PROFIT')
                 for pending in list(self.pending_orders):
                     limit = D(pending['limit_price'])
+                    if pending.get('intent')=='CLOSE':
+                        p=next((p for p in self.positions if p['id']==pending['position_id']),None)
+                        if p is None:
+                            self.pending_orders.remove(pending);continue
+                        adjustment=D(0) if p['side']=='BUY' else D('.30')
+                        touched=D(bar['high'])>=limit if p['side']=='BUY' else D(bar['low'])+adjustment<=limit
+                        if touched:self._close_at(p,limit,'LIMIT_CLOSE')
+                        continue
                     touched = D(bar['low'])+D('.30') <= limit if pending['side']=='BUY' else D(bar['high']) >= limit
                     if not touched:
                         continue

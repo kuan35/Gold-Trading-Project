@@ -1,5 +1,6 @@
+import ChartWorkspaceTools,{type ChartRuntime} from './ChartWorkspaceTools';
 import {chartTheme} from './chartTheme';
-import {useEffect,useRef} from 'react';
+import {useEffect,useRef,useState} from 'react';
 import {CandlestickSeries,ColorType,createChart,HistogramSeries,LineSeries,type UTCTimestamp,type IChartApi,type ISeriesApi} from 'lightweight-charts';
 import type {Bar} from './types';
 import {interpolateClose,liveUpdateKind} from './liveCandles';
@@ -10,6 +11,7 @@ const vol=(b:Bar)=>({time:b.time as UTCTimestamp,value:b.volume,color:b.close>=b
 const average=(bars:Bar[],period:number)=>bars.flatMap((b,i)=>i<period-1?[]:[{time:b.time as UTCTimestamp,value:bars.slice(i-period+1,i+1).reduce((sum,p)=>sum+p.close,0)/period}]);
 
 export default function LiveCandleChart({bars,light,interval}:{bars:Bar[];light:boolean;interval:string}){
+ const [toolsRuntime,setToolsRuntime]=useState<ChartRuntime|null>(null);
  const host=useRef<HTMLDivElement>(null),controller=useRef<Controller|null>(null),previous=useRef<Bar[]>([]),drawn=useRef<Bar|null>(null),raf=useRef<number|undefined>(undefined);
  useEffect(()=>{
   if(!host.current)return;
@@ -20,8 +22,8 @@ export default function LiveCandleChart({bars,light,interval}:{bars:Bar[];light:
   const volume=chart.addSeries(HistogramSeries,{priceFormat:{type:'volume'},priceScaleId:'',priceLineVisible:false,lastValueVisible:false});
   volume.priceScale().applyOptions({scaleMargins:{top:.82,bottom:0}});
   const lines=[palette.ma20,palette.ma60].map(color=>chart.addSeries(LineSeries,{color,lineWidth:1,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false}));
-  controller.current={chart,candles,volume,lines};previous.current=[];drawn.current=null;
-  return()=>{if(raf.current!==undefined)cancelAnimationFrame(raf.current);controller.current=null;chart.remove();};
+  controller.current={chart,candles,volume,lines};const state={chart,candles,volume,averages:lines,active:true};setToolsRuntime(state);previous.current=[];drawn.current=null;
+  return()=>{if(raf.current!==undefined)cancelAnimationFrame(raf.current);controller.current=null;state.active=false;setToolsRuntime(null);chart.remove();};
  },[light,interval]);
  useEffect(()=>{
   const c=controller.current;if(!c||!bars.length)return;
@@ -51,5 +53,5 @@ export default function LiveCandleChart({bars,light,interval}:{bars:Bar[];light:
   }
   previous.current=bars;
  },[bars,light,interval]);
- return <div ref={host} className="chart-canvas live-candle-canvas" role="img" aria-label={`cTrader DEMO ${interval} Bid K線與tick量，最後一根形成中`}/>;
+ return <div className="gd-chart-workspace" style={{height:"100%",minHeight:360}}><ChartWorkspaceTools runtime={toolsRuntime} bars={bars} scope={`ctrader-demo-${interval}`} /><div className="gd-chart-plot"><div ref={host} className="chart-canvas live-candle-canvas" role="img" aria-label={`cTrader DEMO ${interval} Bid K線與tick量，最後一根形成中`}/></div></div>;
 }

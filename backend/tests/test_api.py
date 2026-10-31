@@ -46,7 +46,15 @@ def test_adjustment_requires_explicit_size_and_side(client):
 
 def test_case_detail_shows_only_candidate_pre_entry_candles(client):
     result=client.get('/api/cases').json()
-    detail=client.get('/api/cases/'+result['cases'][0]['id']).json()
+    if engine.cases.source=='trader_history':
+        # Synthetic replay has no broker-native volume provenance. It must not
+        # fabricate a match just to make the independent detail endpoint testable.
+        assert result['cases']==[] and result['rule_status']=='INSUFFICIENT_DATA'
+        assert result['comparison']['tick_volume']['enabled'] is True
+        ident=next(c['id'] for c in engine.cases.available(engine.clock)
+            if c['id'] in engine.cases.candidate_profiles and engine.cases.candidate_profiles[c['id']]['as_of']<=engine.clock)
+    else:ident=result['cases'][0]['id']
+    detail=client.get('/api/cases/'+ident).json()
     assert detail['markers']==[]
     assert detail['chart_reason']
     if engine.cases.source == 'trader_history':

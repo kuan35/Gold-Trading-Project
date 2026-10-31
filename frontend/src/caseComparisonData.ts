@@ -1,7 +1,10 @@
+import type {PriceResult} from './TradeResult';
+import type {HoldingObservationData} from './HoldingObservation';
 import type {Bar,Marker} from './types';
 import type {OutcomeHorizon,Scenario} from './caseOutcomes';
 export type Candle=Omit<Bar,'volume'>;
-export type ComparisonCharts={snapshot_id:string;query_as_of_utc:number|null;query:Record<'5m'|'1h',Candle[]>;cases:({ref:string;as_of_utc:number|null}&Record<'5m'|'1h',Candle[]>)[]};
+export type ExecutionCoverage={scope:'WHOLE_REFERENCE_HOLDING'|'ENDPOINT_WINDOWS';calendar_slots:number;available_bars:number;gap_slots:number};
+export type ComparisonCharts={snapshot_id:string;query_as_of_utc:number|null;query:Record<'5m'|'1h',Candle[]>;cases:({ref:string;as_of_utc:number|null;holding_observation?:HoldingObservationData;execution?:{status:string;reason:string;mode?:string;coverage?:ExecutionCoverage;bars:Candle[];close_bars:Candle[];markers:Marker[];result?:PriceResult}|null}&Record<'5m'|'1h',Candle[]>)[]};
 export type HorizonMinutes=5|30|60;
 export type ComparisonSelection={caseRef:string;minutes:HorizonMinutes};
 export type ExpandedOutcome={snapshot_id:string;case_ref:string;history:OutcomeHorizon&{anchor_price:string|null;bars:Candle[]};scenario:Scenario};

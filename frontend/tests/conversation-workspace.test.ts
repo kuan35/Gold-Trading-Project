@@ -2,7 +2,7 @@ import {test} from 'node:test';import assert from 'node:assert/strict';import {c
 import ConversationWorkspace from '../src/ConversationWorkspace';import ConversationReply,{compactSections,compactReplySections} from '../src/ConversationReply';import type {MarketReply} from '../src/LiveAssistant';
 test('local homepage presents one shared ticket and discussion without default candles or replay prices',()=>{
  const html=renderToStaticMarkup(createElement(ConversationWorkspace,{market:null,light:false,visible:true,onHistory:()=>{}}));
- for(const text of ['交易對話','準備中委託','檢查 DEMO 委託','啟用 Groq'])assert.ok(html.includes(text),text);
+ for(const text of ['交易對話','準備中委託','檢查 DEMO 委託','思考程度'])assert.ok(html.includes(text),text);
  assert.doesNotMatch(html,/chart-canvas|本機回放淨值|2927.75/);
  assert.match(html,/尚未選擇方向/);
 });

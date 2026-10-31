@@ -9,8 +9,8 @@ export type DemoMarket = {
   quote:{status:string;bid:string|null;ask:string|null;source_time_utc:string|null;age_seconds:number|null};
   account:{status:string;balance:string|null;equity:string|null;currency:string|null;
     pnl_status?:string;pnl_updated_at_utc?:string;net_unrealized_pnl?:string|null;xau_net_unrealized_pnl?:string|null;
-    positions:{id:string;side:'BUY'|'SELL';volume_units:string;lot?:string;entry:string|null;sl:string|null;tp:string|null;opened_at_utc?:string|null;net_pnl?:string|null;gross_pnl?:string|null}[];
-    pending_orders:{id:string;side:'BUY'|'SELL';volume_units:string;lot?:string;limit_price:string|null;sl?:string|null;tp?:string|null;created_at_utc?:string|null;status?:string;order_type?:string}[];
+    positions:{id:string;side:'BUY'|'SELL';volume_units:string;lot?:string;entry:string|null;sl:string|null;tp:string|null;trailing_stop_loss?:boolean;guaranteed_stop_loss?:boolean;opened_at_utc?:string|null;net_pnl?:string|null;gross_pnl?:string|null}[];
+    pending_orders:{id:string;side:'BUY'|'SELL';volume_units:string;lot?:string;limit_price:string|null;sl?:string|null;tp?:string|null;created_at_utc?:string|null;status?:string;order_type?:string;intent?:string;position_id?:string}[];
     all_positions_count:number;all_pending_orders_count:number;updated_at_utc:string}|null;
 };
 

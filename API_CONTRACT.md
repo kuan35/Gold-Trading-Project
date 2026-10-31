@@ -1,5 +1,55 @@
 # Frontend API contract v1
 
+## 2026-10-31 本機供應商逐請求選擇
+
+GET `/api/assistant/status?provider=codex|claude_code|program|openai_compatible` 查所選
+供應商的本機能力，不推論。Codex回傳本人帳戶的`models`（id、label、efforts、
+default_effort）、`model_options`、reason；不回傳帳戶身分或token。
+本機分析／案例解釋／對話請求可帶`provider`；Codex另用`codex_model`、`codex_effort`，
+由後端驗證能力清單，不把Claude的sonnet等別名送給Codex。舊model／effort仍供Claude使用。
+所有LLM請求仍需既有request opt-in／去識別摘要／數字驗證；供應商切換不修改伺服器環境。
+`program`不呼叫模型；未就緒不偷偷切換付費供應商。公開Pages不具本機CLI能力。
+
+## 2026-10-31 本機預設tick活躍度條件
+
+正式CaseStore的context_contract_v1追加tick gate，comparison.ruleset=`context_tick_activity_v2`。comparison.tick_volume有enabled、limit（十進位字串2）、query_status／query_reason／query_relative及retained_rows；原vol_ratio仍指價格波動。完整四軸通過列先按相對tick量差距≤2倍篩選，再去重及取五例，原排序分數不加權。context_passed_rows為量篩前列數，passed_rows為篩後列數，total及結果分布為最終完整去重池。
+
+每例tick_comparison={passed,reason,multiplier,query_relative,case_relative,limit}的比值皆十進位字串，不含來源指紋。case_comparison新增tick_volume、每例tick_activity與第五個metrics.key=tick_ratio。query／歷史來源或連續21棒不足時不靜默退回舊結果，明示不可比較原因。來源hash只留worker IPC及內部query_snapshot，不出公開snapshot、API或LLM。新快照hash納入ruleset。研究直接ContextIndex無store保留不含量能基準；公開Pages未改。
+
+## 2026-10-30 已知持倉參考走勢摘要（本機）
+
+`charts.cases[].holding_observation` 是隨原分析快照凍結的程式結果，不重排案例，不改原單價格報酬或固定5／30／60分鐘情境。欄位：`status:'AVAILABLE'|'PARTIAL'|'INSUFFICIENT'|'UNAVAILABLE'`、reason、basis=`REFERENCE_COMPLETE_BARS_WITHIN_HOLDING`、scope=`OBSERVED_REFERENCE_BARS_ONLY`、source／clock_status／alignment／side、anchor_time／anchor_price／last_bar_end、bars_used／expected_closed_slots／missing_closed_slots、reference_return_pct、observed_mae_pct／observed_mfe_pct、observed_mae_per_oz／observed_mfe_per_oz。價格／百分比為Decimal字串，未知null；計數／UTC秒為數值。
+
+僅完整持倉來源可用（execution AVAILABLE／FULL_HOLDING／WHOLE_REFERENCE_HOLDING）才計算。固定錨點為 `ceil(reference_open/300)*300` 的完整五分鐘棒開盤價，必須實際存在，不移到較晚棒；只選 `bar.time>=anchor_time` 且 `bar.time+300<=reference_close` 的已知完整棒，原資料每棒也須不晚於查詢截止。非整棒進出場的邊界棒不參與，沒有完整棒回INSUFFICIENT，不補0。這個錨點不是原券商成交價，不計實際單筆MAE／損益或保證金ROI。
+
+AVAILABLE僅表示該可觀察完整棒窗口沒有五分鐘日曆槽缺口，並非原單全程／原券商時間已核實。PARTIAL表示窗口有休市或來源缺口，數字只代表已知棒的觀察極值，不能宣稱未知缺口的全程最大值；觀察段收尾是最後一根已知完整棒收盤。BUY／SELL方向調整由程式Decimal計算，順向／逆向幅度皆非負，收尾可正可負。scope與UNKNOWN／PROJECT_REFERENCE始終保留。
+
+既有`case-review`只把原快照最多五例的持倉觀察加入匿名facts模板；精確數值僅放本機values，外部writer拿到定性basis及占位符，不含原始K棒、實際時間／價位／ID。持倉數字引用的每個空白行分隔段落都須含對應 `{{cN_observation_basis_state}}`，否則整次改程式說明並回invalid_grounding，不重試供應者。圖像依舊只有進場前，不用它聲稱驗證持倉後續；LLM不得自行計算或編造順序。引用檢查不等於全面自然語言真實性驗證。指定case_ref時，圖像配置／完整性預檢失敗仍回三段程式摘要及可選`notice`，前端保留該原因。
+
+## 2026-10-30 完整持倉參考行情（本機）
+
+既有 `charts.cases[].execution` 新增 `mode:'FULL_HOLDING'`，`bars` 為進場所在棒至出場所在棒之間來源可用、完整觀測五分鐘的K棒，`close_bars:[]`。中間可能有休市或資料缺口，不插值、不補零；缺首尾任一參考棒仍回 `UNAVAILABLE`，不以最近棒代替。原進出價報酬、markers 與 `PROJECT_REFERENCE／UNKNOWN` 不變；進出場及每根棒結束都不晚於查詢截止。
+
+可選 `coverage:{scope:'WHOLE_REFERENCE_HOLDING'|'ENDPOINT_WINDOWS',calendar_slots:number,available_bars:number,gap_slots:number}`。`calendar_slots` 是首尾含端點的五分鐘日曆槽數，`available_bars` 是本次返回的去重來源棒數，差值 `gap_slots` 含休市／來源缺漏，首尾模式時也含刻意未展開範圍，不能解讀成開市漏資料率。scope表示請求／展示範圍，不宣稱連續觀測。完整範圍最多17,280日曆槽（60日顯示效能界線，非檢索門檻）；超限保留 `SEPARATE_CLOSE` 首尾模式及ENDPOINT_WINDOWS。
+
+本機離線 `python -m scripts.build_execution_history` 另建 `private/case_execution_bars_v2.json`，不覆蓋v1或原始CSV。runtime初始化時優先v2，核對cases／profiles／bars／alignment四來源SHA及窗口；v2不存在才用v1，存在但失配時不靜默降級。來源變動仍拒絕，舊分析快照保留原資料，不回填新棒；服務重啟後舊快照409需重查。沒有新外部API路由；後續與原單結果不參與排名，也不自動加入LLM圖像／文字payload。
+
+## 2026-10-30 模型／思考程度與預設自動解讀
+
+本機UI依使用者新指示不再顯示啟用checkbox；送出問題／要求分析時傳`llm_enabled:true`（案例分析`enabled:true`）。既有API旗標省略仍為false，舊回放自動摘要與DEMO確認不變。不是每tick呼叫。
+
+`LiveChatInput`、`DraftChatInput`、`CaseReviewInput`新增可選`model:'sonnet'|'opus'|'haiku'`與`effort:'low'|'medium'|'high'|'xhigh'|'max'`。非法字串422，非Claude服務收到這些覆寫亦422。省略時用服務預設；每請求局部傳遞，不寫process env。status另提供`model_options,effort_options,default_effort`。前端未確認provider時不傳Claude欄位。
+
+模型回覆保留`model`（請求的模型別名）及`requested_effort`，是原請求設定，不宣稱管理政策下的effective effort已獨立核實。舊回覆／原快照不因目前選單改變；聊天紀錄以文字保留。CLI timeout預設120、允許1–150秒；聊天fetch上限180秒。新詳細說明見`docs/model_controls_20261030.md`。
+
+## 2026-10-30 官方 Claude Code 本機文字 provider
+
+`GOLD_LLM_PROVIDER=openai_compatible|claude_code`；未設定保留原HTTP服務，非法值拒絕啟用。`GET /api/assistant/status` 保留原本機／no-store規則並新增 `provider,provider_label,reason,supports_vision`。Claude 的 configured 代表官方CLI已安裝且唯讀登入探測成功；enabled還需GOLD_ENABLE_LLM=true，不保證額度／模型回覆。探測不發起模型推論，最多快取10秒，不回帳號、token或原始CLI輸出。舊HTTP模式configured仍只是有key，不保證授權。
+
+Claude reason包含`ready,authentication_required,cli_not_installed,cli_probe_failed`。前端保留request opt-in，未啟用不呼叫模型；`claude_market_analysis`／`claude_case_review` 為Claude成功解讀的新provider，原Groq值保留。共同引用／占位符核對與partial_grounding不變，程式降級仍為HTTP200。新增安全錯誤status：`cli_not_installed,cli_unavailable,busy,unsupported_image`，以及原authentication_failed／rate_limited／timeout／invalid_response等。
+
+第一版Claude只接受文字。`image_url`回unsupported_image且不推論；前端依supports_vision=false停用送圖，仍可本機預覽。訂閱模式走使用者官方CLI登入、不需要GOLD_LLM_API_KEY，不自提OAuth token；空工作目錄／safe-mode／無工具MCP／無session持久化。模型從既有後端接收受限摘要，無券商工具或委託權限。啟動切換、環境與實際驗收範圍見 `docs/claude_local_adapter_20261030.md`；公開Pages Groq Worker不變。
+
 ## 2026-10-27 後續5分鐘與統一圖表（本機更新）
 
 中檔thresholds現為.25/.50/.12/2；末段准入與score正規化分母同步，舊凍結研究不覆寫。`outcome_analysis.cases[].horizons/scenarios`及快照outcomes現在都含`5`,`30`,`60`，5分鐘為首根完整五分棒（1根）。離線側檔method升為`case_forward_outcomes_v2`，舊v1不冒充提供5分鐘，需重建。
@@ -54,11 +104,11 @@ LLM新增`history.outcome`與`draft.risk`事實模板、token及定性basis；�
 
 ## 2026-10-22 即時盤面對話（僅本機）
 
-`GET /api/assistant/status`：沿用 loopback client／Host／Origin 檢查、`Cache-Control:no-store`。回傳 `configured:boolean,enabled:boolean,model:string,source:'ctrader_demo_xauusd',read_only:true`；不回金鑰，不作外部請求。configured只表示後端已設定key，仍需實際請求確認授權／額度。
+`GET /api/assistant/status`：沿用 loopback client／Host／Origin 檢查、`Cache-Control:no-store`。回傳 `configured:boolean,enabled:boolean,model:string,provider,provider_label,reason,supports_vision,source:'ctrader_demo_xauusd',read_only:true`；不回金鑰，不發起模型推論。HTTP的configured只表示後端已設定key；Claude則作官方CLI唯讀登入探測，均不保證可用額度。
 
 `POST /api/assistant/live-chat`：同一本機限制、no-store。body `{message:string(1..1500),llm_enabled?:boolean=false,previous_questions?:string[0..4](每項<=600),side?:'BUY'|'SELL'='BUY',include_cases?:boolean=true}`，禁止額外欄位。每次只取得一次券商串流快照；include_cases=true且有效即時報價時，從同份已收棒檢索情境案例。false不執行案例檢索。stale不呼叫外部模型。
 
-回傳 `{message,provider,llm_status,model,source,market_status,as_of_utc,quote_time_utc,sections:[{title,text,fact_ids,source?:'model'|'program'}],evidence:[{id,text,values}],followups:string[],draft:null,snapshot_id,query_as_of_utc,analysis_mode:'live'|'draft_snapshot',case_comparison:null|object}`。provider為`groq_market_analysis`或`local_market_rules`；llm_status包括`ok,partial_grounding,not_requested,market_unavailable,read_only,invalid_grounding`及既有模型錯誤狀態（disabled、timeout、expired_key、authentication_failed、rate_limited等）。部分段落被替換時必須標記partial_grounding，不能稱全部是模型產生。程式降級仍是HTTP200，輸入錯誤422、本機存取拒絕403。
+回傳 `{message,provider,llm_status,model,source,market_status,as_of_utc,quote_time_utc,sections:[{title,text,fact_ids,source?:'model'|'program'}],evidence:[{id,text,values}],followups:string[],draft:null,snapshot_id,query_as_of_utc,analysis_mode:'live'|'draft_snapshot',case_comparison:null|object}`。provider為`groq_market_analysis`、`claude_market_analysis`或`local_market_rules`；llm_status包括`ok,partial_grounding,not_requested,market_unavailable,read_only,invalid_grounding`及既有模型錯誤狀態（disabled、timeout、expired_key、authentication_failed、rate_limited等）。部分段落被替換時必須標記partial_grounding，不能稱全部是模型產生。程式降級仍是HTTP200，輸入錯誤422、本機存取拒絕403。
 
 `case_comparison`：`{status,label,reason,method,side,snapshot_id,query_as_of_utc,query_state:{event,tail_direction},counts:{eligible:int|null,passed:int|null,displayed:int},cases:[{ref,case_id,metrics:[{key,label,actual:decimal_string|null,tolerance:decimal_string|null,unit,passed:bool|null}],event,tail_direction,similarities:string[],differences:string[]}],rejections:[{key,label,count}]}`。五個status為PASSED／NO_RULE_MATCH／NO_COMPARABLE_CASES／UNCERTAIN_EVENT／INSUFFICIENT_DATA。cases最多五組，case_id只供本機連結，不送Groq；外部facts只含前兩組別名與程式比較事實，不含逐筆成果／識別欄位。actual為距離或倍率，非機率。未通過次數按列、可重複；counts不可混用。
 
@@ -244,3 +294,15 @@ The new method requires 60 closed 5m candles (plus one for ATR metadata) and 20 
 Results retain the standard case response, add `retrieval_method`, `hour_path_rank`, `hour_path_distance_pct`, structure keys/labels/match, `volatility_ratio` (metadata only), and query/case descriptions. `path_distance_pct` and `hour_path_distance_pct` are percentage-point RMSE, not match probabilities. `comparison.method` preserves the requested method even for insufficient data. Missing private history does not fall back to synthetic ranking. `UNCALIBRATED` means nearest ranked references, not a calibrated similarity threshold. Replay/chat/Pages retain their prior method.
 
 本機live-chat對已收到、同一5分鐘區間且來源僅領先100..250ms的快照，最多等255ms再用真實本機時間執行原100ms／5秒檢查；不重讀報價、不向前設定時間，跨棒／更大偏差直接拒絕。券商草稿／確認不使用此等待。來源領先造成資料不足時回覆明示時鐘原因。
+# 2026-10-30：本機案例解讀與 LIVE 唯讀
+
+- `GET /api/live-readonly`：loopback Host/Origin/client守衛，no-store，獨立LIVE程序與設定，回 `{source:ctrader_live_xauusd,environment:live,read_only:true,order_connection:false,quote,account,bars}`。bars為原生5m/15m/1h已收棒；帳戶與損益保留新鮮度。無POST送單／平倉／撤單路由。SDK輸出只允許讀取訊息，TRADE token也不啟用交易。`.env.ctrader.live`須明確指定LIVE帳戶，不繼承DEMO設定。
+- 原快照`charts.cases[].execution`：`{status,reason,bars,close_bars,markers,result,mode?,clock_status?,alignment?}`。以既有ledger映射進出秒，floor參考棒標記；主窗口最長288根，長持倉平倉附近另圖。缺棒不補、不移標記；缺圖仍可提供原單價格結果。原快照建立時凍結，後續讀取不重新配單。入場所在未收棒僅在歷史事後圖顯示，不進入查詢特徵。
+- `operations.representative.price_result`及`operations.rows[].price_result`：`status,entry_price,exit_price,move_per_oz,price_return_pct,margin_roi_pct:null,basis:DIRECTION_ADJUSTED_PRICE_BEFORE_FEES,reason`。BUY=(exit-entry)、SELL=(entry-exit)，報酬率=方向價差/entry*100。Decimal字串；零／非法價未知。與原報表損益及固定5/30/60分鐘期末變動分別命名。
+- `GET /api/assistant/snapshots/{id}/case-preview`：可選query `case_ref`（1–64字元），本機no-store，回`{snapshot_id,case_ref,image_url:data:image/png;base64,...,rows,columns,complete_panels,basis}`。指定時只有查詢與該案例兩列；省略保留最多6列（查詢＋5例）×2欄。只畫進場前OHLC、首收盤歸零，同週期共用比例尺，不含帳戶、ID、日期、價軸、進出價／後續或PNG metadata。無此ref為404，圖表快照不一致為409，不改用其他案例。
+- `POST /api/assistant/snapshots/{id}/case-review`：body嚴格`{enabled:false,vision:false,case_ref:null,model?,effort?}`；未知欄位422。回`{snapshot_id,case_ref,provider,llm_status,sections,message,model?,requested_effort?}`。case_ref選填且1–64字元；缺快照409、無此ref404，均不呼叫模型。指定時只提供該原案例的匿名事實，保留原編號（例如案例乙仍history.case2／c2），固定「相同點／重要差異／持倉過程」三段；格式／引用不合格整體回程式三段，不重試。省略ref保持原最多五例介面。無匹配不造例。enabled=false只在本機解說；true仍須全域LLM設定可用。vision=true還需`GOLD_LLM_VISION_MODEL`與完整60/20窗口，否則配置／資料不足而不呼叫；指定ref只送該例＋查詢圖。匿名摘要包含比較與方向調整結果，以token由本機填數值，不轉發自由聊天歷史，不回流檢索。前端用snapshot_id與case_ref共同核對回應；切換案例清空舊文字／圖像，只有按分析才推論。圖像不增加交易權限。
+- 公開Pages不提供這些本機能力。新增私人`case_execution_bars.json`不在公開白名單內。
+
+# 2026-10-31 additive contract
+
+圖表、部位管理與對話上下文的新增契約見 [workspace_expansion_20261031.md](docs/workspace_expansion_20261031.md)。原確認／防重送流程及LIVE唯讀不變。新增PROTECT/CANCEL意圖與APPLIED保護結果；不能當成成交。

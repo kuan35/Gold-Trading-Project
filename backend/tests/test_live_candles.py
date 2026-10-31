@@ -106,7 +106,7 @@ def test_close_event_correlation_ignores_external_closes_and_uses_request_id():
     tree=ast.parse(Path('scripts/stream_ctrader_demo.py').read_text(encoding='utf-8'))
     run=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='run')
     callback=next(n for n in run.body if isinstance(n,ast.FunctionDef) and n.name=='execution_result')
-    scope={'account_id':7,'order_ids':{10:'gd-first-close'}}
+    scope={'account_id':7,'order_ids':{10:'gd-first-close'},'request_commands':{}}
     exec(compile(ast.Module(body=[callback],type_ignores=[]),'callback','exec'),scope)
     order=Proto(orderId=99,positionId=12,closingOrder=True,clientOrderId='gd-original-entry',executionPrice=4000.)
     event=Proto(ctidTraderAccountId=7,order=order,executionType=3)

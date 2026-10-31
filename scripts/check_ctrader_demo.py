@@ -17,7 +17,7 @@ import time
 
 ENV_FILE = Path(__file__).resolve().parents[1] / ".env.ctrader"
 KEYS = {"CTRADER_CLIENT_ID", "CTRADER_CLIENT_SECRET", "CTRADER_ACCESS_TOKEN",
-        "CTRADER_ACCOUNT_ID", "CTRADER_ENVIRONMENT"}
+        "CTRADER_ACCOUNT_ID", "CTRADER_ENVIRONMENT", "CTRADER_REFRESH_TOKEN", "CTRADER_TOKEN_EXPIRES_AT"}
 
 
 def load_local_config(path: Path = ENV_FILE) -> dict[str, str]:
