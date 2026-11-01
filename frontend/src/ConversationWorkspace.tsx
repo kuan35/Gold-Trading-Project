@@ -8,7 +8,7 @@ import {emptyInput,patchInput,missingInput,acceptRevision,discussionSide,type In
 import {DESK_HISTORY_KEY,decodeArchive,saveConversationArchive,makeArchiveEntry,mergeArchive,renameConversation,deleteConversation,needsAnalysis,changedFields,type ArchiveTurn,type ArchiveEntry,type ArchiveLoad} from './deskConversations';
 import {archiveTurn} from './conversationArchive';
 import ArchivedConversationReply from './ArchivedConversationReply';
-import {MacroCalendarBar} from './MacroEvents';import {goldQuestionKind} from './macroEventModel';
+import {goldQuestionKind,requestsMacroContext} from './macroEventModel';
 import {DeskRail,DeskMarketHeader,DeskIcon} from './DeskChrome';
 import DeskAccountTray from './DeskAccountTray';
 import AssistantControl,{useAssistantSettings} from './AssistantControl';
@@ -74,7 +74,7 @@ export default function ConversationWorkspace({market,light,visible,onHistory,on
     return;
    }
    const safeQuestion=['PREPARE','EDIT'].includes(interpretation.intent)?`分析${side==='BUY'?'做多':side==='SELL'?'做空':''}想法的盤面支持、相反訊號與案例差異。`:question;
-   const reply=await post<MarketReply>('/assistant/live-chat',{message:safeQuestion,llm_enabled:true,...selectedOptions,conversation_id:threadId,conversation:buildDialogueMemory(turns,threadId),previous_questions:turns.slice(-4).map(t=>t.question.slice(0,600)),...(side?{side}:{}),include_cases:Boolean(side),include_macro:true,draft:{...inputRef.current},input_revision:revisionRef.current});
+   const reply=await post<MarketReply>('/assistant/live-chat',{message:safeQuestion,llm_enabled:true,...selectedOptions,conversation_id:threadId,conversation:buildDialogueMemory(turns,threadId),previous_questions:turns.slice(-4).map(t=>t.question.slice(0,600)),...(side?{side}:{}),include_cases:Boolean(side),include_macro:requestsMacroContext(question),draft:{...inputRef.current},input_revision:revisionRef.current});
    annotate(id,{reply});
   }catch(e){annotate(id,{error:controller.signal.aborted?'分析逾時或已取消，請重試。':e instanceof Error?e.message:'盤面分析失敗。'});}
   finally{window.clearTimeout(timeout);working.current=false;setBusy(false);}
@@ -101,7 +101,6 @@ export default function ConversationWorkspace({market,light,visible,onHistory,on
  return <main id={visible?'market-workspace':undefined} className="conversation-workspace pd-workbench" hidden={!visible} tabIndex={-1} aria-label="聊天交易工作台">
   <DeskRail entries={archive.items} activeId={threadId} busy={busy||checking||locked} error={historyError||archive.error} onOpen={openThread} onNew={()=>openThread()} onNavigate={view=>onNavigate?.(view)} onRename={(id,title)=>{if(working.current||checkWorking.current||lockedRef.current)return;setArchive(v=>({...v,items:renameConversation(v.items,id,title)}));}} onDelete={id=>{if(working.current||checkWorking.current||lockedRef.current)return;if(id===threadId)openThread();setArchive(v=>({...v,items:deleteConversation(v.items,id)}));}}/>
   <div className="pd-body"><DeskMarketHeader market={market} light={light} onToggleTheme={()=>onToggleTheme?.()}/>
-  <MacroCalendarBar active={visible}/>
   <div className="cw-heading"><div><span className="pd-eyebrow">YOUR TRADING WORKSPACE</span><h1>交易對話</h1></div><button className="pd-ticket-toggle" type="button" aria-expanded={mobileTicket} aria-controls="pd-ticket" onClick={()=>setMobileTicket(!mobileTicket)}>{mobileTicket?'收合委託':'準備中委託'}</button></div>
   <div className="cw-grid" ref={grid} style={chatShare===null?undefined:{'--cw-chat-weight':`${chatShare}fr`,'--cw-ticket-weight':`${100-chatShare}fr`} as CSSProperties}><section className="cw-conversation" aria-label="交易對話"><div className="cw-chat-toolbar"><AssistantControl settings={assistantSettings} busy={busy}/><button type="button" disabled={busy} onClick={()=>void send('更新目前盤面與案例')}>{newBar?'有新收盤 · 更新分析':'更新盤面'}</button></div>
    <div className="cw-transcript"><div id="conversation-log" style={chatHeight===null?undefined:{height:chatHeight}} className="cw-log" ref={log} role="log" aria-label="聊天紀錄" aria-live="polite" aria-relevant="additions text" tabIndex={0} onScroll={()=>{const el=log.current;if(el){follow.current=nearChatBottom(el.scrollHeight,el.clientHeight,el.scrollTop);setShowLatest(!follow.current&&Boolean(lastTurn.current&&lastTurn.current.getBoundingClientRect().top>el.getBoundingClientRect().top+32));}}}>{!turns.length&&<div className="cw-welcome"><h2>先聊聊你的交易想法</h2><p>說出多空方向，就能一起看盤面依據與歷史案例。委託欄位也可以在對話中點選。</p><div className="cw-actions">{['我想做多，現在有哪些支持與相反訊號？','如果做空，有類似案例嗎？','附近支撐壓力在哪？'].map(q=><button type="button" key={q} onClick={()=>void send(q)}>{q}</button>)}</div></div>}

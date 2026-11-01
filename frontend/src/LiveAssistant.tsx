@@ -1,5 +1,5 @@
 import {buildDialogueMemory} from './dialogueMemory';
-import {goldQuestionKind,type MacroSnapshot,type GoldRelation} from './macroEventModel';
+import {goldQuestionKind,requestsMacroContext,type MacroSnapshot,type GoldRelation} from './macroEventModel';
 import {useEffect,useRef,useState,type FormEvent} from 'react';
 import LiveVolumeAnalysis from './LiveVolumeAnalysis';
 import type {Side} from './types';
@@ -49,7 +49,7 @@ export default function LiveAssistant({side}:{side:Side}){
   const timer=window.setTimeout(()=>request.current?.abort(),180000);
   try{
    const gold=Boolean(goldQuestionKind(text));
-   const response=await fetch(gold?'/api/assistant/gold-chat':'/api/assistant/live-chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:text,llm_enabled:true,...assistantSettings.requestOptions,conversation_id:threadId.current,conversation:buildDialogueMemory(messages,threadId.current),...(!gold?{previous_questions,side:querySide,include_cases:includeCases,include_macro:true}:{})}),signal:request.current.signal});
+   const response=await fetch(gold?'/api/assistant/gold-chat':'/api/assistant/live-chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:text,llm_enabled:true,...assistantSettings.requestOptions,conversation_id:threadId.current,conversation:buildDialogueMemory(messages,threadId.current),...(!gold?{previous_questions,side:querySide,include_cases:includeCases,include_macro:requestsMacroContext(text)}:{})}),signal:request.current.signal});
    const result=await response.json();if(!response.ok)throw Error(typeof result.detail==='string'?result.detail:'即時盤面分析失敗');
    setMessages(items=>items.map((item,i)=>i===index?{...item,reply:result}:item));
   }catch(e){if(request.current?.signal.aborted)setError('分析逾時或已取消，可重新提問；沒有送出交易。');else setError(e instanceof Error?e.message:'無法取得盤面說明');}

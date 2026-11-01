@@ -13,7 +13,8 @@ POST `/api/assistant/gold-chat` 使用DialogueFields及message、llm_enabled；p
 analysis_mode=gold_knowledge或macro_events、draft=null、macro_context／gold_relation／
 knowledge_sources。明確委託指令不走此入口。來源失敗不填0，未涵蓋消息不稱無事件。
 
-LiveChatInput新增include_macro（舊客戶端預設false）；工作台設true，先讀事件再抓
+LiveChatInput新增include_macro（預設false）；工作台只在本次提問明確涉及消息／
+事件時設true，一般盤面及委託不自動讀取。設true時先讀事件再抓
 新報價，macro capture hash納入新snapshot_id並同步charts／case_comparison。
 當次macro_context存於原bundle，之後不以新資料更新舊快照。原檢索／委託權限不變。
 事件時間範圍在後端依Asia/Taipei篩選，先篩主題再截斷；回requested_window與

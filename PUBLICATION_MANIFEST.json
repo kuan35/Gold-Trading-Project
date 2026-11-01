@@ -34,8 +34,8 @@
       "sha256": "5fa956bbd0d5796b79ceee98d950fe22079e698c418728623183d86088b31402"
     },
     "API_CONTRACT.md": {
-      "bytes": 59181,
-      "sha256": "2e7ff8d4e0196abee2a921049e179d5cf22431835b82b941f9747423b5c90bdd"
+      "bytes": 59268,
+      "sha256": "e774352e233d12d143cfb6f2e7ffc816727c460cccbc0b8cb6b9b4f8d7f4ffa2"
     },
     "CLAUDE.md": {
       "bytes": 233,
@@ -46,8 +46,8 @@
       "sha256": "fb9146faef463f12e665b4d25468be5b87dde9107ee49eb2cf54dd2ae469ba2f"
     },
     "HANDOFF.md": {
-      "bytes": 5696,
-      "sha256": "cb38ffd3a10c0c94d25cb01efad6821371710ff7d0e97312b3e98d4e96acf91c"
+      "bytes": 6582,
+      "sha256": "43357933f26df1010bf3bc2757b1da7aae284e76a45d3d7f947e9517467c1517"
     },
     "LICENSE": {
       "bytes": 1279,
@@ -638,8 +638,8 @@
       "sha256": "ece994c64d131aaf1fc7a3b77c6fa63b6bdc253d7847b7ec0ce9a82f17bc6934"
     },
     "docs/gold_macro_assistant_20261101.md": {
-      "bytes": 3687,
-      "sha256": "5ad7a4e15687ee3d3e827bb8d7a44746b19a0f8cc8c6adef4c0e301c1018b774"
+      "bytes": 3897,
+      "sha256": "6b6faa7f8b86fabbb3fc65a5e5e1ee63dd2ef37e77d1613c5b9f5fbb40c39c54"
     },
     "frontend/index.html": {
       "bytes": 330,
@@ -754,8 +754,8 @@
       "sha256": "52bd171995b2566bc37f65470162f75972e3d83caa40fe31044ac0607d7a8a2a"
     },
     "frontend/src/ConversationWorkspace.tsx": {
-      "bytes": 19069,
-      "sha256": "ddba64cfa7d0dbbda5344c70fdde8f4f6328d7f172c2a7827e00b622831048dd"
+      "bytes": 19029,
+      "sha256": "45990b23d445a3a9bd020c87361348563e57644f8e1b0e28776db8c4aca50309"
     },
     "frontend/src/DeskAccountTray.tsx": {
       "bytes": 2981,
@@ -786,8 +786,8 @@
       "sha256": "06feef7b9b961f9c43c74a7c7f2a65b65a7e0b6a92009b77fc80e5b9a2d4c952"
     },
     "frontend/src/LiveAssistant.tsx": {
-      "bytes": 8951,
-      "sha256": "81d1a2f6b16b9d3b995b524489c4592ec4d990a682e2f0983043333d6ddd5d44"
+      "bytes": 8994,
+      "sha256": "2240f491ac4ded22d02c9ae3f2c60eb624935e9143c770f36a1a83e41e49aea1"
     },
     "frontend/src/LiveCandleChart.tsx": {
       "bytes": 4945,
@@ -810,8 +810,8 @@
       "sha256": "966fb77bf785aedd745ffc7ca1734947fb3e348874595b8af644e0ffd9b23a39"
     },
     "frontend/src/MacroEvents.tsx": {
-      "bytes": 4538,
-      "sha256": "49d1956c653d54296d89ed580608caa7e5d5332ce2a6bf679800dca8d7f4ecb8"
+      "bytes": 2915,
+      "sha256": "5d4c2fa9dd8220415ec6702129372803f1d87b5ca1af3c73791fe50b0190779b"
     },
     "frontend/src/MarketDetails.tsx": {
       "bytes": 2720,
@@ -978,12 +978,12 @@
       "sha256": "c428a3a26303822d3c07edbc6add8b5c9c75e521e81d307a8ec6f0043ef6a650"
     },
     "frontend/src/macroEventModel.ts": {
-      "bytes": 3462,
-      "sha256": "66544e2d34b141474adb57308256e19267efda6e0d7368381d48cd08cefc7817"
+      "bytes": 3698,
+      "sha256": "ac2a4fe6d89cb3dba9444805916bdaef768d675bc627c58aae55e5869db9cf6d"
     },
     "frontend/src/macroEvents.css": {
-      "bytes": 2183,
-      "sha256": "f436321f8fa32a86327428810b60c6371c95654d659d4774cac7b95b80b3782e"
+      "bytes": 1631,
+      "sha256": "a7919788aba1b29984d2e1cd75c3b4d3401fc55f77553be85686781beeb5662a"
     },
     "frontend/src/main.tsx": {
       "bytes": 409,
@@ -1170,8 +1170,8 @@
       "sha256": "dee1d3dd8221b96514c1246608b61bb58b4e81faf8ce399ff09e569cd81340e9"
     },
     "frontend/tests/macro-events.test.ts": {
-      "bytes": 3841,
-      "sha256": "f852241e5bf3e19dd4e0c5f2931163360976d7c0fe312d4fd3cd08e2fa9b863d"
+      "bytes": 4716,
+      "sha256": "13cc0dd398c9865ea23fd73b22562ccfd3cfbb5b2ba66dc1da72db6bd3729a73"
     },
     "frontend/tests/model-settings.test.ts": {
       "bytes": 2277,

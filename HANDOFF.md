@@ -1,5 +1,17 @@
 # Gold Desk 本機產品交接
 
+## 2026-11-01 — 消息面改為交易對話按需回答
+
+- 依使用者要求移除首頁MacroCalendarBar及其背景輪詢、倒數timer與樣式。
+  事件／多空關聯仍在交易對話回覆中；問CPI、FOMC、消息等才取得及說明。
+- ConversationWorkspace與LiveAssistant不再無條件include_macro:true；
+  requestsMacroContext只在使用者這次提問包含消息主題時附加背景。
+  普通知識、案例排序、委託草稿與人工確認不變；沒有新增主動通知。
+- macro-events回歸測試涵蓋首次工作台無事件列、一般盤面／下單不請求消息、
+  問消息才要求背景，以及既有多空情境／來源／歷史文字保存。
+  前端156 passed，npm run build及build:pages成功；後端未改，不重跑完整後端。
+  詳見docs/gold_macro_assistant_20261101.md；發布結果見研究工作區HANDOFF。
+
 ## 2026-11-01 — 黃金知識與官方消息面，逐事件說明多空關聯
 
 - 新增macro_calendar／macro_knowledge／macro_assistant／macro_grounding；固定讀Fed

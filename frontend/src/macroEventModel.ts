@@ -13,6 +13,9 @@ export function eventProximity(event:MacroEvent,now=Date.now()):string{
  if(delta<=0)return '已到排程時間，公布結果尚未讀取';
  return delta<=3_600_000?`距排程約 ${Math.ceil(delta/60_000)} 分鐘`:`距排程約 ${Math.ceil(delta/3_600_000)} 小時`;
 }
+export function requestsMacroContext(text:string):boolean{
+ return /\b(?:CPI|PCE|GDP|PPI|FOMC)\b|非農|聯準會|總經|經濟事件|經濟數據|利率|升息|降息|消息|新聞|公告|發言|聲明|行事曆|日曆/i.test(text);
+}
 export function goldQuestionKind(text:string):'knowledge'|'calendar'|'news'|null{
  if(/(?:買進|買入|賣出|下單|做多|做空).*\d|(?:修改|改成|設為|設定).*(?:手數|停損|停利|限價)|(?:停損|停利|手數|限價)\s*\d|我想.*(?:做多|做空|買|賣)|如果.*(?:做多|做空)/i.test(text))return null;
  if(!/黃金|CPI|PCE|GDP|PPI|非農|聯準會|FOMC|總經|經濟事件|利率|升息|降息|保證金|槓桿|限價單|市價單|停損|停利|tick|成交量|消息|新聞|行事曆/i.test(text))return null;
