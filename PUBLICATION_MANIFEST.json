@@ -46,8 +46,8 @@
       "sha256": "fb9146faef463f12e665b4d25468be5b87dde9107ee49eb2cf54dd2ae469ba2f"
     },
     "HANDOFF.md": {
-      "bytes": 11731,
-      "sha256": "65701e37d615633819f849f0de5b339c78e33b6e0eb5c7c521ecca29a74d6c10"
+      "bytes": 13433,
+      "sha256": "1b46e7cd26efff126105ffb365880686c1000a3269c0fbcc46bd28ed49b6a8e8"
     },
     "LICENSE": {
       "bytes": 1279,
@@ -770,8 +770,8 @@
       "sha256": "52bd171995b2566bc37f65470162f75972e3d83caa40fe31044ac0607d7a8a2a"
     },
     "frontend/src/ConversationWorkspace.tsx": {
-      "bytes": 21493,
-      "sha256": "c0063f63c705ccd3c6fb405dd74854a7d96a011f1ddfa551fe65f62e8ce3616b"
+      "bytes": 21866,
+      "sha256": "a84a5c885faefd045de5978052049da773835abc73c5a56aa5dab5b38e34af1a"
     },
     "frontend/src/DeskAccountTray.tsx": {
       "bytes": 2981,
@@ -858,12 +858,16 @@
       "sha256": "276a0a394de3fc2cc71fe54520a3a6a6124ce58aae66181cdbcd6aed2996f19b"
     },
     "frontend/src/SharedTicket.tsx": {
-      "bytes": 1980,
-      "sha256": "e1d11c689d96597314cdc1c986a58e1feaa7d0dede2f0263723540410734a051"
+      "bytes": 2054,
+      "sha256": "4528150d2f8a9402989ec8ec74f4cf6da659750434999abbc4335555d5f5e8b2"
     },
     "frontend/src/SimilarityEvidence.tsx": {
       "bytes": 10114,
       "sha256": "1f933d230f472b0c6b121f6c187d21e7ecc9275403c227d5dfacb6dc5cc4fc73"
+    },
+    "frontend/src/TicketCheckAction.tsx": {
+      "bytes": 771,
+      "sha256": "8bd9bea24e8ada000662f5224b132fded51895f19b161bccfab9ad1c53d4deaa"
     },
     "frontend/src/TradeResult.tsx": {
       "bytes": 1933,
@@ -962,8 +966,8 @@
       "sha256": "16131b34c23b28fb3cb922d978d832382e25f11288b1291aefa0b77000a73158"
     },
     "frontend/src/conversationWorkspace.css": {
-      "bytes": 11869,
-      "sha256": "23a9c80a3614eda6fdb194d0c9c62478244c1d36fab052bf6e262b85a0c702c7"
+      "bytes": 12039,
+      "sha256": "535ddab9ff615d59ce2720e3d1897ea1d43b46399f3eb0e05ecd2e5cb7ce064c"
     },
     "frontend/src/demo-data.json": {
       "bytes": 92417,
@@ -1188,6 +1192,10 @@
     "frontend/tests/holding-observation.test.ts": {
       "bytes": 1220,
       "sha256": "8a92d985c76b7bc43c5971dff1ce41ad7f3ac969078ebbf67564b92c7bb5e325"
+    },
+    "frontend/tests/inline-ticket-submit.test.ts": {
+      "bytes": 2788,
+      "sha256": "643636e42345fd340f0b242b93a1c8967cf1b1dd731ae72cd7aaf6f0bebb6e9a"
     },
     "frontend/tests/limit-order.test.ts": {
       "bytes": 2006,

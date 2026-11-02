@@ -3,6 +3,7 @@ import {useEffect,useRef,useState,type FormEvent,type CSSProperties} from 'react
 import {api} from './api';import type {Side} from './types';import type {DemoMarket} from './demoMarket';import type {MarketReply} from './LiveAssistant';
 import ConversationResize from './ConversationResize';import {CHAT_HEIGHT_KEY,savedChatHeight} from './chatSize';
 import ConversationHelp from './ConversationHelp';import {nearChatBottom,turnScrollTarget} from './conversationScroll';
+import TicketCheckAction from './TicketCheckAction';
 import SharedTicket from './SharedTicket';import ConversationReply from './ConversationReply';import ConversationCharts from './ConversationCharts';import ConversationOrderReview,{type CheckedOrder} from './ConversationOrderReview';
 import {emptyInput,patchInput,missingInput,acceptRevision,discussionSide,type InputPatch} from './conversationState';
 import {DESK_HISTORY_KEY,decodeArchive,saveConversationArchive,makeArchiveEntry,mergeArchive,renameConversation,deleteConversation,needsAnalysis,changedFields,type ArchiveTurn,type ArchiveEntry,type ArchiveLoad} from './deskConversations';
@@ -15,6 +16,7 @@ import {DeskRail,DeskMarketHeader,DeskIcon} from './DeskChrome';
 import DeskAccountTray from './DeskAccountTray';
 import AssistantControl,{useAssistantSettings} from './AssistantControl';
 import {buildDialogueMemory} from './dialogueMemory';
+type TicketOrigin='inline'|'side';
 type Interpretation={intent:string;analysis_side:Side|null;patch:InputPatch;proposal:InputPatch;message:string;missing_fields:string[];input_revision:number};
 type Turn={id:number;question:string;at?:string;note?:string;noteImportant?:boolean;reply?:MarketReply;proposal?:InputPatch;proposalRevision?:number;error?:string;record?:ArchiveTurn};
 const newThreadId=()=>`chat-${globalThis.crypto?.randomUUID?.()??Date.now()+'-'+Math.random().toString(36).slice(2)}`;
@@ -29,6 +31,7 @@ export default function ConversationWorkspace({market,light,visible,onHistory,on
  const log=useRef<HTMLDivElement>(null),follow=useRef(true),lastSeen=useRef(0);
  const [input,setInput]=useState(emptyInput),[revision,setRevision]=useState(0),[turns,setTurns]=useState<Turn[]>(()=>archive.items.find(e=>e.id===threadId)?.turns.map((record,i)=>({id:-(i+1),question:record.question,at:record.at,record}))??[]),[text,setText]=useState('');
  const [busy,setBusy]=useState(false),[checking,setChecking]=useState(false),[locked,setLocked]=useState(false),[error,setError]=useState('');
+ const [reviewOrigin,setReviewOrigin]=useState<TicketOrigin>('side'),[errorOrigin,setErrorOrigin]=useState<TicketOrigin>('side');
  const [checked,setChecked]=useState<{draft:CheckedOrder;revision:number}|null>(null),[inline,setInline]=useState(false),[chart,setChart]=useState<ArchivedChart|null>(()=>archive.items.find(e=>e.id===threadId)?.chart??null);
  const sessions=useRef(new ConversationSessions<Turn>()),currentChart=useRef(chart);
  const inputRef=useRef(input),revisionRef=useRef(0),sideRef=useRef<Side|null>(null),lockedRef=useRef(false),working=useRef(false),checkWorking=useRef(false),checkedRef=useRef(checked),sequence=useRef(0),request=useRef<AbortController|null>(null),lastTurn=useRef<HTMLDivElement>(null),chartTrigger=useRef<HTMLElement|null>(null);
@@ -112,16 +115,17 @@ export default function ConversationWorkspace({market,light,visible,onHistory,on
   finally{window.clearTimeout(timeout);working.current=false;setBusy(false);}
  };
  const edit=(p:InputPatch)=>{const previous=inputRef.current.side;patch(p);if(p.side&&p.side!==previous&&!working.current)void send(p.side==='BUY'?'我想討論做多的盤面與案例':'我想討論做空的盤面與案例',p.side);};
- const check=async()=>{
+ const check=async(origin:TicketOrigin)=>{
   if(checkWorking.current||lockedRef.current)return;
+  setErrorOrigin(origin);
   const sent=revisionRef.current,v={...inputRef.current};const missing=missingInput(v);if(missing.length){setInline(true);setError('請先填寫：'+missing.join('、'));return;}
   checkWorking.current=true;setChecking(true);setError('');
   try{
    const previous=checkedRef.current;if(previous){await api(`/broker/drafts/${previous.draft.id}/cancel`,{});setChecked(null);checkedRef.current=null;}
    const draft=await api<CheckedOrder>('/broker/drafts',{...v,limit_price:v.order_type==='LIMIT'?v.limit_price:null,sl:v.sl.trim()||null,tp:v.tp.trim()||null,retrieval_method:'context_contract_v1',input_revision:sent});
    if(!acceptRevision(sent,revisionRef.current)){await api(`/broker/drafts/${draft.id}/cancel`,{});setError('欄位已變更，舊檢查已取消。請用最新欄位重新檢查。');return;}
-   const next={draft,revision:sent};setChecked(next);checkedRef.current=next;
-   const id=++sequence.current;setTurns(t=>[...t,{id,question:'檢查目前委託',at:new Date().toISOString(),reply:draft.analysis_reply,noteImportant:true,note:'委託已檢查，請核對右側風險與確認結果。'}]);
+   const next={draft,revision:sent};setChecked(next);checkedRef.current=next;setReviewOrigin(origin);
+   const id=++sequence.current;setTurns(t=>[...t,{id,question:'檢查目前委託',at:new Date().toISOString(),reply:draft.analysis_reply,noteImportant:true,note:'委託已檢查，請核對委託內容與風險，再由你確認。'}]);
   }catch(e){setError(e instanceof Error?e.message:'委託檢查失敗');}finally{checkWorking.current=false;setChecking(false);}
  };
  const jumpToLatest=()=>{const host=log.current,turn=lastTurn.current;if(host&&turn){host.scrollTo({top:turnScrollTarget(host.scrollTop,host.getBoundingClientRect().top,turn.getBoundingClientRect().top)});follow.current=true;setShowLatest(false);}};
@@ -130,6 +134,7 @@ export default function ConversationWorkspace({market,light,visible,onHistory,on
  const quoteTime=Date.parse(market?.quote.source_time_utc??'')/1000,newBar=Boolean(latest?.query_as_of_utc&&Number.isFinite(quoteTime)&&Math.floor(quoteTime/300)*300>latest.query_as_of_utc);
  const ready=Boolean(market?.environment==='demo'&&market.order_connection&&market.quote.status==='CURRENT'&&market.account?.status==='CURRENT');
  const missing=missingInput(input);
+ const orderReview=checked&&<ConversationOrderReview key={checked.draft.id} draft={checked.draft} checkedRevision={checked.revision} currentRevision={revision} accountUpdated={market?.account?.updated_at_utc} onClear={()=>{setChecked(null);checkedRef.current=null;setLock(false);}} onLock={setLock} onHistory={onHistory}/>;
  return <main id={visible?'market-workspace':undefined} className="conversation-workspace pd-workbench" hidden={!visible} tabIndex={-1} aria-label="聊天交易工作台">
   <DeskRail entries={archive.items} activeId={threadId} busy={busy||checking||locked} error={historyError||archive.error} onOpen={openThread} onNew={()=>openThread()} onNavigate={view=>onNavigate?.(view)} onRename={(id,title)=>{if(working.current||checkWorking.current||lockedRef.current)return;setArchive(v=>({...v,items:renameConversation(v.items,id,title)}));}} onDelete={removeThread}/>
   <div className="pd-body"><DeskMarketHeader market={market} light={light} onToggleTheme={()=>onToggleTheme?.()}/>
@@ -141,13 +146,13 @@ export default function ConversationWorkspace({market,light,visible,onHistory,on
    </div>
    {showLatest&&<button type="button" className="cw-latest" onClick={jumpToLatest}>回到最新對話 ↓</button>}</div>
    <div className="cw-size-row"><ConversationResize axis="height" value={chatHeight} target={log} onChange={setChatHeight}/><button type="button" onClick={()=>{setChatHeight(null);setChatShare(null);}}>還原大小</button></div>
-   <details className="cw-inline" open={inline} onToggle={e=>setInline(e.currentTarget.open)}><summary>在對話內填寫委託</summary><SharedTicket id="chat-ticket" value={input} onPatch={edit} disabled={locked}/></details>
+   <details className="cw-inline" open={inline} onToggle={e=>setInline(e.currentTarget.open)}><summary>在對話內填寫委託</summary><SharedTicket id="chat-ticket" value={input} onPatch={edit} disabled={locked}/><TicketCheckAction id="chat-ticket-check" ready={ready} checking={checking} locked={locked} missing={missing} error={errorOrigin==='inline'?error:undefined} onCheck={()=>void check('inline')}/>{reviewOrigin==='inline'&&orderReview}</details>
    {chart&&<ConversationCharts key={chart.id+chart.mode+chart.period+JSON.stringify(chart.selection)} selection={chart.selection} initialPeriod={chart.period} analysisRef={chart.analysis_ref} reference={input} onViewChange={view=>{if(currentChart.current)rememberChart({...currentChart.current,...view},false);}} snapshotId={chart.id} mode={chart.mode} light={light} onClose={()=>{rememberChart(null);chartTrigger.current?.focus();}}/>}
    <form className="cw-composer" onSubmit={(e:FormEvent)=>{e.preventDefault();void send(text);}}><label className="sr-only" htmlFor="conversation-message">輸入交易想法或委託條件</label><textarea id="conversation-message" rows={2} maxLength={1500} value={text} onChange={e=>setText(e.target.value)} placeholder="和 Gold Desk 討論，或輸入下單條件…"/><button className="primary" aria-label="送出對話" disabled={busy||!text.trim()}><DeskIcon name="arrow"/><span>{busy?'整理中…':'送出'}</span></button></form>
    {(historyError||archive.error)&&<p role="alert" className="cw-note">{historyError||archive.error}</p>}
   </section><ConversationResize axis="width" value={chatShare} target={grid} onChange={setChatShare}/><aside id="pd-ticket" className={`cw-sidebar ${mobileTicket?'pd-ticket-open':''}`} aria-label="準備中委託"><header><h2>準備中委託</h2><small>cTrader DEMO</small></header><SharedTicket id="side-ticket" value={input} onPatch={edit} disabled={locked}/>
-   <button type="button" className="primary full" disabled={checking||locked||!ready} onClick={()=>void check()}>{checking?'讀取最新盤面並核對…':'檢查 DEMO 委託'}</button><p className="fine">{!ready?'等待最新 DEMO 報價與帳戶連線。':missing.length?'待填：'+missing.join('、'):'檢查後仍須由你按下確認。'}</p>
-   {error&&<p role="alert" className="modal-error">{error}</p>}{checked&&<ConversationOrderReview key={checked.draft.id} draft={checked.draft} checkedRevision={checked.revision} currentRevision={revision} accountUpdated={market?.account?.updated_at_utc} onClear={()=>{setChecked(null);checkedRef.current=null;setLock(false);}} onLock={setLock} onHistory={onHistory}/>}
+   <TicketCheckAction id="side-ticket-check" ready={ready} checking={checking} locked={locked} missing={missing} error={errorOrigin==='side'?error:undefined} onCheck={()=>void check('side')}/>
+   {reviewOrigin==='side'&&orderReview}
    <div className="cw-account"><strong>DEMO 帳戶摘要</strong><dl><div><dt>淨值</dt><dd>{market?.account?.status==='CURRENT'&&market.account.pnl_status==='CURRENT'?market.account.equity:'—'} {market?.account?.currency??''}</dd></div><div><dt>黃金浮動損益</dt><dd>{market?.account?.status==='CURRENT'&&market.account.pnl_status==='CURRENT'?market.account.xau_net_unrealized_pnl??'—':'—'} {market?.account?.currency??''}</dd></div></dl><button type="button" onClick={onHistory}>查看持倉與下單紀錄</button></div>
   </aside></div>
   {visible&&<DeskAccountTray market={market}/>}<ConversationHelp/></div>

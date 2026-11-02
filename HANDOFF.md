@@ -1,5 +1,13 @@
 # Gold Desk 本機產品交接
 
+## 2026-11-03 — 聊天內委託補上檢查及人工確認入口
+
+- 使用者在聊天內填好欄位卻找不到下一步。原cw-inline只渲染SharedTicket，檢查與ConversationOrderReview只在右側；且未選單型時僅右側小字提示。
+- 新TicketCheckAction共用明確「檢查 DEMO 委託」、缺填與連線提示，錯誤留在觸發入口。SharedTicket提示尚未選擇市價或限價，維持未預選單型。ConversationWorkspace兩處都呼叫同一check流程，核對成功後只在觸發位置渲染一份原ConversationOrderReview；聊天內可以接著核對風險並人工確認，不需輸入聊天文字或移到右側。沿用版本、防重送及UNKNOWN鎖。
+- 新inline-ticket-submit測試先2 RED，再178項前端全通過；一般build及Pages build成功（原chunk警告）。測試另覆蓋連線／檢查中／鎖定狀態、缺填、錯誤回饋及不自動送單。後端未修改，未重跑後端全套。一次獨立read-only review無可執行問題。
+- 實際Chrome：聊天及右側欄位同步，缺單型時按檢查在聊天內提示；選擇市價後建立核對草稿、全頁僅1確認區且位於聊天內，顯示風險與人工確認按鈕。僅建立並取消核對草稿，未按確認、未成交；驗收切程式解讀，無付費模型呼叫。測試單型清除、使用者原欄位與Claude設定還原。截圖／log／243原件SHA留private/inline_ticket_fix_20261103。
+- 根branch codex/candidate-market-retrieval／commit N/A；公開沿codex/local-distribution-20261031／PR #1同步修正，發布SHA另記根HANDOFF。下一步使用者選好市價或限價後於聊天內按檢查，再自行核對確認。
+
 ## 2026-11-02 — MACD／訊號線即時跳動修正
 
 - 使用者開啟MACD與MACDsignal後圖表跳動。原ChartWorkspaceTools的effect依賴bars，每個tick cleanup移除全部指標與空副圖、再新增並setHeight(90)。不是價格正常跳動，亦不是前次CSS高度回饋。
