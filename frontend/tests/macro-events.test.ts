@@ -8,6 +8,11 @@ test('trading conversation starts without an unsolicited event panel',()=>{
  const html=renderToStaticMarkup(createElement(ConversationWorkspace,{market:null,light:false,visible:true,onHistory:()=>{}}));
  assert.match(html,/交易對話/);assert.doesNotMatch(html,/macro-bar|看多空關聯|正在查詢官方行事曆/);
 });
+test('welcome offers a macro shortcut that actually routes to event lookup',()=>{
+ const question='最近有哪些總經事件會影響黃金？';
+ const html=renderToStaticMarkup(createElement(ConversationWorkspace,{market:null,light:false,visible:true,onHistory:()=>{}}));
+ assert.match(html,new RegExp(question));assert.equal(goldQuestionKind(question),'calendar');
+});
 test('market and order discussions add macro context only when asked',()=>{
  for(const q of ['分析目前黃金盤面','我想做多0.1手','附近支撐壓力在哪','更新目前盤面與案例'])assert.equal(requestsMacroContext(q),false,q);
  for(const q of ['CPI如何影響黃金','今天有什麼消息面影響','我想做多黃金，非農要注意什麼','下週FOMC何時','幫我看經濟行事曆'])assert.equal(requestsMacroContext(q),true,q);

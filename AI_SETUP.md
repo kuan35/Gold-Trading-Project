@@ -12,6 +12,9 @@ AGENTS.md、DATA_POLICY.md、docs/LOCAL_INSTALL.md。沿用現有React/FastAPI�
 3. Windows執行setup.ps1；macOS執行sh setup.sh。它建立專案venv、npm ci及
    一般build，不是build:pages。不要覆蓋既有.env或private資料。
 4. 執行專案venv的 `python -m scripts.local_app doctor`，回報狀態，不印設定值。
+   同學應沿用完整frontend／backend，不重寫介面。驗收新增兩個測試聊天，先選程式解讀，
+   A開圖→B→A→重整，核對原分析時間及K線仍在；不要為驗收消耗模型額度或送單。
+   更新保留private/analysis_history及使用者原瀏覽器資料，不匯入作者聊天或分析快取。
 5. 未取得私人包時維持明示合成回放。若本人取得授權包，先停止網站，再依
    data_bundle import/verify流程導入；不得從別人電腦或公開網路擅取私人資料。
 6. 使用者自行在官方CLI登入Codex或Claude Code。不要讀取／複製auth.json、

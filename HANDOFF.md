@@ -1,5 +1,16 @@
 # Gold Desk 本機產品交接
 
+## 2026-11-02 — 完整分析與圖表還原、總經快捷提問
+
+- 切聊天原先只還原純文字，圖表快照又只在記憶體。新增analysis_history磁碟保存唯讀回覆及原快照，schema3聊天索引保存analysis_ref及圖表選擇；保留schema1／2文字相容。A→B→A、重整、服務真正重啟後皆讀原分析，不以新行情替代。
+- analysisHistory／ArchivedConversationReply及工作台快取保留完整案例卡、分析圖、週期及案例／後續範圍。舊版沒有保存原快照者仍只能看文字。刪除先成功保存瀏覽器紀錄才清理後端引用；quota失敗不破壞原資料。共享快照不隨單一回覆刪除。
+- GET／DELETE /api/assistant/analyses/{analysis_ref}僅本機；回覆不含可執行草稿或憑證。舊草稿仍走原TTL與人工確認，不因還原分析取得送單權限。
+- 常用聊天新增「最近有哪些總經事件會影響黃金？」沿用calendar入口，按下才查詢，沒有常駐消息輪詢。
+- 後端650 passed、1 skipped；前端168 passed；一般及Pages build成功（既有chunk警告）。一次獨立review的quota刪除順序問題已RED→GREEN修正。
+- 真實Chrome驗收A開1h圖→B→A→重整→重啟後重整，原時間與圖表內容保留、圖表高度440px；當次即時無符合案例，有案例卡片以回歸fixture驗證。全程未呼叫付費模型或送交易；原Claude供應商設定已還原。
+- 原243檔SHA與公開白名單收據留作者private/chat_analysis_fix_20261102。完整受控runtime包379檔驗證可載11902列案例／10887盤面；不含聊天、analysis_history或金鑰。組員沿README指定分支安裝、本人AI與DEMO設定，案例包另外私下分享。
+- 根branch codex/candidate-market-retrieval／commit N/A；公開沿既有PR #1分支，實際發布SHA記於根HANDOFF。下一步組員依LOCAL_INSTALL安裝並驗收聊天切換，macOS實機仍待確認。
+
 ## 2026-11-02 — 圖表高度循環／統一平倉入口／開盤量能實測
 
 - CaseComparison的grid＋100%圖表canvas會自撐高，實際Chrome量測四圖達22,464.5px。

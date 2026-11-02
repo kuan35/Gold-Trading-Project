@@ -45,6 +45,7 @@ export default function ConversationReply({reply:r,onChart,question='',light=fal
  const signals=trendSignals(r,c?.side==='BUY'||c?.side==='SELL'?c.side:null);
  const signalPanel=(title:string,items:typeof signals.support,kind:string)=><section className={`pd-signal pd-signal-${kind}`}><h3>{title}</h3>{items.length?<ul>{items.map(s=><li key={s.factId}><span>{s.period}</span><div>{s.text}<small>已收棒</small>{r.snapshot_id&&<button type="button" onClick={()=>onChart('analysis',s.period)}>看圖</button>}</div></li>)}</ul>:<p>{kind==='support'?'目前沒有明確的同向趨勢訊號。':'目前沒有明確的反向趨勢訊號。'}</p>}</section>;
  return <article className="cw-reply"><header><strong>{r.market_status==='INFORMATION'?'黃金知識與事件':'盤面重點'}</strong><small>{new Date(r.as_of_utc).toLocaleTimeString('zh-TW',{hour12:false})} · {provider}{r.model?` · ${selectionLabel(r.model,r.requested_effort)}`:''}</small></header>
+  {r.analysis_history_error&&<p role="status">{r.analysis_history_error}</p>}
   {r.market_status!=='CURRENT'&&r.market_status!=='FROZEN'&&r.market_status!=='INFORMATION'&&<p role="status">{r.message||'行情尚未就緒，此次無法判讀完整盤面。'}</p>}
   {c&&!first&&<NoCaseReasons comparison={c}/>}
   <div className="pd-answer-grid"><div className="pd-summary">{displayed.map((s,i)=><AnswerSection key={i} section={s} onChart={r.snapshot_id&&s.fact_ids.some(id=>/^f(5|15|1)\./.test(id))?()=>onChart('analysis',s.fact_ids.some(id=>id.startsWith('f1.'))?'1h':s.fact_ids.some(id=>id.startsWith('f15.'))?'15m':'5m'):undefined}/>)}</div>

@@ -2,12 +2,13 @@ import type {MarketReply} from './LiveAssistant';
 import type {ArchiveTurn} from './deskConversations';
 import {analysisLabel} from './assistantProvider';import {selectionLabel} from './modelSettings';
 import {trendSignals} from './discussionPanels';
+import {validAnalysisRef} from './analysisHistory';
 
 type ConversationTurn={question:string;at?:string;record?:ArchiveTurn;note?:string;noteImportant?:boolean;error?:string;reply?:MarketReply};
 const shown=(value:unknown)=>value===null||value===undefined?'未提供':String(value);
 const factText=(fact:MarketReply['evidence'][number])=>fact.text.replace(/\{\{([a-z0-9_]+)\}\}/g,(_,key)=>fact.values[key]??'資料不足');
 
-/** Read-only text and computed values only: never serialize draft IDs/actions/snapshots. */
+/** Text plus an opaque read-only analysis reference; never serialize order authority. */
 export function archiveTurn(turn:ConversationTurn):ArchiveTurn{
  if(turn.record)return turn.record;
  const r=turn.reply,parts:string[]=[];
@@ -55,5 +56,6 @@ export function archiveTurn(turn:ConversationTurn):ArchiveTurn{
   if(r.knowledge_sources?.length)parts.push('知識來源：'+r.knowledge_sources.join('\n'));
  }
  if(turn.error)parts.push(turn.error);
- return {question:turn.question,answer:parts.join('\n\n')||'回答尚未完成；重新開啟後可再次提問。',at:turn.at??r?.as_of_utc??new Date().toISOString()};
+ if(r?.analysis_history_error)parts.push(r.analysis_history_error);
+ return {question:turn.question,answer:parts.join('\n\n')||'回答尚未完成；重新開啟後可再次提問。',at:turn.at??r?.as_of_utc??new Date().toISOString(),...(validAnalysisRef(r?.analysis_ref)?{analysis_ref:r.analysis_ref}:{})};
 }

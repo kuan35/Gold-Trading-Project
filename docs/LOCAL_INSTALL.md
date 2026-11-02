@@ -100,6 +100,12 @@ python -m scripts.rebuild_personal_volume --activate          # 完整後啟用�
 
 ## 更新、測試與移除
 
+GitHub程式包能還原相同介面與保存功能；不是複製作者帳戶、聊天或即時報價。
+新聊天的完整分析另存在本機private/analysis_history，更新時請保留這個資料夾及
+同瀏覽器的網站資料，避免只備份程式卻遺失分析。舊版只存文字者無法補回未保存圖表。
+完整案例包、本人AI登入及cTrader設定完成後才有相應功能；不同帳戶需依前節重建tick來源，
+不能承諾每位同學看到同一市場報價、模型選單或相同案例結果。
+
 停止網站後git pull，重跑setup再start；保留自己的.env和private。大改前記錄
 commit並備份個人資料；不要用git clean -fdx刪除本機資料。
 

@@ -27,6 +27,7 @@ from .case_vision import preview as case_vision_preview
 from .live_assistant import respond_live,respond_context,build_live_context
 from .case_analysis import prepare_analysis
 from .analysis_snapshots import SnapshotStore
+from .analysis_history import AnalysisHistory
 from .forward_outcomes import HistoricalOutcomeStore
 from .conversation_intent import interpret_message
 from .macro_calendar import MacroCalendar
@@ -39,9 +40,21 @@ app=FastAPI(title='Gold Trading Project',version='0.1.0')
 engine=Engine()
 broker_orders=BrokerOrders(demo_market_stream)
 analysis_snapshots=SnapshotStore()
+analysis_history=AnalysisHistory(ROOT/'private'/'analysis_history')
 case_forward_store=HistoricalOutcomeStore(ROOT/'private')
 case_execution_store=ExecutionStore(ROOT/'private')
 macro_calendar=MacroCalendar(ROOT/'private'/'macro')
+
+def _save_analysis_reply(reply,bundle=None):
+    try:return analysis_history.save(reply,bundle)
+    except (OSError,ValueError,TypeError,KeyError,DomainError):
+        return dict(reply,analysis_history_error='完整分析未能存入本機，切換後可能只能回看文字；請確認本機儲存空間。')
+
+def _read_analysis_snapshot(snapshot_id):
+    try:return analysis_snapshots.get(snapshot_id)
+    except DomainError as expired:
+        try:return analysis_history.snapshot(snapshot_id)
+        except DomainError:raise expired
 
 
 class Body(BaseModel):
@@ -357,6 +370,7 @@ def broker_demo_draft(request: Request, body: BrokerDraftInput):
     bundle=prepare_analysis(snapshot,body.side,retrieval,query,profiles=getattr(engine.cases,'candidate_profiles',{}),now=captured_at,operation_sources=_analysis_operation_sources(retrieval),draft=body.model_dump(),input_revision=body.input_revision,forward_store=case_forward_store,execution_store=case_execution_store)
     saved=analysis_snapshots.put(bundle,draft_id=draft['id'])
     reply=respond_context(saved['context'],'說明草稿建立時的盤面支持與相反依據、案例差異',enabled=False,frozen=True)
+    reply=_save_analysis_reply(reply,saved)
     return JSONResponse(content=dict(draft,analysis_snapshot_id=saved['snapshot_id'],analysis_as_of_utc=saved['context']['as_of_utc'],analysis_reply=reply),headers={'Cache-Control':'no-store'})
 
 
@@ -493,7 +507,8 @@ def live_chat(request:Request,body:LiveChatInput):
     bundle=prepare_analysis(snapshot,body.side,retrieval,query,profiles=getattr(engine.cases,'candidate_profiles',{}),now=now,operation_sources=_analysis_operation_sources(retrieval),draft=body.draft.model_dump() if body.draft else None,input_revision=body.input_revision,forward_store=case_forward_store,execution_store=case_execution_store)
     if macro is not None:bundle=augment_bundle(bundle,macro)
     saved=analysis_snapshots.put(bundle)
-    return JSONResponse(content=respond_context(saved['context'],body.message,enabled=body.llm_enabled,previous_questions=body.previous_questions,conversation_id=body.conversation_id,conversation=[row.model_dump() for row in body.conversation],**_model_options(body)),
+    reply=respond_context(saved['context'],body.message,enabled=body.llm_enabled,previous_questions=body.previous_questions,conversation_id=body.conversation_id,conversation=[row.model_dump() for row in body.conversation],**_model_options(body))
+    return JSONResponse(content=_save_analysis_reply(reply,saved),
         headers={'Cache-Control':'no-store'})
 
 
@@ -509,7 +524,8 @@ def gold_chat(request:Request,body:GoldChatInput):
     kind=question_kind(body.message)
     if kind is None:raise HTTPException(400,'此入口用於黃金知識與事件討論；明確委託請沿草稿確認流程。')
     snapshot=macro_calendar.snapshot(refresh=True) if kind!='knowledge' else None
-    return JSONResponse(content=gold_answer(body.message,kind,snapshot,enabled=body.llm_enabled,conversation_id=body.conversation_id,conversation=[r.model_dump() for r in body.conversation],**_model_options(body)),headers={'Cache-Control':'no-store'})
+    reply=gold_answer(body.message,kind,snapshot,enabled=body.llm_enabled,conversation_id=body.conversation_id,conversation=[r.model_dump() for r in body.conversation],**_model_options(body))
+    return JSONResponse(content=_save_analysis_reply(reply),headers={'Cache-Control':'no-store'})
 
 
 def _analysis_now():
@@ -549,33 +565,45 @@ def interpret_conversation(request:Request,body:InterpretInput):
 def draft_chat(request:Request,body:DraftChatInput):
     if not _local_broker_access(request):return JSONResponse(status_code=403,content={'detail':'草稿盤面對話僅供本機使用'})
     bundle=analysis_snapshots.for_draft(body.draft_id)
-    return JSONResponse(content=respond_context(bundle['context'],body.message,enabled=body.llm_enabled,
-        previous_questions=body.previous_questions,frozen=True,conversation_id=body.conversation_id,conversation=[row.model_dump() for row in body.conversation],**_model_options(body)),headers={'Cache-Control':'no-store'})
+    reply=respond_context(bundle['context'],body.message,enabled=body.llm_enabled,
+        previous_questions=body.previous_questions,frozen=True,conversation_id=body.conversation_id,conversation=[row.model_dump() for row in body.conversation],**_model_options(body))
+    return JSONResponse(content=_save_analysis_reply(reply,bundle),headers={'Cache-Control':'no-store'})
+
+@app.get('/api/assistant/analyses/{analysis_ref}')
+def archived_analysis(request:Request,analysis_ref:str):
+    if not _local_broker_access(request):return JSONResponse(status_code=403,content={'detail':'歷史分析僅供本機查看'})
+    return JSONResponse(content=analysis_history.reply(analysis_ref),headers={'Cache-Control':'no-store'})
+
+@app.delete('/api/assistant/analyses/{analysis_ref}')
+def delete_archived_analysis(request:Request,analysis_ref:str):
+    if not _local_broker_access(request):return JSONResponse(status_code=403,content={'detail':'歷史分析僅供本機管理'})
+    analysis_history.delete(analysis_ref)
+    return {'status':'deleted'}
 
 
 @app.get('/api/assistant/snapshots/{snapshot_id}/charts')
 def analysis_charts(request:Request,snapshot_id:str):
     if not _local_broker_access(request):return JSONResponse(status_code=403,content={'detail':'分析圖表僅供本機查看'})
-    return JSONResponse(content=analysis_snapshots.get(snapshot_id)['charts'],headers={'Cache-Control':'no-store'})
+    return JSONResponse(content=_read_analysis_snapshot(snapshot_id)['charts'],headers={'Cache-Control':'no-store'})
 
 
 @app.get('/api/assistant/snapshots/{snapshot_id}/case-preview')
 def case_preview(request:Request,snapshot_id:str,case_ref:str|None=Query(default=None,min_length=1,max_length=64)):
     if not _local_broker_access(request):return JSONResponse(status_code=403,content={'detail':'案例圖像僅供本機'})
-    bundle=analysis_snapshots.get(snapshot_id)
+    bundle=_read_analysis_snapshot(snapshot_id)
     return JSONResponse(content=dict(case_vision_preview(selected_charts(bundle,case_ref)),snapshot_id=snapshot_id,case_ref=case_ref),headers={'Cache-Control':'no-store'})
 
 
 @app.post('/api/assistant/snapshots/{snapshot_id}/case-review')
 def case_review(request:Request,snapshot_id:str,body:CaseReviewInput):
     if not _local_broker_access(request):return JSONResponse(status_code=403,content={'detail':'案例解讀僅供本機'})
-    return JSONResponse(content=review_cases(analysis_snapshots.get(snapshot_id),enabled=body.enabled,vision=body.vision,case_ref=body.case_ref,**_model_options(body)),headers={'Cache-Control':'no-store'})
+    return JSONResponse(content=review_cases(_read_analysis_snapshot(snapshot_id),enabled=body.enabled,vision=body.vision,case_ref=body.case_ref,**_model_options(body)),headers={'Cache-Control':'no-store'})
 
 
 @app.get('/api/assistant/snapshots/{snapshot_id}/operations')
 def analysis_operations(request:Request,snapshot_id:str,case_ref:str=Query(min_length=1,max_length=64)):
     if not _local_broker_access(request):return JSONResponse(status_code=403,content={'detail':'歷史操作明細僅供本機查看'})
-    bundle=analysis_snapshots.get(snapshot_id)
+    bundle=_read_analysis_snapshot(snapshot_id)
     row=bundle.get('operations',{}).get(case_ref)
     if row is None:return JSONResponse(status_code=404,content={'detail':'此快照未保留該案例操作明細；請重新提問，不會改讀新資料。'})
     return JSONResponse(content=dict(row,snapshot_id=snapshot_id,case_ref=case_ref,
@@ -586,7 +614,7 @@ def analysis_operations(request:Request,snapshot_id:str,case_ref:str=Query(min_l
 def analysis_outcomes(request:Request,snapshot_id:str,case_ref:str=Query(min_length=1,max_length=64),minutes:int=Query(default=60)):
     if not _local_broker_access(request):return JSONResponse(status_code=403,content={'detail':'歷史後續情境僅供本機查看'})
     if minutes not in (5,30,60):raise DomainError('觀察期僅支援5、30或60分鐘',422)
-    bundle=analysis_snapshots.get(snapshot_id)
+    bundle=_read_analysis_snapshot(snapshot_id)
     row=bundle.get('outcomes',{}).get(case_ref,{}).get(str(minutes))
     if row is None:return JSONResponse(status_code=404,content={'detail':'此原快照沒有該案例後續資料；未改挑其他案例。'})
     # Decimal strings stay authoritative. Only chart coordinates become floats.

@@ -1,5 +1,19 @@
 # Frontend API contract v1
 
+## 2026-11-02 唯讀歷史分析與圖表還原
+
+MarketReply新增可選analysis_ref（64位hex）及analysis_history_error。live-chat、
+gold-chat、有效draft-chat與草稿analysis_reply會保存唯讀分析；失敗保留原回覆並明示。
+GET /api/assistant/analyses/{analysis_ref}回傳同一份MarketReply，draft固定null，
+不含草稿ID／確認key／提案。DELETE同路徑只移除該回覆；共享快照仍為本機cache。
+兩路沿用僅本機存取與no-store。前端只有成功保存聊天刪除，才清理未共享的回覆引用。
+
+既有snapshots/{snapshot_id}的charts、operations、outcomes、case-preview、case-review
+資料讀取可由private/analysis_history讀回原始快照，不用新行情替換。reply和圖表ID均核對。
+SnapshotStore.for_draft不使用這個歷史副本，過期或重啟後不恢復交易權限。
+聊天schema3只保存文字、analysis_ref及有限圖表選擇，不序列化可執行委託。
+舊schema1／2無引用者保留文字，不編造原圖表。資料僅留本機、不列入公開或私人案例匯出包。
+
 ## 2026-11-01 黃金知識與官方事件
 
 GET `/api/assistant/macro-calendar?days=60`（1..60）僅本機可用，回固定Fed/BLS/BEA來源。

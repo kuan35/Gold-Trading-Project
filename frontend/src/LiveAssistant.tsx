@@ -10,7 +10,7 @@ import {isModelAnalysis,analysisLabel} from './assistantProvider';
 import CaseComparison,{type CaseComparisonData} from './CaseComparison';
 import CaseOutcomePanel from './CaseOutcomePanel';import DraftScenarioRisk from './DraftScenarioRisk';import type {OutcomeAnalysis} from './caseOutcomes';
 
-export type MarketReply={message:string;provider:string;llm_status:string;model:string|null;requested_effort?:string|null;source:string;market_status:string;as_of_utc:string;quote_time_utc:string|null;snapshot_id?:string|null;query_as_of_utc?:number|null;analysis_mode?:string;case_comparison?:CaseComparisonData|null;outcome_analysis?:OutcomeAnalysis|null;
+export type MarketReply={analysis_ref?:string;analysis_history_error?:string;message:string;provider:string;llm_status:string;model:string|null;requested_effort?:string|null;source:string;market_status:string;as_of_utc:string;quote_time_utc:string|null;snapshot_id?:string|null;query_as_of_utc?:number|null;analysis_mode?:string;case_comparison?:CaseComparisonData|null;outcome_analysis?:OutcomeAnalysis|null;
  sections:{title:string;text:string;fact_ids:string[];source?:'program'|'model'}[];followups:string[];evidence:{id:string;text:string;values:Record<string,string>}[];draft:null;macro_context?:MacroSnapshot|null;gold_relation?:GoldRelation|null;knowledge_sources?:string[]};
 const stamp=(value:string|null)=>value?new Date(value).toLocaleString('zh-TW',{hour12:false})+'（台灣）':'未提供';
 const factText=(fact:MarketReply['evidence'][number])=>fact.text.replace(/\{\{([a-z0-9_]+)\}\}/g,(_,key)=>fact.values[key]??'資料不足');

@@ -4,6 +4,8 @@
 保留聊天主入口、即時tick、按需K線、案例前後對照、DEMO草稿與持倉紀錄。
 本機另提供黃金知識與官方總經事件，每項事件說明條件式多空關聯；
 詳見[官方事件工具](docs/gold_macro_assistant_20261101.md)。
+聊天可回看完整分析、案例與原K線，切換／重整／本機服務重啟後可還原；
+詳見[聊天保存](docs/conversation_history_20261031.md)。首頁常用問題亦可查近期總經事件。
 
 ## 快速開始
 
@@ -11,6 +13,10 @@
 公開repo根目錄就是產品根目錄，不需要再cd product。
 
 本輪版本位於 `codex/local-distribution-20261031` 分支；尚未合併main時請用：
+
+不使用Git也可[下載這個分支的完整程式ZIP](https://github.com/kuan35/Gold-Trading-Project/archive/refs/heads/codex/local-distribution-20261031.zip)，
+解壓縮後進入同時含backend、frontend與setup.ps1的資料夾，依下表安裝／啟動。
+此包包含相同介面與功能程式；完整案例包另由資料擁有者私下提供，AI與券商設定各自填寫。
 
 ```sh
 git clone --branch codex/local-distribution-20261031 https://github.com/kuan35/Gold-Trading-Project.git

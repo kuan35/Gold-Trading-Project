@@ -1,6 +1,6 @@
 import CaseReviewPanel from './CaseReviewPanel';
 import TradeResult,{TradeReturnSummary,executionReturnMarkers,priceReturnDisplay} from './TradeResult';
-import {useEffect,useMemo,useState} from 'react';
+import {useEffect,useMemo,useRef,useState} from 'react';
 import {api} from './api';import Chart from './Chart';import OutcomeSummary from './OutcomeSummary';
 import {historicalDisplay,matchingOutcome,type ComparisonCharts,type ExpandedOutcome,type HorizonMinutes} from './caseComparisonData';
 import {executionDisplay,executionFocusRange} from './caseExecutionDisplay';
@@ -8,7 +8,7 @@ import HoldingObservation from './HoldingObservation';
 const utc=(t?:number|null)=>typeof t==='number'?new Date(t*1000).toISOString().replace('T',' ').replace('.000Z',' UTC'):'資料不足';
 type Focus='ALL'|'ENTRY'|'CLOSE';
 
-export default function CaseComparisonCharts({data,light,initialCaseRef,initialMinutes}:{data:ComparisonCharts;light:boolean;initialCaseRef?:string;initialMinutes?:HorizonMinutes}){
+export default function CaseComparisonCharts({data,light,initialCaseRef,initialMinutes,onSelectionChange}:{data:ComparisonCharts;light:boolean;initialCaseRef?:string;initialMinutes?:HorizonMinutes;onSelectionChange?:(selection:{caseRef:string;minutes?:HorizonMinutes})=>void}){
  const [caseRef,setCaseRef]=useState(()=>data.cases.find(c=>c.ref===initialCaseRef)?.ref??data.cases[0]?.ref??'');
  const [sync,setSync]=useState(true);
  const [minutes,setMinutes]=useState<HorizonMinutes>(initialMinutes??60),[actualClose,setActualClose]=useState(initialMinutes===undefined),[hover,setHover]=useState('');
@@ -27,6 +27,8 @@ export default function CaseComparisonCharts({data,light,initialCaseRef,initialM
  const executionFrame=useMemo(()=>executionDisplay(candidate?.['5m']??[],execution),[candidate,execution]);
  const historical=useMemo(()=>historicalDisplay(candidate?.['5m']??[],outcome?.history),[candidate,outcome]);
  const showExecution=actualClose&&executionFrame.bars.length>0;
+ const selectionChanged=useRef(onSelectionChange);selectionChanged.current=onSelectionChange;
+ useEffect(()=>{selectionChanged.current?.({caseRef,...(showExecution?{}:{minutes})});},[caseRef,minutes,showExecution]);
  const fullHolding=showExecution&&execution?.coverage?.scope==='WHOLE_REFERENCE_HOLDING';
  const fixedBars=useMemo(()=>{
   const entry=executionFrame.bars.length?execution?.bars[0]:null;
