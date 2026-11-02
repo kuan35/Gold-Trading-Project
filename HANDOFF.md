@@ -1,5 +1,13 @@
 # Gold Desk 本機產品交接
 
+## 2026-11-02 — MACD／訊號線即時跳動修正
+
+- 使用者開啟MACD與MACDsignal後圖表跳動。原ChartWorkspaceTools的effect依賴bars，每個tick cleanup移除全部指標與空副圖、再新增並setHeight(90)。不是價格正常跳動，亦不是前次CSS高度回饋。
+- 新frontend/src/chartStudies.ts統一指標series生命週期，選擇設定變動才改配置；同一形成棒只update尾點，新棒append，暖機／歷史修正／視窗更換才setData。MACD雙線共用一個副圖；初始主副圖3:1，tick不重設面板比例或fit／scroll。ChartWorkspaceTools只在runtime切換時清理，其他圖表沿用同一修正。
+- 新tests/chart-studies.test.ts先以舊移除／重建行為跑出4失敗，再5項全通過：80次tick維持series及使用者尺寸、三類副圖、歷史修正、暖機缺值、fallback量、選擇切換與清理。全前端173 passed；npm run build及build:pages成功（原chunk警告）。後端未修改，不重跑後端全套。
+- Chrome實際原生行情驗收：雙MACD原主／副圖110.8／245.6px，更新版初始266.8／89.6px；手動改為238.8／117.6px，接收tick638→791仍保留尺寸。另開RSI／ATR、取消／重開訊號線、切15m與1h確認副圖配置；保持使用者原MACD雙線選擇。一次獨立read-only review無可執行問題。
+- 無模型呼叫、無交易操作、無檢索規則／量能門檻變更。作者驗收截圖、測試log、243原件SHA與公開白名單收據留private/indicator_tick_fix_20261102，不公開案例／憑證／聊天。根branch codex/candidate-market-retrieval／commit N/A；公開沿codex/local-distribution-20261031、PR #1，發布SHA另記根HANDOFF。
+
 ## 2026-11-02 — 完整分析與圖表還原、總經快捷提問
 
 - 切聊天原先只還原純文字，圖表快照又只在記憶體。新增analysis_history磁碟保存唯讀回覆及原快照，schema3聊天索引保存analysis_ref及圖表選擇；保留schema1／2文字相容。A→B→A、重整、服務真正重啟後皆讀原分析，不以新行情替代。

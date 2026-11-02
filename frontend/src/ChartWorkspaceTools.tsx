@@ -1,39 +1,27 @@
 import {useEffect,useRef,useState} from 'react';
 import {createPortal} from 'react-dom';
-import {LineSeries,HistogramSeries,type IChartApi,type ISeriesApi,type UTCTimestamp,type Logical} from 'lightweight-charts';
-import {studyValues,studies,decodeDrawings,DrawingHistory,type Study,type Drawing,type Candle} from './chartWorkspaceModel';
+import {type IChartApi,type ISeriesApi,type UTCTimestamp,type Logical} from 'lightweight-charts';
+import {studies,decodeDrawings,DrawingHistory,type Study,type Drawing,type Candle} from './chartWorkspaceModel';
+import {ChartStudyLayer} from './chartStudies';
 export type ChartRuntime={chart:IChartApi;candles:ISeriesApi<'Candlestick'>;volume?:ISeriesApi<'Histogram'>;averages?:ISeriesApi<'Line'>[];active?:boolean};
-const colors=['#d6af68','#8daece','#dc9e68','#b6a2d9','#78b5ac','#be8da1','#95ba80','#d6af68','#8daece','#c19970'];
 type Tool='pan'|Drawing['kind'];
 const key='gold-desk-chart-studies-v1';
 function saved():Study[]{try{const a=JSON.parse(localStorage.getItem(key)??'[]');return Array.isArray(a)?a.filter(s=>studies.includes(s)):[];}catch{return [];}}
 export default function ChartWorkspaceTools({runtime,bars,scope,defaultVolume=true,defaultAverages=true}:{runtime:ChartRuntime|null;bars:Candle[];scope:string;defaultVolume?:boolean;defaultAverages?:boolean}){
  const [selected,setSelected]=useState<Study[]>(saved),[volume,setVolume]=useState(defaultVolume),[ma,setMa]=useState(defaultAverages),[tool,setTool]=useState<Tool>('pan'),[text,setText]=useState('註記'),[notice,setNotice]=useState('');
  const [drawings,setDrawings]=useState<Drawing[]>([]),[chosen,setChosen]=useState(''),[revision,setRevision]=useState(0);
- const svg=useRef<SVGSVGElement>(null),history=useRef(new DrawingHistory()),first=useRef<Drawing['points'][0]|null>(null),overlayLines=useRef<ISeriesApi<'Line'|'Histogram'>[]>([]);
+ const svg=useRef<SVGSVGElement>(null),history=useRef(new DrawingHistory()),first=useRef<Drawing['points'][0]|null>(null),studyLayer=useRef<ChartStudyLayer|null>(null);
  const storeKey='gold-desk-drawings:'+scope;
  const dragCleanup=useRef<()=>void>(()=>{});
  useEffect(()=>()=>dragCleanup.current(),[scope]);
  const commit=(next:Drawing[],push=true)=>{if(push)history.current.push(next);setDrawings([...next]);try{localStorage.setItem(storeKey,JSON.stringify({scope,drawings:next}));}catch{setNotice('瀏覽器未允許保存畫線');}};
  useEffect(()=>{let next:Drawing[]=[];try{next=decodeDrawings(localStorage.getItem(storeKey),scope);}catch{}history.current=new DrawingHistory(next);setDrawings(next);setChosen('');first.current=null;},[scope]);
  useEffect(()=>{try{localStorage.setItem(key,JSON.stringify(selected));}catch{}},[selected]);
- useEffect(()=>{const r=runtime;if(!r||r.active===false)return;const {chart}=r;
-  const lines:ISeriesApi<'Line'|'Histogram'>[]=[];
-  const paneKinds=['RSI14','MACD','ATR14'].filter(kind=>selected.some(s=>s.startsWith(kind)));
-  for(const study of selected){
-   const kind=study.startsWith('MACD')?'MACD':study;
-   const pane=paneKinds.includes(kind)?paneKinds.indexOf(kind)+1:0;
-   const s=chart.addSeries(LineSeries,{color:colors[studies.indexOf(study)],lineWidth:1,lastValueVisible:false,priceLineVisible:false,title:study},pane);
-   s.setData(studyValues(study,bars).map(p=>({...p,time:p.time as UTCTimestamp})));lines.push(s);
-  }
-  if(!r.volume&&volume&&bars.some(b=>b.volume!==undefined)){
-   const s=chart.addSeries(HistogramSeries,{priceFormat:{type:'volume'},priceScaleId:'',lastValueVisible:false,priceLineVisible:false});
-   s.priceScale().applyOptions({scaleMargins:{top:.84,bottom:0}});s.setData(bars.filter(b=>b.volume!==undefined).map(b=>({time:b.time as UTCTimestamp,value:b.volume!,color:b.close>=b.open?'#59d8a745':'#f58c9345'})));lines.push(s);
-  }
-  overlayLines.current=lines;
-  chart.panes().forEach((pane,i)=>{if(i>0)pane.setHeight(90);});
-  return()=>{if(r.active!==false)for(const s of lines){try{chart.removeSeries(s);}catch{}}overlayLines.current=[];};
- },[runtime,selected,bars,volume]);
+ useEffect(()=>{const r=runtime;if(!r||r.active===false)return;
+  const layer=new ChartStudyLayer(r.chart,Boolean(r.volume));studyLayer.current=layer;
+  return()=>{if(r.active!==false)layer.dispose();if(studyLayer.current===layer)studyLayer.current=null;};
+ },[runtime]);
+ useEffect(()=>{if(runtime&&runtime.active!==false)studyLayer.current?.update(selected,bars,volume);},[runtime,selected,bars,volume]);
  useEffect(()=>{if(runtime?.active===false)return;runtime?.volume?.applyOptions({visible:volume});runtime?.averages?.forEach(s=>s.applyOptions({visible:ma}));},[runtime,ma,volume,bars]);
  useEffect(()=>{if(!runtime||runtime.active===false)return;const click=(p:{time?:unknown;point?:{x:number;y:number};paneIndex?:number})=>{
   if(tool==='pan'||typeof p.time!=='number'||!p.point||(p.paneIndex??0)>0)return;const price=runtime.candles.coordinateToPrice(p.point.y);if(price===null||price<=0)return;

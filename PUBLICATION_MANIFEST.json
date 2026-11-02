@@ -46,8 +46,8 @@
       "sha256": "fb9146faef463f12e665b4d25468be5b87dde9107ee49eb2cf54dd2ae469ba2f"
     },
     "HANDOFF.md": {
-      "bytes": 9906,
-      "sha256": "744937d1c51f0dbbdaef8c158681f6a77cefda732b93ebcc62dad072d71e0ed8"
+      "bytes": 11731,
+      "sha256": "65701e37d615633819f849f0de5b339c78e33b6e0eb5c7c521ecca29a74d6c10"
     },
     "LICENSE": {
       "bytes": 1279,
@@ -738,8 +738,8 @@
       "sha256": "24fe8d150a2a35777a5c86c02578cdc5116146c31dd74da68c6309bee39bff99"
     },
     "frontend/src/ChartWorkspaceTools.tsx": {
-      "bytes": 11435,
-      "sha256": "0dfd44807a42a57b107a557363b946ef9c161f26dd535e57c613a4492c3b612c"
+      "bytes": 10395,
+      "sha256": "4a270bee791940324ae9fbe1400bac9ff3e6d5562e980680d765e761c4c6cb86"
     },
     "frontend/src/ContextEvidence.tsx": {
       "bytes": 3777,
@@ -924,6 +924,10 @@
     "frontend/src/chartMarkers.ts": {
       "bytes": 705,
       "sha256": "1f28b2cda453a004d256574a170e0abaf88cec9e15240ea150ef3a27ed50519f"
+    },
+    "frontend/src/chartStudies.ts": {
+      "bytes": 3097,
+      "sha256": "35096e1dfc2e4bba980892a26fdf1f1076480a020cac17c4545c2f615bb35522"
     },
     "frontend/src/chartTheme.ts": {
       "bytes": 475,
@@ -1120,6 +1124,10 @@
     "frontend/tests/chart-presentation.test.ts": {
       "bytes": 2143,
       "sha256": "5c1e51c0c5ff92ab37b3bfb32bcd33fa75fedba37522091cc3eb533c0585fe25"
+    },
+    "frontend/tests/chart-studies.test.ts": {
+      "bytes": 4489,
+      "sha256": "b7072b7dd28f482c323202c31e19925ed8bd183b4159fe4ab94c27bc9fb75454"
     },
     "frontend/tests/chart-workspace.test.ts": {
       "bytes": 3931,
