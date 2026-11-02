@@ -1,5 +1,20 @@
 # Gold Desk 本機產品交接
 
+## 2026-11-02 — 圖表高度循環／統一平倉入口／開盤量能實測
+
+- CaseComparison的grid＋100%圖表canvas會自撐高，實際Chrome量測四圖達22,464.5px。
+  chartWorkspace.css限制比較圖360～440px、plot可縮且canvas絕對定位，指標不再推min-height。
+  ChartWorkspaceTools只在有畫線時合併重畫；DrawingHistory修復刪光後復原與重做狀態。
+- BrokerClosePanel單一「平倉」入口，先選MARKET／LIMIT才檢查草稿、人工確認；
+  ReplayPositionActions／App本機持倉表也合併入口。後端與防重送權限未變。
+- 前端162 passed及兩種build成功；後端量能／部位管理55 passed。開盤三週期串流
+  形成中K棒與tick計數均更新；同原部位兩種close-draft建立及取消成功，無確認／成交。
+- 20:55台灣查詢：BUY價格190列→tick178列，SELL17→16；20個不同歷史日16次有結果
+  加量後仍16次，配對1416→1166、第一名改變2次。不是相似準確率或獨立交易數。
+  量能2倍規則未改。詳細本機報告docs/chart_tick_validation_20261102.md（不在發布白名單）。
+- 原頁面卡住後，電腦操作工具因無法確認網址而停止，未繞過；修正後瀏覽器互動驗收待補，
+  可關閉卡住分頁再開本機站。完整收據及243原件SHA在作者private/chart_tick_fix_20261102。
+
 ## 2026-11-01 — 消息面改為交易對話按需回答
 
 - 依使用者要求移除首頁MacroCalendarBar及其背景輪詢、倒數timer與樣式。

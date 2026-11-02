@@ -37,6 +37,8 @@ export function decodeDrawings(raw:string|null,scope:string):Drawing[]{
 export class DrawingHistory{
  private past:Drawing[][]=[];private future:Drawing[][]=[];current:Drawing[]=[];
  constructor(initial:Drawing[]=[]){this.current=initial;}
+ get canUndo(){return this.past.length>0;}
+ get canRedo(){return this.future.length>0;}
  push(next:Drawing[]){this.past=[...this.past.slice(-49),this.current];this.current=next;this.future=[];return next;}
  undo(){const last=this.past.pop();if(last){this.future.push(this.current);this.current=last;}return this.current;}
  redo(){const next=this.future.pop();if(next){this.past.push(this.current);this.current=next;}return this.current;}

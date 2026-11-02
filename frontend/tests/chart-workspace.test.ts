@@ -4,6 +4,14 @@ import {buildDialogueMemory} from '../src/dialogueMemory';
 import {protectionChanges} from '../src/BrokerPositionActions';
 import {createElement} from 'react';import {renderToStaticMarkup} from 'react-dom/server';import AnalysisChart from '../src/AnalysisChart';
 import {relativeRange} from '../src/chartComparisonSync';
+import ReplayPositionActions from '../src/ReplayPositionActions';
+
+test('local replay has one close entry with optional market flow and no immediate submission',()=>{
+ const position={id:'p',side:'BUY' as const,lot:'0.10',entry:'3900',sl:null,tp:null,pnl:'0',opened_at:'now'};
+ let calls=0;
+ const html=renderToStaticMarkup(createElement(ReplayPositionActions,{position,disabled:false,onUpdate:()=>{},onMarketClose:()=>{calls++;}}));
+ assert.match(html,/>平倉<\/button>/);assert.doesNotMatch(html,/>限價平倉／保護<\/button>/);assert.equal(calls,0);
+});
 test('studies keep warmup missing and calculate deterministic SMA EMA RSI ATR bands',()=>{
  const bars=Array.from({length:65},(_,i)=>({time:i+1,open:100+i,close:101+i,high:102+i,low:99+i,volume:10}));
  assert.deepEqual(studyValues('SMA20',bars).map(p=>p.time).slice(0,2),[20,21]);
@@ -20,6 +28,14 @@ test('drawing history is scoped and validates stored coordinates with undo redo'
  const raw=JSON.stringify({scope:'case-A',drawings:h.current});
  assert.equal(decodeDrawings(raw,'case-A').length,1);assert.equal(decodeDrawings(raw,'case-B').length,0);
  assert.equal(decodeDrawings(JSON.stringify({scope:'case-A',drawings:[{id:'x',kind:'trend',points:[{time:10,price:null}]}]}),'case-A').length,0);
+});
+
+test('deleting the last drawing can be undone and redo is enabled only for an undone change',()=>{
+ const h=new DrawingHistory();assert.equal(h.canUndo,false);assert.equal(h.canRedo,false);
+ const line={id:'line',kind:'horizontal' as const,points:[{time:10,price:20}],text:''};
+ h.push([line]);h.push([]);assert.equal(h.current.length,0);assert.equal(h.canUndo,true);
+ assert.deepEqual(h.undo(),[line]);assert.equal(h.canRedo,true);
+ assert.deepEqual(h.redo(),[]);assert.equal(h.canRedo,false);
 });
 test('dialogue whitelist is bounded and protection keep clear are explicit',()=>{
  const memory=buildDialogueMemory(Array.from({length:9},()=>({question:'問題',record:{answer:'舊分析'},confirm:true})),'thread');

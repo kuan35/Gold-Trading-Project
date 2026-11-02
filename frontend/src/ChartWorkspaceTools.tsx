@@ -32,7 +32,6 @@ export default function ChartWorkspaceTools({runtime,bars,scope,defaultVolume=tr
   }
   overlayLines.current=lines;
   chart.panes().forEach((pane,i)=>{if(i>0)pane.setHeight(90);});
-  const plot=chart.chartElement().parentElement;if(plot)plot.style.minHeight=String(220+Math.max(0,chart.panes().length-1)*90)+'px';
   return()=>{if(r.active!==false)for(const s of lines){try{chart.removeSeries(s);}catch{}}overlayLines.current=[];};
  },[runtime,selected,bars,volume]);
  useEffect(()=>{if(runtime?.active===false)return;runtime?.volume?.applyOptions({visible:volume});runtime?.averages?.forEach(s=>s.applyOptions({visible:ma}));},[runtime,ma,volume,bars]);
@@ -44,9 +43,11 @@ export default function ChartWorkspaceTools({runtime,bars,scope,defaultVolume=tr
   else{commit([...history.current.current,{id:crypto.randomUUID(),kind:tool,points:[first.current,point],text:''}]);first.current=null;setTool('pan');setNotice('');}
  };runtime.chart.subscribeClick(click);return()=>{if(runtime.active!==false)runtime.chart.unsubscribeClick(click);};
  },[runtime,tool,text,scope]);
- useEffect(()=>{if(!runtime||runtime.active===false)return;const paint=()=>setRevision(r=>r+1);runtime.chart.timeScale().subscribeVisibleLogicalRangeChange(paint);runtime.chart.subscribeCrosshairMove(paint);
-  const ro=new ResizeObserver(paint);if(svg.current)ro.observe(svg.current);return()=>{ro.disconnect();if(runtime.active!==false){runtime.chart.timeScale().unsubscribeVisibleLogicalRangeChange(paint);runtime.chart.unsubscribeCrosshairMove(paint);}};
- },[runtime]);
+ useEffect(()=>{if(!runtime||runtime.active===false||!drawings.length)return;let frame=0;
+  const paint=()=>{if(!frame)frame=requestAnimationFrame(()=>{frame=0;setRevision(r=>r+1);});};
+  runtime.chart.timeScale().subscribeVisibleLogicalRangeChange(paint);runtime.chart.subscribeCrosshairMove(paint);
+  const ro=new ResizeObserver(paint);if(svg.current)ro.observe(svg.current);return()=>{ro.disconnect();if(frame)cancelAnimationFrame(frame);if(runtime.active!==false){runtime.chart.timeScale().unsubscribeVisibleLogicalRangeChange(paint);runtime.chart.unsubscribeCrosshairMove(paint);}};
+ },[runtime,drawings.length]);
  const xy=(p:Drawing['points'][0])=>{if(!runtime||runtime.active===false)return null;const {chart,candles}=runtime;let x=chart.timeScale().timeToCoordinate(p.time as UTCTimestamp);
   if(x===null){const i=bars.findIndex(b=>b.time>=p.time);if(i>=0)x=chart.timeScale().logicalToCoordinate(i as Logical);}const y=candles.priceToCoordinate(p.price);return x===null||y===null?null:{x,y};};
  const resizeRange=(factor:number)=>{const t=runtime?.chart.timeScale(),r=t?.getVisibleLogicalRange();if(t&&r){const middle=(r.from+r.to)/2,half=(r.to-r.from)*factor/2;t.setVisibleLogicalRange({from:middle-half,to:middle+half});}};
@@ -63,7 +64,7 @@ export default function ChartWorkspaceTools({runtime,bars,scope,defaultVolume=tr
  <select aria-label="畫線工具" value={tool} onChange={e=>{setTool(e.target.value as Tool);first.current=null;setNotice(e.target.value==='pan'?'':'在K線上點選端點');}}>{([['pan','移動'],['horizontal','水平線'],['trend','趨勢線'],['ray','射線'],['rectangle','矩形'],['text','文字'],['measure','量測']] as const).map(([v,label])=><option key={v} value={v}>{label}</option>)}</select>
  {tool==='text'&&<input aria-label="圖表文字註記" value={text} maxLength={100} onChange={e=>setText(e.target.value)}/>}
  {!!drawings.length&&<select aria-label="選取畫線" value={chosen} onChange={e=>setChosen(e.target.value)}><option value="">選取畫線</option>{drawings.map((d,i)=><option key={d.id} value={d.id}>{i+1} · {d.text||d.kind}</option>)}</select>}
- <button disabled={!drawings.length} onClick={()=>commit(history.current.undo(),false)}>復原</button><button onClick={()=>commit(history.current.redo(),false)}>重做</button><button disabled={!chosen} onClick={()=>{commit(drawings.filter(d=>d.id!==chosen));setChosen('');}}>刪除線</button><button onClick={screenshot}>PNG</button>
+ <button disabled={!history.current.canUndo} onClick={()=>commit(history.current.undo(),false)}>復原</button><button disabled={!history.current.canRedo} onClick={()=>commit(history.current.redo(),false)}>重做</button><button disabled={!chosen} onClick={()=>{commit(drawings.filter(d=>d.id!==chosen));setChosen('');}}>刪除線</button><button onClick={screenshot}>PNG</button>
  <button onClick={()=>{const frame=svg.current?.closest('.gd-chart-workspace');if(!frame)return;void (document.fullscreenElement?document.exitFullscreen():frame.requestFullscreen()).catch(()=>setNotice('此瀏覽器不支援全螢幕'));}}>全螢幕</button>
  {notice&&<output role="status">{notice}</output>}</div>
  {runtime&&runtime.active!==false&&runtime.chart.chartElement().parentElement&&createPortal(<svg ref={svg} className="gd-drawings" data-revision={revision} aria-label="本機手動畫線" style={{pointerEvents:'none'}}>{drawings.map(d=>{

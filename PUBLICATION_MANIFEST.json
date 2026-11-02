@@ -46,8 +46,8 @@
       "sha256": "fb9146faef463f12e665b4d25468be5b87dde9107ee49eb2cf54dd2ae469ba2f"
     },
     "HANDOFF.md": {
-      "bytes": 6582,
-      "sha256": "43357933f26df1010bf3bc2757b1da7aae284e76a45d3d7f947e9517467c1517"
+      "bytes": 7954,
+      "sha256": "4836c074190e10b5b1034d5bbd9cabd45e5af470c95e8e5b853aa2dad3e3a132"
     },
     "LICENSE": {
       "bytes": 1279,
@@ -670,8 +670,8 @@
       "sha256": "be567e129595236baa15fd680da5631caf51bf3edefe923c7e6d2e31c8b7f6bc"
     },
     "frontend/src/App.tsx": {
-      "bytes": 61015,
-      "sha256": "9a02a7765ff9918cb0913e3dffd380debdb3e4764d2e3cf464f0b25e41916d77"
+      "bytes": 61056,
+      "sha256": "1b8c58aa900d2efe9eff1fd015dfea37661ae6c5ac250b5bee536a0f5f45b5d6"
     },
     "frontend/src/ArchivedConversationReply.tsx": {
       "bytes": 493,
@@ -686,8 +686,8 @@
       "sha256": "655b76e748db4ac44bf425028aba823b1d0e55b13e7448b14848ab43911d33f1"
     },
     "frontend/src/BrokerClosePanel.tsx": {
-      "bytes": 9249,
-      "sha256": "7514444a4ae7bce2ebcfd71920c2b6aef3f63e73eff5d25d9b2381c8c9fcacb7"
+      "bytes": 10426,
+      "sha256": "e4139a84dd6077e1a6c0e3a841d2e6a7abb54e987bb61607931e88046e7a53ed"
     },
     "frontend/src/BrokerOrderPanel.tsx": {
       "bytes": 7350,
@@ -722,8 +722,8 @@
       "sha256": "24fe8d150a2a35777a5c86c02578cdc5116146c31dd74da68c6309bee39bff99"
     },
     "frontend/src/ChartWorkspaceTools.tsx": {
-      "bytes": 11377,
-      "sha256": "d067f22fdf92abc75796bfebd370e1da2d095e1a2a309860a21bc18a394648fa"
+      "bytes": 11435,
+      "sha256": "0dfd44807a42a57b107a557363b946ef9c161f26dd535e57c613a4492c3b612c"
     },
     "frontend/src/ContextEvidence.tsx": {
       "bytes": 3777,
@@ -838,8 +838,8 @@
       "sha256": "33fe5c5885944ea8063397a69a2fd719decef5df85385abd04d5feb922b360a5"
     },
     "frontend/src/ReplayPositionActions.tsx": {
-      "bytes": 3443,
-      "sha256": "79674ee0fcb2f12bb1160597b9c092cd1652c6a7be76d30630ed1803d13d4e71"
+      "bytes": 3813,
+      "sha256": "276a0a394de3fc2cc71fe54520a3a6a6124ce58aae66181cdbcd6aed2996f19b"
     },
     "frontend/src/SharedTicket.tsx": {
       "bytes": 1980,
@@ -910,12 +910,12 @@
       "sha256": "e14687385c515ae58f7d5e65e9b9b4ce677daa2e028c5f975772a296970c343a"
     },
     "frontend/src/chartWorkspace.css": {
-      "bytes": 1544,
-      "sha256": "d8d0ad939f732a6860f43fa71fc120d97d5bfa16fa90ad72327930f1b6c150f3"
+      "bytes": 2131,
+      "sha256": "dc39e16c00ff4af045e6201dd0b99d307c933b99086a1ec7ab6c13d6cbfe46fa"
     },
     "frontend/src/chartWorkspaceModel.ts": {
-      "bytes": 3328,
-      "sha256": "2d5e0925750c366b187c5d7734666b397f1c55ad02500e5df2c1a03c86b173d9"
+      "bytes": 3416,
+      "sha256": "d2418c6f6757b500e27a19d91c4ac878a45d3e32ed639be4ce9a5723006f4a5f"
     },
     "frontend/src/chatSize.ts": {
       "bytes": 271,
@@ -1058,8 +1058,8 @@
       "sha256": "a10ab1d8f754696710418864722e17c474aaafceb2955e847eddb416d433fb91"
     },
     "frontend/tests/broker-close.test.ts": {
-      "bytes": 4587,
-      "sha256": "e63f59012e9a2cc1d101c67f7dec24269edfcd1bfbf740709c77f88ef24545f2"
+      "bytes": 5079,
+      "sha256": "f804fe985dfd7a7145a874bf582e9b794796979f12b8d9581b98d8da9fde76a1"
     },
     "frontend/tests/case-comparison-fusion.test.ts": {
       "bytes": 7047,
@@ -1085,6 +1085,10 @@
       "bytes": 1305,
       "sha256": "a7e8278a7cb809de889aab7548ce70dfe1557ecd042f71498096cabd562b2aec"
     },
+    "frontend/tests/chart-layout.test.ts": {
+      "bytes": 1187,
+      "sha256": "662cd90abcd3b41f6043134760aa8fcc97d9b9d37d4dcb50e949bd634c5af497"
+    },
     "frontend/tests/chart-navigation.test.ts": {
       "bytes": 722,
       "sha256": "9832c9ddc2a96e663e9a27346cd9ed707aece74e28194c53d3316135fc2e8099"
@@ -1094,8 +1098,8 @@
       "sha256": "5c1e51c0c5ff92ab37b3bfb32bcd33fa75fedba37522091cc3eb533c0585fe25"
     },
     "frontend/tests/chart-workspace.test.ts": {
-      "bytes": 2869,
-      "sha256": "a5e5fb6c3d66bae90c719a72295ece04da1bed8ea292721778fd4e1bead3775e"
+      "bytes": 3931,
+      "sha256": "ddc4b19d92d6b7fb30559209bfa2045b9c02b3bf3fe2560d4002e7d13a88df44"
     },
     "frontend/tests/chat-readability.test.ts": {
       "bytes": 2364,

@@ -20,6 +20,15 @@ test('DEMO close control identifies its source and exposes a ready full-position
   assert.equal(brokerCloseReady(market,'123'),true);
 });
 
+test('one close entry opens method selection without a separate limit action or eager draft',()=>{
+ const html=renderToStaticMarkup(createElement(BrokerClosePanel,{market,positionId:'123'}));
+ const beforeDialog=html.split('<dialog')[0];
+ assert.equal((beforeDialog.match(/<button/g)??[]).length,1);
+ assert.doesNotMatch(beforeDialog,/限價平倉|指定平倉價/);
+ assert.match(beforeDialog,/aria-haspopup="dialog"/);
+ assert.doesNotMatch(html,/核對 cTrader DEMO 平倉/);
+});
+
 test('DEMO close is disabled without current quote/account/trading scope/position',()=>{
   const variants:Array<DemoMarket|null>=[null];
   for(const problem of ['scope','connection','quote','age','account','position','volume','symbol']){
