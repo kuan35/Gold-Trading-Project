@@ -1,6 +1,9 @@
 import {AgentOrb,AgentTopbar,RAIL_EVENT} from './experience/AgentDesk';
 import AgentDrawer,{type DrawerTab} from './experience/AgentDrawer';
 import AgentAnswer from './experience/AgentAnswer';
+import {DraftAgentSession,rebindDraftChart} from './draftAgent';
+import {useTicketPreview} from './TicketPreview';
+import {isModelAnalysis} from './assistantProvider';
 import AssistantSettings from './experience/AssistantSettings';
 import ConversationHistoryActions from './ConversationHistoryActions';
 import type {ComparisonSelection} from './caseComparisonData';
@@ -23,12 +26,13 @@ import AssistantControl,{useAssistantSettings} from './AssistantControl';
 import {buildDialogueMemory} from './dialogueMemory';
 type TicketOrigin='inline'|'side';
 type Interpretation={intent:string;analysis_side:Side|null;patch:InputPatch;proposal:InputPatch;message:string;missing_fields:string[];input_revision:number};
-type Turn={id:number;question:string;at?:string;note?:string;noteImportant?:boolean;reply?:MarketReply;proposal?:InputPatch;proposalRevision?:number;error?:string;record?:ArchiveTurn};
+type Turn={id:number;question:string;at?:string;note?:string;noteImportant?:boolean;agentPending?:boolean;reply?:MarketReply;proposal?:InputPatch;proposalRevision?:number;error?:string;record?:ArchiveTurn};
 type TurnActions={chart:(reply:MarketReply,mode:'analysis'|'cases',period?:'5m'|'15m'|'1h',selection?:ComparisonSelection)=>void;apply:(turn:Turn)=>void};
 const TurnContent=memo(function TurnContent({turn:t,light,revision,locked,actions}:{turn:Turn;light:boolean;revision:number;locked:boolean;actions:RefObject<TurnActions>}){
  return <><div className="ag-user"><p>{t.question}</p></div>
   {t.record&&<ArchivedConversationReply record={t.record} light={light} onChart={(...args)=>actions.current.chart(...args)}/>}
   {t.note&&(t.noteImportant||!t.reply)&&<p className="ag-note">{t.note}</p>}
+  {t.agentPending&&<p className="ag-note" role="status">助手正在解讀這份固定草稿快照…</p>}
   {t.proposal&&<button type="button" className="ag-apply" disabled={locked||revision!==t.proposalRevision} onClick={()=>actions.current.apply(t)}>套用到草稿{revision!==t.proposalRevision?'（欄位已更新，請重新討論）':''}</button>}
   {t.reply&&<AgentAnswer reply={t.reply} question={t.question} light={light} currentRevision={revision} onChart={(...args)=>actions.current.chart(t.reply!,...args)}/>}
   {t.error&&<p className="ag-error" role="alert">{t.error}</p>}
@@ -37,6 +41,7 @@ const TurnContent=memo(function TurnContent({turn:t,light,revision,locked,action
 const newThreadId=()=>`chat-${globalThis.crypto?.randomUUID?.()??Date.now()+'-'+Math.random().toString(36).slice(2)}`;
 export default function ConversationWorkspace({market,light,visible,onHistory,onNavigate,onToggleTheme,onBusyChange}:{market:DemoMarket|null;light:boolean;visible:boolean;onHistory:()=>void;onNavigate?:(view:'replay'|'live')=>void;onToggleTheme?:()=>void;onBusyChange?:(busy:boolean)=>void}){
  const assistantSettings=useAssistantSettings();
+ const draftAgent=useRef(new DraftAgentSession()),pendingAgent=useRef<number|null>(null);
  const [drawer,setDrawer]=useState(true),[drawerTab,setDrawerTab]=useState<DrawerTab>('order'),[settingsOpen,setSettingsOpen]=useState(false),[chooseCaseSide,setChooseCaseSide]=useState(false);
  const historyDialog=useRef<HTMLDialogElement>(null),railRef=useRef<(command:string)=>void>(()=>{});
  useEffect(()=>{const rail=(event:Event)=>railRef.current((event as CustomEvent).detail);const settings=()=>setSettingsOpen(true);window.addEventListener(RAIL_EVENT,rail);window.addEventListener('gd:settings',settings);return()=>{window.removeEventListener(RAIL_EVENT,rail);window.removeEventListener('gd:settings',settings);};},[]);
@@ -49,6 +54,7 @@ export default function ConversationWorkspace({market,light,visible,onHistory,on
  const [showLatest,setShowLatest]=useState(false);
  const log=useRef<HTMLDivElement>(null),follow=useRef(true),lastSeen=useRef(0);
  const [input,setInput]=useState(emptyInput),[revision,setRevision]=useState(0),[turns,setTurns]=useState<Turn[]>(()=>archive.items.find(e=>e.id===threadId)?.turns.map((record,i)=>({id:-(i+1),question:record.question,at:record.at,record}))??[]),[text,setText]=useState('');
+ const ticketPreview=useTicketPreview(input,market);
  const [busy,setBusy]=useState(false),[checking,setChecking]=useState(false),[locked,setLocked]=useState(false),[error,setError]=useState('');
  useEffect(()=>{onBusyChange?.(busy||checking||locked);},[busy,checking,locked,onBusyChange]);
  const [reviewOrigin,setReviewOrigin]=useState<TicketOrigin>('side'),[errorOrigin,setErrorOrigin]=useState<TicketOrigin>('side');
@@ -59,13 +65,14 @@ export default function ConversationWorkspace({market,light,visible,onHistory,on
   if(!turns.length||turns.every(t=>t.record))return;
   const records=turns.map(archiveTurn);
   if(!records.length)return;
-  setArchive(previous=>({...previous,items:mergeArchive(previous.items,makeArchiveEntry(threadId,records,Date.now()))}));
+  const chart=normalizeArchivedChart(currentChart.current,records.flatMap(r=>r.analysis_ref?[r.analysis_ref]:[]));
+  setArchive(previous=>({...previous,items:mergeArchive(previous.items,{...makeArchiveEntry(threadId,records,Date.now()),...(chart?{chart}:{})})}));
  },[turns,threadId]);
  useEffect(()=>{if(!archive.writable)return;try{setHistoryError(saveConversationArchive(localStorage,archive.items,threadId).error);}catch{setHistoryError('此瀏覽器無法保存對話；這次變更未儲存。');}},[archive,threadId]);
  const openThread=(entry?:ArchiveEntry)=>{
   if(working.current||checkWorking.current||lockedRef.current)return;
   if(entry?.id===threadId)return;
-  sessions.current.save(threadId,turns,currentChart.current);
+  cancelDraftAgent();sessions.current.save(threadId,turns.map(t=>t.agentPending?{...t,agentPending:false}:t),currentChart.current);
   const cached=entry?sessions.current.get(entry.id):undefined,nextChart=cached?.chart??entry?.chart??null;
   setTurns(cached?.turns??(entry?entry.turns.map(record=>({id:++sequence.current,question:record.question,at:record.at,record})):[]));
   setThreadId(entry?.id??newThreadId());setText('');setChart(nextChart);currentChart.current=nextChart;sideRef.current=null;follow.current=true;setShowLatest(false);setChooseCaseSide(false);if(log.current)log.current.scrollTop=0;
@@ -92,19 +99,20 @@ export default function ConversationWorkspace({market,light,visible,onHistory,on
   try{if(archive.writable){const saved=persistConversationDeletion(localStorage,archive.items,id,activeId);cleanupRefs=saved.cleanupRefs;if(!saved.ok)setHistoryError(saved.error);}}
   catch{setHistoryError('刪除尚未儲存，原本機分析仍保留。');}
   sessions.current.delete(id);
-  if(id===threadId){setTurns([]);setThreadId(activeId);setText('');setChart(null);currentChart.current=null;sideRef.current=null;}
+  if(id===threadId){cancelDraftAgent();setTurns([]);setThreadId(activeId);setText('');setChart(null);currentChart.current=null;sideRef.current=null;}
   setArchive(v=>({...v,items:deleteConversation(v.items,id)}));
   for(const ref of cleanupRefs)void fetch('/api/assistant/analyses/'+ref,{method:'DELETE'}).then(r=>{if(!r.ok)throw Error();}).catch(()=>setError('聊天已移除，但本機分析副本未能刪除；請確認本機服務。'));
  };
  inputRef.current=input;checkedRef.current=checked;
- useEffect(()=>()=>{request.current?.abort();},[]);
+ useEffect(()=>()=>{request.current?.abort();draftAgent.current.cancel();},[]);
  const setLock=(v:boolean)=>{lockedRef.current=v;setLocked(v);};
  const patch=(p:InputPatch)=>{
   if(lockedRef.current)return;const next=patchInput(inputRef.current,p);if(JSON.stringify(next)===JSON.stringify(inputRef.current))return;
-  inputRef.current=next;revisionRef.current+=1;setRevision(revisionRef.current);setInput(next);setError('');
+  cancelDraftAgent();inputRef.current=next;revisionRef.current+=1;setRevision(revisionRef.current);setInput(next);setError('');
   const previous=checkedRef.current;if(previous){setChecked(null);checkedRef.current=null;void api(`/broker/drafts/${previous.draft.id}/cancel`,{}).catch(()=>{});}
  };
  const annotate=(id:number,part:Partial<Turn>)=>setTurns(items=>items.map(t=>t.id===id?{...t,...part}:t));
+ const cancelDraftAgent=()=>{draftAgent.current.cancel();if(pendingAgent.current!==null){annotate(pendingAgent.current,{agentPending:false,noteImportant:true,note:'助手解讀已停止顯示；保留原草稿的程式檢查，欄位變更後請重新檢查。'});pendingAgent.current=null;}};
  const send=async(question:string,forcedSide?:Side)=>{
   if(working.current||!question.trim())return;working.current=true;setBusy(true);setError('');setText('');
   const id=++sequence.current,sentRevision=revisionRef.current;setTurns(v=>[...v,{id,question,at:new Date().toISOString()}]);
@@ -139,13 +147,28 @@ export default function ConversationWorkspace({market,light,visible,onHistory,on
   if(checkWorking.current||lockedRef.current)return;
   setErrorOrigin(origin);
   const sent=revisionRef.current,v={...inputRef.current};const missing=missingInput(v);if(missing.length){setInline(true);setError('請先填寫：'+missing.join('、'));return;}
+  cancelDraftAgent();const modelOptions={...assistantSettings.requestOptions};
+  const explain=Boolean(assistantSettings.status?.configured&&assistantSettings.status.enabled&&(modelOptions.provider??assistantSettings.status.provider)!=='program');
   checkWorking.current=true;setChecking(true);setError('');
   try{
    const previous=checkedRef.current;if(previous){await api(`/broker/drafts/${previous.draft.id}/cancel`,{});setChecked(null);checkedRef.current=null;}
    const draft=await api<CheckedOrder>('/broker/drafts',{...v,limit_price:v.order_type==='LIMIT'?v.limit_price:null,sl:v.sl.trim()||null,tp:v.tp.trim()||null,retrieval_method:'context_contract_v1',input_revision:sent});
    if(!acceptRevision(sent,revisionRef.current)){await api(`/broker/drafts/${draft.id}/cancel`,{});setError('欄位已變更，舊檢查已取消。請用最新欄位重新檢查。');return;}
    const next={draft,revision:sent};setChecked(next);checkedRef.current=next;setReviewOrigin(origin);
-   const id=++sequence.current;setTurns(t=>[...t,{id,question:'檢查目前委託',at:new Date().toISOString(),reply:draft.analysis_reply,noteImportant:true,note:'委託已檢查，請核對委託內容與風險，再由你確認。'}]);
+   const id=++sequence.current;setTurns(t=>[...t,{id,question:'檢查目前委託',at:new Date().toISOString(),reply:draft.analysis_reply,agentPending:explain,noteImportant:true,note:explain?'程式檢查完成，請核對委託與風險；助手解讀不延長草稿有效時間。':'程式檢查完成；目前助手未啟用或未就緒。請核對委託內容與風險，再由你確認。'}]);
+   if(explain){
+    pendingAgent.current=id;
+    void draftAgent.current.start(draft,modelOptions,async(path,body,signal)=>{const response=await fetch('/api'+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal});const value=await response.json();if(!response.ok)throw Error(typeof value?.detail==='string'?value.detail:'助手解讀暫不可用。');return value;},result=>{
+     if(checkedRef.current?.draft.id!==draft.id||revisionRef.current!==sent)return;
+     pendingAgent.current=null;
+     if(result.status==='done'&&isModelAnalysis(result.reply.provider)){
+      const rebound=rebindDraftChart(currentChart.current,draft.analysis_reply,result.reply);
+      if(rebound!==currentChart.current){currentChart.current=rebound;setChart(rebound);}
+      annotate(id,{agentPending:false,reply:result.reply,noteImportant:true,note:'助手依原草稿快照解讀；程式檢查與人工確認規則不變。'});
+     }
+     else annotate(id,{agentPending:false,noteImportant:true,note:'助手未能完成解讀，保留程式檢查結果。'+(result.status==='error'?result.message:'請確認模型連線；你仍需自行核對委託。')});
+    });
+   }
   }catch(e){setError(e instanceof Error?e.message:'委託檢查失敗');}finally{checkWorking.current=false;setChecking(false);}
  };
  const jumpToLatest=()=>{const host=log.current,turn=lastTurn.current;if(host&&turn){host.scrollTo({top:turnScrollTarget(host.scrollTop,host.getBoundingClientRect().top,turn.getBoundingClientRect().top)});follow.current=true;setShowLatest(false);}};
@@ -154,7 +177,7 @@ export default function ConversationWorkspace({market,light,visible,onHistory,on
  const quoteTime=Date.parse(market?.quote.source_time_utc??'')/1000,newBar=Boolean(latest?.query_as_of_utc&&Number.isFinite(quoteTime)&&Math.floor(quoteTime/300)*300>latest.query_as_of_utc);
  const ready=Boolean(market?.environment==='demo'&&market.order_connection&&market.quote.status==='CURRENT'&&market.account?.status==='CURRENT');
  const missing=missingInput(input);
- const orderReview=checked&&<ConversationOrderReview key={checked.draft.id} draft={checked.draft} checkedRevision={checked.revision} currentRevision={revision} accountUpdated={market?.account?.updated_at_utc} onClear={()=>{setChecked(null);checkedRef.current=null;setLock(false);}} onLock={setLock} onHistory={()=>{setDrawer(true);setDrawerTab('records');}}/>;
+ const orderReview=checked&&<ConversationOrderReview key={checked.draft.id} draft={checked.draft} checkedRevision={checked.revision} currentRevision={revision} accountUpdated={market?.account?.updated_at_utc} onClear={()=>{cancelDraftAgent();setChecked(null);checkedRef.current=null;setLock(false);}} onLock={setLock} onHistory={()=>{setDrawer(true);setDrawerTab('records');}}/>;
  railRef.current=command=>{if(working.current||checkWorking.current||lockedRef.current)return;if(command==='new')openThread();else if(command==='history')historyDialog.current?.showModal();};
  const sideLabel=input.side==='BUY'?'做多':input.side==='SELL'?'做空':'尚未選方向';
  const chips=['我想做多，現在有哪些支持與相反訊號？','如果做空，有類似案例嗎？','最近有哪些總經事件會影響黃金？'];
@@ -183,13 +206,13 @@ export default function ConversationWorkspace({market,light,visible,onHistory,on
      </div>
      {showLatest&&<button type="button" className="ag-latest" onClick={jumpToLatest}>回到最新對話 ↓</button>}
      <div className="ag-size-row"><ConversationResize axis="height" value={chatHeight} target={log} onChange={setChatHeight}/><button type="button" onClick={()=>{setChatHeight(null);setChatShare(null);}}>還原大小</button></div>
-     <div className="ag-dock"><details className="cw-inline" open={inline||(reviewOrigin==='inline'&&Boolean(checked))} onToggle={e=>setInline(e.currentTarget.open)}><summary><strong>準備中委託</strong>{sideLabel} · {input.lot?input.lot+' 手':'手數未填'} · {input.order_type==='LIMIT'?'限價 '+(input.limit_price||'未填'):input.order_type==='MARKET'?'市價':'單型未選'}<small>編輯委託</small></summary><div className="ag-inline-ticket"><SharedTicket id="chat-ticket" value={input} onPatch={edit} disabled={locked}/><TicketCheckAction id="chat-ticket-check" ready={ready} checking={checking} locked={locked} missing={missing} error={errorOrigin==='inline'?error:undefined} onCheck={()=>void check('inline')}/>{reviewOrigin==='inline'&&orderReview}</div></details>
+     <div className="ag-dock"><details className="cw-inline" open={inline||(reviewOrigin==='inline'&&Boolean(checked))} onToggle={e=>setInline(e.currentTarget.open)}><summary><strong>準備中委託</strong>{sideLabel} · {input.lot?input.lot+' 手':'手數未填'} · {input.order_type==='LIMIT'?'限價 '+(input.limit_price||'未填'):input.order_type==='MARKET'?'市價':'單型未選'}<small>編輯委託</small></summary><div className="ag-inline-ticket"><SharedTicket preview={ticketPreview} id="chat-ticket" value={input} onPatch={edit} disabled={locked}/><TicketCheckAction id="chat-ticket-check" ready={ready} checking={checking} locked={locked} missing={missing} error={errorOrigin==='inline'?error:undefined} onCheck={()=>void check('inline')}/>{reviewOrigin==='inline'&&orderReview}</div></details>
       <div className="ag-chips">{chips.map(q=><button type="button" key={q} disabled={busy} onClick={()=>void send(q)}>{q}</button>)}</div>
       <form className="ag-composer" onSubmit={(e:FormEvent)=>{e.preventDefault();void send(text);}}><label className="sr-only" htmlFor="conversation-message">輸入交易想法或委託條件</label><textarea id="conversation-message" rows={1} maxLength={1500} value={text} onChange={e=>setText(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing){e.preventDefault();void send(text);}}} placeholder="和 Agent 說你的想法，例如「買進 0.02 手，停損 4020」"/><button className="ag-send" aria-label="送出對話" disabled={busy||!text.trim()}><DeskIcon name="arrow"/></button></form>
       {(historyError||archive.error)&&<p className="ag-error" role="alert">{historyError||archive.error}</p>}
      </div>
     </section>
-    <AgentDrawer resizer={<ConversationResize axis="width" value={chatShare} target={grid} onChange={setChatShare}/>} open={drawer&&visible} tab={drawerTab} onTab={setDrawerTab} onClose={()=>setDrawer(false)} light={light} market={market} order={<><h2 className="ag-ticket-title">準備中委託 <small>cTrader DEMO</small></h2><SharedTicket id="side-ticket" value={input} onPatch={edit} disabled={locked}/><TicketCheckAction id="side-ticket-check" ready={ready} checking={checking} locked={locked} missing={missing} error={errorOrigin==='side'?error:undefined} onCheck={()=>void check('side')}/>{reviewOrigin==='side'&&orderReview}<p className="fine">先檢查，再核對本筆委託與風險。</p></>}/>
+    <AgentDrawer resizer={<ConversationResize axis="width" value={chatShare} target={grid} onChange={setChatShare}/>} open={drawer&&visible} tab={drawerTab} onTab={setDrawerTab} onClose={()=>setDrawer(false)} light={light} market={market} order={<><h2 className="ag-ticket-title">準備中委託 <small>cTrader DEMO</small></h2><SharedTicket preview={ticketPreview} id="side-ticket" value={input} onPatch={edit} disabled={locked}/><TicketCheckAction id="side-ticket-check" ready={ready} checking={checking} locked={locked} missing={missing} error={errorOrigin==='side'?error:undefined} onCheck={()=>void check('side')}/>{reviewOrigin==='side'&&orderReview}<p className="fine">先檢查，再核對本筆委託與風險。</p></>}/>
    </div>
   </div>
   <dialog ref={historyDialog} className="ag-history-dialog" aria-labelledby="ag-history-heading"><header><h2 id="ag-history-heading">對話紀錄</h2><button type="button" aria-label="關閉對話紀錄" onClick={()=>historyDialog.current?.close()}>×</button></header><div className="pd-history">{archive.items.length?archive.items.map(entry=><div className="pd-history-entry" key={entry.id}><button className="pd-history-open" type="button" disabled={busy||checking||locked} aria-pressed={entry.id===threadId} onClick={()=>{openThread(entry);historyDialog.current?.close();}}>{entry.title}<small>{new Date(entry.updatedAt).toLocaleString('zh-TW')}</small></button><ConversationHistoryActions entry={entry} busy={busy||checking||locked} onRename={(id,title)=>setArchive(v=>({...v,items:renameConversation(v.items,id,title)}))} onDelete={removeThread}/></div>):<p className="ag-empty">完成對話後會保存在這裡。</p>}</div><ConversationHelp/></dialog>

@@ -23,6 +23,7 @@ from .live_readonly import stream as live_readonly_stream
 from .execution_store import ExecutionStore
 from .case_review import review_cases,selected_charts
 from .tick_volume import tick_frame
+from .ticket_preview import ticket_preview
 from .case_vision import preview as case_vision_preview
 from .live_assistant import respond_live,respond_context,build_live_context
 from .case_analysis import prepare_analysis
@@ -109,6 +110,14 @@ class ConfirmInput(Body):
     idempotency_key:str=Field(min_length=1,max_length=128)
     personal_rules:list[dict]=Field(default_factory=list,max_length=50)
 
+
+class TicketPreviewInput(Body):
+    side:Literal['BUY','SELL']|None=None
+    order_type:Literal['MARKET','LIMIT']|None=None
+    lot:str=Field(default='',max_length=30)
+    limit_price:str|None=Field(default=None,max_length=30)
+    sl:str|None=Field(default=None,max_length=30)
+    tp:str|None=Field(default=None,max_length=30)
 
 class BrokerDraftInput(Body):
     side:Literal['BUY','SELL']
@@ -356,6 +365,11 @@ def _analysis_operation_sources(retrieval):
     return {row['id']:getter(row['id']) for row in (retrieval or {}).get('cases',[])[:5]
             if isinstance(row,dict) and isinstance(row.get('id'),str)}
 
+
+@app.post('/api/broker/ticket-preview')
+def broker_ticket_preview(request:Request,body:TicketPreviewInput):
+    if not _local_broker_access(request):return JSONResponse(status_code=403,content={'detail':'委託試算僅供本機查看'})
+    return JSONResponse(content=ticket_preview(demo_market_stream.snapshot(),body.model_dump()),headers={'Cache-Control':'no-store'})
 
 @app.post('/api/broker/drafts')
 def broker_demo_draft(request: Request, body: BrokerDraftInput):

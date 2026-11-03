@@ -1,0 +1,24 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {DraftAgentSession,rebindDraftChart} from '../src/draftAgent';
+import {makeArchiveEntry,mergeArchive,encodeArchive,decodeArchive} from '../src/deskConversations';
+const draft={id:'draft-a',analysis_snapshot_id:'snapshot-a',analysis_as_of_utc:'2000-01-01T00:00:00Z'};
+const reply={snapshot_id:draft.analysis_snapshot_id,as_of_utc:draft.analysis_as_of_utc,analysis_mode:'draft_snapshot',market_status:'FROZEN',provider:'claude_market_analysis'};
+test('agent only reads the original draft and forwards selected model options',async()=>{
+ let path='',body:any;const session=new DraftAgentSession();const got:any[]=[];
+ await session.start(draft,{provider:'claude_code',model:'sonnet',effort:'high'},async(p,b)=>{path=p;body=b;return reply as any;},r=>got.push(r));
+ assert.equal(path,'/assistant/draft-chat');assert.equal(body.draft_id,draft.id);assert.equal(body.llm_enabled,true);assert.equal(body.effort,'high');assert.equal(got.length,1);
+ assert.equal(body.confirmed,undefined);assert.equal(body.snapshot,undefined);
+});
+test('late responses from a cancelled or superseded check cannot overwrite another draft',async()=>{
+ let resolve!:(r:any)=>void;const session=new DraftAgentSession(),got:any[]=[];
+ const old=session.start(draft,{},()=>new Promise(r=>resolve=r),r=>got.push(r));session.cancel();resolve(reply);await old;assert.equal(got.length,0);
+ await session.start(draft,{},async()=>({...reply,snapshot_id:'other'}) as any,r=>got.push(r));assert.equal(got[0].status,'error');
+});
+test('a chart opened during program check survives replacing its reply with model analysis',()=>{
+ const old='a'.repeat(64),next='b'.repeat(64),chart={id:'c'.repeat(64),mode:'analysis' as const,period:'5m' as const,analysis_ref:old};
+ const rebound=rebindDraftChart(chart,{snapshot_id:'c'.repeat(64),analysis_ref:old},{snapshot_id:'c'.repeat(64),analysis_ref:next});
+ const first={...makeArchiveEntry('thread',[{question:'check',answer:'program',at:'2000-01-01T00:00:00Z',analysis_ref:old}],1),chart};
+ const replacement={...makeArchiveEntry('thread',[{question:'check',answer:'model',at:'2000-01-01T00:00:00Z',analysis_ref:next}],2),chart:rebound!};
+ const saved=mergeArchive([first],replacement);assert.equal(decodeArchive(encodeArchive(saved,'thread')).items[0].chart?.analysis_ref,next);
+ assert.equal(rebindDraftChart(chart,{snapshot_id:'other',analysis_ref:old},{snapshot_id:'other',analysis_ref:next}),chart);
+});

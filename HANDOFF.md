@@ -1,3 +1,17 @@
+## 2026-11-04 — 不同日期無匹配實測、委託Agent與SL/TP即時試算
+
+- 使用者要求不同盤面測無案例頻率、程式先核對再由所選Agent解讀原草稿，另加SL/TP即時金額與百分率。沿現有8766獨立分支實作，8765原版介面保留。plan：docs/superpowers/plans/2026-11-04-retrieval-draft-review.md。
+- 固定舊30日期＋10不同週券商日期，BUY/SELL各測，共40日期80查詢，直接用現行ContextIndex（d5 .25／h1 .50／tail .12／vol2＋原生tick2倍）。60歷史查詢45有15無、20券商查詢16有4無，合計61有／19無（23.75%無匹配），43次至少5群。資料／門檻不改、未以盈虧選查詢。各個原因重疊，不可加總當不同案例。
+- 舊10日快照缺tick，初測正確為資料不足；以唯讀DEMO另取同10時點20批原生M5/H1（810根，0送單），僅存private/retrieval_native_20261104，重建查詢後資料來源與既有量能索引一致。tick刪除部分群／改變排名，但此80查詢沒有從有變零。即時program-only抽樣BUY合格5210、SELL1332，兩邊five_path全未過，最後0；此刻不是tick造成零結果。
+- 私人重跑腳本／原始結果／每關交集／SHA／逐日期CSV／report.md／coverage.png+pdf在根product/private/retrieval_draft_review_20261104；沒有公開新的行情或案例欄位。不把覆蓋率當人工相似準確率或勝率；40日期是既有固定樣本、同日多空非獨立樣本。
+- 前端新增draftAgent.ts：核對成功立即呈現原程式結果及人工確認，再以選定provider/model/effort呼叫既有draft-chat。只取原immutable snapshot，不重新查行情／案例，不延長30秒期限，不改草稿／風險／確認權限。改欄位、重查、換串、取消會停止顯示舊解讀，核對draft/snapshot/asof/revision；失敗保留程式，program或未就緒不呼叫。pending只在當下畫面，不存成永久等待訊息。
+- backend/ticket_preview.py＋POST /api/broker/ticket-preview：純Decimal、只讀快取行情／商品規格、no-store／loopback；無草稿或模型副作用。BUY Ask／SELL Bid，限價用指定價；每個SL/TP回名目USD與方向調整價差÷進場價的價格報酬率，錯邊／缺值／過期明示。margin_roi_pct=null，未扣成本，不宣稱保證金ROI。前端TicketPreview共用於兩處SharedTicket，120ms debounce、取消／stale保護，隨tick更新。
+- 一次fresh read-only final review找到P2：程式回覆換成模型會換analysis_ref，已開圖表的引用被archive丟棄。已以rebindDraftChart在同驗證快照改綁引用，unit與瀏覽器「先開圖→模型完成→重整」通過。另實際手機截圖發現原透明浮層透字，合成RED→GREEN，改固定浮層背景為opaque var(--bg)。
+- 驗證：前端191/191、相關後端／API／發布政策138/138；完整合成瀏覽器13項、normal與Pages建置結果見本輪收據。新增金額方向、價格報酬率、未填／錯邊／過期、無帳戶外露、原模型設定、晚回覆、備援、保存圖表測試。Windows TestClient使用require_escalated避開socketpair；macOS未實機驗收。
+- 實際Edge唯讀API以假設限價3500／.5手／SL3490／TP3520驗證-500.00USD/-0.2857%、+1000.00USD/+0.5714%，390px無橫溢出及pageerror；全部broker金融寫入阻擋，模型強制program。本輪真實LLM呼叫0、真實／DEMO送單0；未消耗前次3次以外額度。
+- app.py／新試算模組／測試及API_CONTRACT已同步root product，原共用後端由官方本機啟動器重啟；frontend只更新發布checkout，原版src/dist不覆蓋。API合約與新版說明更新、e2e納入發布白名單。243原件SHA前後檢查與分支提交／push收據另記。
+- branch codex/peer-ui-integration-20261103；commit N/A（待本輪驗證提交）。下一步使用者重新整理8766，填SL/TP先看試算，再按檢查看原草稿Agent解讀；送單仍由本人確認。
+
 ## 2026-11-03 — 新版互動、效能與問答切題修正
 
 - 使用者回報8766卡頓、拖曳無效、四入口與問句不符、回答數值牆；同意最多3次純合成Claude問答。修改僅在codex/peer-ui-integration-20261103，原版前端293檔與243原件SHA一致。共享後端5模組與新測試同步回product/backend，已由原啟動器重啟8765；原版介面保持。

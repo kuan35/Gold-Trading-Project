@@ -11,6 +11,7 @@ FILES.add('docs/conversation_history_20261031.md')
 FILES.add('docs/gold_macro_assistant_20261101.md')
 FILES.update({'docs/PEER_UI_PREVIEW.md','frontend/previewProxy.ts','frontend/playwright.config.ts','frontend/e2e/peer-ui.spec.ts'})
 FILES.add('frontend/e2e/interaction-quality.spec.ts')
+FILES.add('frontend/e2e/draft-assistance.spec.ts')
 PUBLIC_DATA={'trader-cases.json','trader-market-index.json','synthetic-query-profiles.json'}
 def public_files(root=ROOT):
  root=Path(root).resolve();out=[]

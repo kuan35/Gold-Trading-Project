@@ -1,5 +1,28 @@
 # Frontend API contract v1
 
+## 2026-11-04 即時SL/TP試算與背景草稿解讀
+
+`POST /api/broker/ticket-preview`僅本機、no-store，只讀快取行情與商品規格；不建立、
+取消或確認草稿，不呼叫LLM。body為`{side?:BUY|SELL|null,order_type?:MARKET|LIMIT|null,
+lot?:string,limit_price?:string|null,sl?:string|null,tp?:string|null}`，字串最多30字元、
+禁止額外欄位。未填完整回WAITING；過期／缺報價回UNAVAILABLE。價格、USD與百分率
+全是後端Decimal運算的十進位字串。
+
+AVAILABLE回`entry_price,quantity_oz,sl,tp,quote_time_utc,conditional_on_fill,basis`。
+SL/TP各回`{status,reason,price,pnl_usd,price_return_pct}`，未設定UNSET，錯邊
+INVALID_SIDE、數值無效INVALID。方向調整價差×盎司數為名目USD；方向調整價差
+除擬進場價×100為價格報酬率。市價BUY用Ask、SELL用Bid；限價用指定價、假設已成交。
+佣金／隔夜費／滑價未扣，`margin_roi_pct:null`，不得稱作保證金ROI。
+這是顯示試算，不代替正式手數、限價、保證金或送單檢查。
+
+前端的檢查DEMO委託先呈現原`/broker/drafts`程式結果與人工核對區，再以當次選定
+provider/model/effort呼叫既有`/assistant/draft-chat`。只傳draft_id與解讀問題，後端
+讀取原immutable快照；不抓新行情、不重新檢索、不改風險與草稿，不增加交易權限。
+背景解讀不延長原30秒草稿有效時間、不擋人工核對。程式模式／模型未就緒不呼叫。
+前端核對snapshot_id、as_of_utc及draft_snapshot/FROZEN；改欄位、換串、重查或取消後
+的晚回覆不得覆蓋畫面。失敗保留程式檢查。若模型回覆產生新analysis_ref，已開圖表
+在同一驗證快照下改綁新引用，維持重整還原。
+
 ## 2026-11-02 唯讀歷史分析與圖表還原
 
 MarketReply新增可選analysis_ref（64位hex）及analysis_history_error。live-chat、
