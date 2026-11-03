@@ -20,12 +20,12 @@ test('public page shell keeps demo account capability unavailable',()=>{
 });
 test('locked replay work cannot navigate through a second unlocked navigation',()=>{
  const html=render('replay',false,true);
- assert.equal((html.match(/disabled=""/g)||[]).length,6);
+ const buttons=html.match(/<button[^>]*>/g)??[];assert.equal(buttons.filter(b=>b.includes('aria-current="page"')).length,1);assert.ok(buttons.filter(b=>!b.includes('aria-current="page"')&&!b.includes('切換')&&!b.includes('指令')).every(b=>b.includes('disabled')), 'non-current rail navigation stays locked');
 });
 test('assistant retains the route body container without duplicated navigation or header',()=>{
  const html=render('assistant');
  assert.match(html,/pd-route-body/);assert.match(html,/page content/);
- assert.doesNotMatch(html,/工作台頁面|pd-page-heading|pd-market/);
+ assert.equal((html.match(/aria-label="工作台頁面"/g)||[]).length,1);assert.doesNotMatch(html,/pd-page-heading|pd-market/);
 });
 const guideProps={market:null,publicMode:false,side:'BUY' as const,method:'context_contract_v1' as const,onSide:()=>{},onMethod:()=>{},onAssistant:()=>{},onAccount:()=>{},onReplay:()=>{},onReplayCases:()=>{},onReplayOrder:()=>{},children:null};
 test('live guide does not show stale equity or infer empty positions from a missing account',()=>{

@@ -29,13 +29,13 @@ function OrdersTable({items,submitted=false,currency}:{items:BrokerRecord[];subm
  </table>{!items.length&&<p className="broker-empty">{submitted?'尚無本工作台已送出的 DEMO 委託；草稿未確認不會出現在送單紀錄。':'此範圍目前沒有可顯示的券商訂單。'}</p>}<span className="sr-only">帳戶幣別 {currency}</span></div>;
 }
 
-export function BrokerAccountView({market,activity,tab,error='',onTab=()=>{},onPage=()=>{}}:{market:DemoMarket|null;activity:BrokerActivity|null;tab:Tab;error?:string;onTab?:(tab:Tab)=>void;onPage?:(offset:number)=>void}){
+export function BrokerAccountView({market,activity,tab,error='',onTab=()=>{},onPage=()=>{},idPrefix=''}:{market:DemoMarket|null;activity:BrokerActivity|null;tab:Tab;error?:string;idPrefix?:string;onTab?:(tab:Tab)=>void;onPage?:(offset:number)=>void}){
  const a=market?.account,currency=a?.currency??'幣別未確認';
  const accountFresh=market?.connection_status==='CONNECTED'&&fresh(a?.status);
  const pnlFresh=accountFresh&&fresh(a?.pnl_status);
  const positions=a?.positions??[],pending=a?.pending_orders??[];
  const submitted=activity?.submissions;
- return <section className="broker-account-workspace" id="broker-account-panel" aria-label="cTrader DEMO 持倉與交易紀錄">
+ return <section className="broker-account-workspace" id={idPrefix+'broker-account-panel'} aria-label="cTrader DEMO 持倉與交易紀錄">
   <header className="broker-account-heading"><div><h2>DEMO 帳戶與交易紀錄</h2><p className="fine">cTrader DEMO · {currency} · 與本機回放帳戶分開</p></div>
    <span role="status">{accountFresh?'帳戶已同步':a?'帳戶資料已過期':'等待券商帳戶／未連線'}</span></header>
   <dl className="broker-account-totals"><div><dt>餘額</dt><dd>{number(a?.balance)} {currency}</dd></div>
@@ -45,8 +45,8 @@ export function BrokerAccountView({market,activity,tab,error='',onTab=()=>{},onP
   <p className="broker-pnl-note fine">{pnlFresh?'券商損益約每 2 秒取樣':a?.pnl_status==='STALE'?'損益已過期，等待券商重新更新':'損益尚未就緒或正在更新'} · 損益快照 {time(a?.pnl_updated_at_utc)}。浮動淨損益不含潛在平倉佣金。</p>
   {error&&<p className="broker-read-error" role="alert">{error}</p>}
   <div className="tabs broker-account-tabs" role="tablist" aria-label="DEMO 帳戶資料">{[['positions',`持倉與損益 ${positions.length}`],['pending',`待成交 ${pending.length}`],['history','下單與成交紀錄']].map(([key,label])=>
-   <button key={key} id={`broker-tab-${key}`} role="tab" aria-selected={tab===key} aria-controls="broker-account-content" className={tab===key?'active':''} onClick={()=>onTab(key as Tab)}>{label}</button>)}</div>
-  <div id="broker-account-content" role="tabpanel" aria-labelledby={`broker-tab-${tab}`}>
+   <button key={key} id={`${idPrefix}broker-tab-${key}`} role="tab" aria-selected={tab===key} aria-controls={idPrefix+'broker-account-content'} className={tab===key?'active':''} onClick={()=>onTab(key as Tab)}>{label}</button>)}</div>
+  <div id={idPrefix+'broker-account-content'} role="tabpanel" aria-labelledby={`${idPrefix}broker-tab-${tab}`}>
    {tab==='positions'&&<div className="table-scroll"><table><thead><tr><th>部位／時間</th><th>方向</th><th>手數</th><th>進場均價</th><th>目前可平倉價</th><th>停損</th><th>停利</th><th>浮動毛損益 {currency}</th><th>浮動淨損益 {currency}</th><th>操作</th></tr></thead>
     <tbody>{positions.map(p=><tr key={p.id}><td>{p.id}<small>{time(p.opened_at_utc)}</small></td><td>{sideLabel(p.side)}</td><td>{p.lot??'—'}</td><td>{p.entry??'—'}</td>
      <td>{market?.quote.status==='CURRENT'&&market.quote.age_seconds!=null&&market.quote.age_seconds<=5?market.quote[p.side==='BUY'?'bid':'ask']??'—':'—'}</td><td>{p.sl??'—'}</td><td>{p.tp??'—'}</td>
@@ -68,8 +68,8 @@ export function BrokerAccountView({market,activity,tab,error='',onTab=()=>{},onP
  </section>;
 }
 
-export default function BrokerAccountPanel({market,initialTab='positions'}:{market:DemoMarket|null;initialTab?:Tab}){
+export default function BrokerAccountPanel({market,initialTab='positions',idPrefix=''}:{market:DemoMarket|null;initialTab?:Tab;idPrefix?:string}){
  const [tab,setTab]=useState<Tab>(initialTab),[offset,setOffset]=useState(0);
  const {activity,error}=useBrokerActivity(offset);
- return <BrokerAccountView market={market} activity={activity} error={error} tab={tab} onTab={setTab} onPage={setOffset}/>;
+ return <BrokerAccountView idPrefix={idPrefix} market={market} activity={activity} error={error} tab={tab} onTab={setTab} onPage={setOffset}/>;
 }

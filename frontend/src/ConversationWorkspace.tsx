@@ -1,3 +1,8 @@
+import {AgentOrb,AgentTopbar,RAIL_EVENT} from './experience/AgentDesk';
+import AgentDrawer,{type DrawerTab} from './experience/AgentDrawer';
+import AgentAnswer from './experience/AgentAnswer';
+import AssistantSettings from './experience/AssistantSettings';
+import ConversationHistoryActions from './ConversationHistoryActions';
 import type {ComparisonSelection} from './caseComparisonData';
 import {useEffect,useRef,useState,type FormEvent,type CSSProperties} from 'react';
 import {api} from './api';import type {Side} from './types';import type {DemoMarket} from './demoMarket';import type {MarketReply} from './LiveAssistant';
@@ -20,8 +25,12 @@ type TicketOrigin='inline'|'side';
 type Interpretation={intent:string;analysis_side:Side|null;patch:InputPatch;proposal:InputPatch;message:string;missing_fields:string[];input_revision:number};
 type Turn={id:number;question:string;at?:string;note?:string;noteImportant?:boolean;reply?:MarketReply;proposal?:InputPatch;proposalRevision?:number;error?:string;record?:ArchiveTurn};
 const newThreadId=()=>`chat-${globalThis.crypto?.randomUUID?.()??Date.now()+'-'+Math.random().toString(36).slice(2)}`;
-export default function ConversationWorkspace({market,light,visible,onHistory,onNavigate,onToggleTheme}:{market:DemoMarket|null;light:boolean;visible:boolean;onHistory:()=>void;onNavigate?:(view:'replay'|'live')=>void;onToggleTheme?:()=>void}){
+export default function ConversationWorkspace({market,light,visible,onHistory,onNavigate,onToggleTheme,onBusyChange}:{market:DemoMarket|null;light:boolean;visible:boolean;onHistory:()=>void;onNavigate?:(view:'replay'|'live')=>void;onToggleTheme?:()=>void;onBusyChange?:(busy:boolean)=>void}){
  const assistantSettings=useAssistantSettings();
+ const [drawer,setDrawer]=useState(true),[drawerTab,setDrawerTab]=useState<DrawerTab>('order'),[settingsOpen,setSettingsOpen]=useState(false);
+ const historyDialog=useRef<HTMLDialogElement>(null),railRef=useRef<(command:string)=>void>(()=>{});
+ useEffect(()=>{const rail=(event:Event)=>railRef.current((event as CustomEvent).detail);const settings=()=>setSettingsOpen(true);window.addEventListener(RAIL_EVENT,rail);window.addEventListener('gd:settings',settings);return()=>{window.removeEventListener(RAIL_EVENT,rail);window.removeEventListener('gd:settings',settings);};},[]);
+
  const [archive,setArchive]=useState<ArchiveLoad>(()=>{try{return decodeArchive(typeof localStorage==='undefined'?null:localStorage.getItem(DESK_HISTORY_KEY));}catch{return {items:[],writable:false,error:'此瀏覽器無法保存對話。'};}});
  const [threadId,setThreadId]=useState(()=>archive.activeId??archive.items[0]?.id??newThreadId()),[historyError,setHistoryError]=useState(''),[mobileTicket,setMobileTicket]=useState(false);
  const [chatShare,setChatShare]=useState<number|null>(null);const grid=useRef<HTMLDivElement>(null);
@@ -31,6 +40,7 @@ export default function ConversationWorkspace({market,light,visible,onHistory,on
  const log=useRef<HTMLDivElement>(null),follow=useRef(true),lastSeen=useRef(0);
  const [input,setInput]=useState(emptyInput),[revision,setRevision]=useState(0),[turns,setTurns]=useState<Turn[]>(()=>archive.items.find(e=>e.id===threadId)?.turns.map((record,i)=>({id:-(i+1),question:record.question,at:record.at,record}))??[]),[text,setText]=useState('');
  const [busy,setBusy]=useState(false),[checking,setChecking]=useState(false),[locked,setLocked]=useState(false),[error,setError]=useState('');
+ useEffect(()=>{onBusyChange?.(busy||checking||locked);},[busy,checking,locked,onBusyChange]);
  const [reviewOrigin,setReviewOrigin]=useState<TicketOrigin>('side'),[errorOrigin,setErrorOrigin]=useState<TicketOrigin>('side');
  const [checked,setChecked]=useState<{draft:CheckedOrder;revision:number}|null>(null),[inline,setInline]=useState(false),[chart,setChart]=useState<ArchivedChart|null>(()=>archive.items.find(e=>e.id===threadId)?.chart??null);
  const sessions=useRef(new ConversationSessions<Turn>()),currentChart=useRef(chart);
@@ -134,27 +144,42 @@ export default function ConversationWorkspace({market,light,visible,onHistory,on
  const quoteTime=Date.parse(market?.quote.source_time_utc??'')/1000,newBar=Boolean(latest?.query_as_of_utc&&Number.isFinite(quoteTime)&&Math.floor(quoteTime/300)*300>latest.query_as_of_utc);
  const ready=Boolean(market?.environment==='demo'&&market.order_connection&&market.quote.status==='CURRENT'&&market.account?.status==='CURRENT');
  const missing=missingInput(input);
- const orderReview=checked&&<ConversationOrderReview key={checked.draft.id} draft={checked.draft} checkedRevision={checked.revision} currentRevision={revision} accountUpdated={market?.account?.updated_at_utc} onClear={()=>{setChecked(null);checkedRef.current=null;setLock(false);}} onLock={setLock} onHistory={onHistory}/>;
- return <main id={visible?'market-workspace':undefined} className="conversation-workspace pd-workbench" hidden={!visible} tabIndex={-1} aria-label="聊天交易工作台">
-  <DeskRail entries={archive.items} activeId={threadId} busy={busy||checking||locked} error={historyError||archive.error} onOpen={openThread} onNew={()=>openThread()} onNavigate={view=>onNavigate?.(view)} onRename={(id,title)=>{if(working.current||checkWorking.current||lockedRef.current)return;setArchive(v=>({...v,items:renameConversation(v.items,id,title)}));}} onDelete={removeThread}/>
-  <div className="pd-body"><DeskMarketHeader market={market} light={light} onToggleTheme={()=>onToggleTheme?.()}/>
-  <div className="cw-heading"><div><span className="pd-eyebrow">YOUR TRADING WORKSPACE</span><h1>交易對話</h1></div><button className="pd-ticket-toggle" type="button" aria-expanded={mobileTicket} aria-controls="pd-ticket" onClick={()=>setMobileTicket(!mobileTicket)}>{mobileTicket?'收合委託':'準備中委託'}</button></div>
-  <div className="cw-grid" ref={grid} style={chatShare===null?undefined:{'--cw-chat-weight':`${chatShare}fr`,'--cw-ticket-weight':`${100-chatShare}fr`} as CSSProperties}><section className="cw-conversation" aria-label="交易對話"><div className="cw-chat-toolbar"><AssistantControl settings={assistantSettings} busy={busy}/><button type="button" disabled={busy} onClick={()=>void send('更新目前盤面與案例')}>{newBar?'有新收盤 · 更新分析':'更新盤面'}</button></div>
-   <div className="cw-transcript"><div id="conversation-log" style={chatHeight===null?undefined:{height:chatHeight}} className="cw-log" ref={log} role="log" aria-label="聊天紀錄" aria-live="polite" aria-relevant="additions text" tabIndex={0} onScroll={()=>{const el=log.current;if(el){follow.current=nearChatBottom(el.scrollHeight,el.clientHeight,el.scrollTop);setShowLatest(!follow.current&&Boolean(lastTurn.current&&lastTurn.current.getBoundingClientRect().top>el.getBoundingClientRect().top+32));}}}>{!turns.length&&<div className="cw-welcome"><h2>先聊聊你的交易想法</h2><p>說出多空方向，就能一起看盤面依據與歷史案例。委託欄位也可以在對話中點選。</p><div className="cw-actions">{['我想做多，現在有哪些支持與相反訊號？','如果做空，有類似案例嗎？','附近支撐壓力在哪？','最近有哪些總經事件會影響黃金？'].map(q=><button type="button" key={q} onClick={()=>void send(q)}>{q}</button>)}</div></div>}
-    {turns.map((t,i)=><div key={t.id} ref={i===turns.length-1?lastTurn:undefined} className="cw-turn"><div className="cw-user"><small>你</small><p>{t.question}</p></div>{t.record&&<ArchivedConversationReply record={t.record} light={light} onChart={showChart}/>} {t.note&&(t.noteImportant||!t.reply)&&<p className="cw-note">{t.note}</p>}{t.proposal&&<button type="button" disabled={locked||revision!==t.proposalRevision} onClick={()=>{patch(t.proposal!);setInline(true);annotate(t.id,{proposal:undefined,noteImportant:true,note:'已套用到準備中委託。'});}}>套用到草稿{revision!==t.proposalRevision?'（欄位已更新，請重新討論）':''}</button>}{t.reply&&<ConversationReply reply={t.reply} question={t.question} light={light} currentRevision={revision} onChart={(mode,period,selection)=>showChart(t.reply!,mode,period,selection)}/>}{t.error&&<p role="alert">{t.error}</p>}</div>)}
-    {busy&&<p role="status">正在整理盤面與案例…</p>}
+ const orderReview=checked&&<ConversationOrderReview key={checked.draft.id} draft={checked.draft} checkedRevision={checked.revision} currentRevision={revision} accountUpdated={market?.account?.updated_at_utc} onClear={()=>{setChecked(null);checkedRef.current=null;setLock(false);}} onLock={setLock} onHistory={()=>{setDrawer(true);setDrawerTab('records');}}/>;
+ railRef.current=command=>{if(working.current||checkWorking.current||lockedRef.current)return;if(command==='new')openThread();else if(command==='history')historyDialog.current?.showModal();};
+ const sideLabel=input.side==='BUY'?'做多':input.side==='SELL'?'做空':'尚未選方向';
+ const chips=['我想做多，現在有哪些支持與相反訊號？','如果做空，有類似案例嗎？','最近有哪些總經事件會影響黃金？'];
+ const openHistory=()=>{setDrawer(true);setDrawerTab('records');};
+ return <main id={visible?'market-workspace':undefined} className={`conversation-workspace ag-desk ${drawer?'ag-with-drawer':''}`} hidden={!visible} tabIndex={-1} aria-label="聊天交易工作台">
+  <div className="ag-main">
+   <AgentTopbar market={market} light={light} onTheme={()=>onToggleTheme?.()} drawerOpen={drawer} onDrawer={()=>setDrawer(v=>!v)}/>
+   <div className="ag-body" ref={grid} style={drawer&&chatShare!==null?{gridTemplateColumns:`minmax(0,${chatShare}fr) minmax(300px,${100-chatShare}fr)`}:undefined}>
+    <section className="ag-center" aria-label="交易對話">
+     <div className="ag-agent-head"><AgentOrb busy={busy||checking}/><div className="ag-agent-id"><strong>Gold Desk Agent</strong><small>{busy?'正在整理盤面與案例':checking?'正在核對委託':'交易對話'}</small></div>
+      <div className="ag-head-tools"><AssistantSettings settings={assistantSettings} busy={busy} open={settingsOpen} onOpen={setSettingsOpen}/><button type="button" className="ag-ghost" disabled={busy} onClick={()=>void send('更新目前盤面與案例')}>{newBar?'有新收盤 · 更新':'更新盤面'}</button></div>
+     </div>
+     <div id="conversation-log" className="ag-log" ref={log} style={chatHeight===null?undefined:{flex:'0 1 auto',height:chatHeight,minHeight:180}} role="log" aria-label="聊天紀錄" aria-live="polite" aria-relevant="additions text" tabIndex={0} onScroll={()=>{const el=log.current;if(el){follow.current=nearChatBottom(el.scrollHeight,el.clientHeight,el.scrollTop);setShowLatest(!follow.current&&Boolean(lastTurn.current&&lastTurn.current.getBoundingClientRect().top>el.getBoundingClientRect().top+32));}}}>
+      {!turns.length&&<div className="ag-welcome"><AgentOrb busy={false} size={88}/><h2>今天想怎麼交易黃金？</h2><p>說出你的想法，一起看即時盤面、歷史案例與本筆風險。</p><div className="ag-starters">{[['黃金交易新手要先了解什麼？','新手教學'],['我想做多，現在有哪些支持與相反訊號？','看多空訊號'],['如果做空，有類似案例嗎？','找相似案例'],['幫我準備買進 0.01 手','準備一筆委託']].map(([q,title])=><button type="button" key={q} onClick={()=>void send(q)}><strong>{title}</strong><span>{q}</span></button>)}</div></div>}
+      {turns.map((t,i)=><div key={t.id} ref={i===turns.length-1?lastTurn:undefined} className="ag-turn"><div className="ag-user"><p>{t.question}</p></div>
+       {t.record&&<ArchivedConversationReply record={t.record} light={light} onChart={showChart}/>}
+       {t.note&&(t.noteImportant||!t.reply)&&<p className="ag-note">{t.note}</p>}
+       {t.proposal&&<button type="button" className="ag-apply" disabled={locked||revision!==t.proposalRevision} onClick={()=>{patch(t.proposal!);setInline(true);setDrawer(true);setDrawerTab('order');annotate(t.id,{proposal:undefined,noteImportant:true,note:'已套用到準備中委託。'});}}>套用到草稿{revision!==t.proposalRevision?'（欄位已更新，請重新討論）':''}</button>}
+       {t.reply&&<AgentAnswer reply={t.reply} question={t.question} light={light} currentRevision={revision} onChart={(mode,period,selection)=>showChart(t.reply!,mode,period,selection)}/>}
+       {t.error&&<p className="ag-error" role="alert">{t.error}</p>}
+      </div>)}
+      {busy&&<div className="ag-thinking" role="status"><AgentOrb busy size={28}/><p>正在整理這次盤面、案例與回覆…</p></div>}
+      {chart&&<div className="ag-chart-evidence"><ConversationCharts key={chart.id+chart.mode+chart.period+JSON.stringify(chart.selection)} selection={chart.selection} initialPeriod={chart.period} analysisRef={chart.analysis_ref} reference={input} onViewChange={view=>{if(currentChart.current)rememberChart({...currentChart.current,...view},false);}} snapshotId={chart.id} mode={chart.mode} light={light} onClose={()=>{rememberChart(null);chartTrigger.current?.focus();}}/></div>}
+     </div>
+     {showLatest&&<button type="button" className="ag-latest" onClick={jumpToLatest}>回到最新對話 ↓</button>}
+     <div className="ag-size-row"><ConversationResize axis="height" value={chatHeight} target={log} onChange={setChatHeight}/><button type="button" onClick={()=>{setChatHeight(null);setChatShare(null);}}>還原大小</button></div>
+     <div className="ag-dock"><details className="cw-inline" open={inline||(reviewOrigin==='inline'&&Boolean(checked))} onToggle={e=>setInline(e.currentTarget.open)}><summary><strong>準備中委託</strong>{sideLabel} · {input.lot?input.lot+' 手':'手數未填'} · {input.order_type==='LIMIT'?'限價 '+(input.limit_price||'未填'):input.order_type==='MARKET'?'市價':'單型未選'}<small>編輯委託</small></summary><div className="ag-inline-ticket"><SharedTicket id="chat-ticket" value={input} onPatch={edit} disabled={locked}/><TicketCheckAction id="chat-ticket-check" ready={ready} checking={checking} locked={locked} missing={missing} error={errorOrigin==='inline'?error:undefined} onCheck={()=>void check('inline')}/>{reviewOrigin==='inline'&&orderReview}</div></details>
+      <div className="ag-chips">{chips.map(q=><button type="button" key={q} disabled={busy} onClick={()=>void send(q)}>{q}</button>)}</div>
+      <form className="ag-composer" onSubmit={(e:FormEvent)=>{e.preventDefault();void send(text);}}><label className="sr-only" htmlFor="conversation-message">輸入交易想法或委託條件</label><textarea id="conversation-message" rows={1} maxLength={1500} value={text} onChange={e=>setText(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing){e.preventDefault();void send(text);}}} placeholder="和 Agent 說你的想法，例如「買進 0.02 手，停損 4020」"/><button className="ag-send" aria-label="送出對話" disabled={busy||!text.trim()}><DeskIcon name="arrow"/></button></form>
+      {(historyError||archive.error)&&<p className="ag-error" role="alert">{historyError||archive.error}</p>}
+     </div>
+    </section>
+    <AgentDrawer resizer={<ConversationResize axis="width" value={chatShare} target={grid} onChange={setChatShare}/>} open={drawer&&visible} tab={drawerTab} onTab={setDrawerTab} onClose={()=>setDrawer(false)} light={light} market={market} order={<><h2 className="ag-ticket-title">準備中委託 <small>cTrader DEMO</small></h2><SharedTicket id="side-ticket" value={input} onPatch={edit} disabled={locked}/><TicketCheckAction id="side-ticket-check" ready={ready} checking={checking} locked={locked} missing={missing} error={errorOrigin==='side'?error:undefined} onCheck={()=>void check('side')}/>{reviewOrigin==='side'&&orderReview}<p className="fine">先檢查，再核對本筆委託與風險。</p></>}/>
    </div>
-   {showLatest&&<button type="button" className="cw-latest" onClick={jumpToLatest}>回到最新對話 ↓</button>}</div>
-   <div className="cw-size-row"><ConversationResize axis="height" value={chatHeight} target={log} onChange={setChatHeight}/><button type="button" onClick={()=>{setChatHeight(null);setChatShare(null);}}>還原大小</button></div>
-   <details className="cw-inline" open={inline} onToggle={e=>setInline(e.currentTarget.open)}><summary>在對話內填寫委託</summary><SharedTicket id="chat-ticket" value={input} onPatch={edit} disabled={locked}/><TicketCheckAction id="chat-ticket-check" ready={ready} checking={checking} locked={locked} missing={missing} error={errorOrigin==='inline'?error:undefined} onCheck={()=>void check('inline')}/>{reviewOrigin==='inline'&&orderReview}</details>
-   {chart&&<ConversationCharts key={chart.id+chart.mode+chart.period+JSON.stringify(chart.selection)} selection={chart.selection} initialPeriod={chart.period} analysisRef={chart.analysis_ref} reference={input} onViewChange={view=>{if(currentChart.current)rememberChart({...currentChart.current,...view},false);}} snapshotId={chart.id} mode={chart.mode} light={light} onClose={()=>{rememberChart(null);chartTrigger.current?.focus();}}/>}
-   <form className="cw-composer" onSubmit={(e:FormEvent)=>{e.preventDefault();void send(text);}}><label className="sr-only" htmlFor="conversation-message">輸入交易想法或委託條件</label><textarea id="conversation-message" rows={2} maxLength={1500} value={text} onChange={e=>setText(e.target.value)} placeholder="和 Gold Desk 討論，或輸入下單條件…"/><button className="primary" aria-label="送出對話" disabled={busy||!text.trim()}><DeskIcon name="arrow"/><span>{busy?'整理中…':'送出'}</span></button></form>
-   {(historyError||archive.error)&&<p role="alert" className="cw-note">{historyError||archive.error}</p>}
-  </section><ConversationResize axis="width" value={chatShare} target={grid} onChange={setChatShare}/><aside id="pd-ticket" className={`cw-sidebar ${mobileTicket?'pd-ticket-open':''}`} aria-label="準備中委託"><header><h2>準備中委託</h2><small>cTrader DEMO</small></header><SharedTicket id="side-ticket" value={input} onPatch={edit} disabled={locked}/>
-   <TicketCheckAction id="side-ticket-check" ready={ready} checking={checking} locked={locked} missing={missing} error={errorOrigin==='side'?error:undefined} onCheck={()=>void check('side')}/>
-   {reviewOrigin==='side'&&orderReview}
-   <div className="cw-account"><strong>DEMO 帳戶摘要</strong><dl><div><dt>淨值</dt><dd>{market?.account?.status==='CURRENT'&&market.account.pnl_status==='CURRENT'?market.account.equity:'—'} {market?.account?.currency??''}</dd></div><div><dt>黃金浮動損益</dt><dd>{market?.account?.status==='CURRENT'&&market.account.pnl_status==='CURRENT'?market.account.xau_net_unrealized_pnl??'—':'—'} {market?.account?.currency??''}</dd></div></dl><button type="button" onClick={onHistory}>查看持倉與下單紀錄</button></div>
-  </aside></div>
-  {visible&&<DeskAccountTray market={market}/>}<ConversationHelp/></div>
+  </div>
+  <dialog ref={historyDialog} className="ag-history-dialog" aria-labelledby="ag-history-heading"><header><h2 id="ag-history-heading">對話紀錄</h2><button type="button" aria-label="關閉對話紀錄" onClick={()=>historyDialog.current?.close()}>×</button></header><div className="pd-history">{archive.items.length?archive.items.map(entry=><div className="pd-history-entry" key={entry.id}><button className="pd-history-open" type="button" disabled={busy||checking||locked} aria-pressed={entry.id===threadId} onClick={()=>{openThread(entry);historyDialog.current?.close();}}>{entry.title}<small>{new Date(entry.updatedAt).toLocaleString('zh-TW')}</small></button><ConversationHistoryActions entry={entry} busy={busy||checking||locked} onRename={(id,title)=>setArchive(v=>({...v,items:renameConversation(v.items,id,title)}))} onDelete={removeThread}/></div>):<p className="ag-empty">完成對話後會保存在這裡。</p>}</div><ConversationHelp/></dialog>
  </main>;
 }

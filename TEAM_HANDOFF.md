@@ -1,3 +1,9 @@
+# 新版UI交接入口（2026-11-03）
+
+本分支codex/peer-ui-integration-20261103已完整整合同學外殼與現有功能。
+先讀[雙版本啟動與agent安裝prompt](docs/PEER_UI_PREVIEW.md)及README；原版仍保留於codex/local-distribution-20261031。
+以下保留原功能交接紀錄。
+
 # Gold Desk 架站交接：交給同學與 Codex
 
 ## 2026-10-31 最新：Windows／macOS 本機產品分發

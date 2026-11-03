@@ -1,8 +1,8 @@
 import type {ArchiveTurn} from './deskConversations';
-import {useEffect,useState} from 'react';import {loadAnalysis} from './analysisHistory';import type {MarketReply} from './LiveAssistant';import type {ComparisonSelection} from './caseComparisonData';import ConversationReply from './ConversationReply';
+import {useEffect,useState} from 'react';import {loadAnalysis} from './analysisHistory';import type {MarketReply} from './LiveAssistant';import type {ComparisonSelection} from './caseComparisonData';import AgentAnswer from './experience/AgentAnswer';
 type OpenChart=(reply:MarketReply,mode:'analysis'|'cases',period?:'5m'|'15m'|'1h',selection?:ComparisonSelection)=>void;
 export function RestoredConversationReply({reply,question,light=false,onChart}:{reply:MarketReply;question:string;light?:boolean;onChart?:OpenChart}){
- return <div className="pd-archived"><small>原分析 · {new Date(reply.as_of_utc).toLocaleString('zh-TW')} · 唯讀回看</small><ConversationReply reply={reply} question={question} light={light} onChart={(mode,period,selection)=>onChart?.(reply,mode,period,selection)}/></div>;
+ return <div className="pd-archived"><small>原分析 · {new Date(reply.as_of_utc).toLocaleString('zh-TW')} · 唯讀回看</small><AgentAnswer reply={reply} question={question} light={light} onChart={(mode,period,selection)=>onChart?.(reply,mode,period,selection)}/></div>;
 }
 export default function ArchivedConversationReply({record,light=false,onChart}:{record:ArchiveTurn;light?:boolean;onChart?:OpenChart}){
  const [reply,setReply]=useState<MarketReply|null>(null),[error,setError]=useState('');

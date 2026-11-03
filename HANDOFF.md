@@ -1,3 +1,12 @@
+## 2026-11-03 — 同學完整UI外殼整合，新分支獨立預覽
+
+- 使用者確認完整設計後，從4253e8a建立codex/peer-ui-integration-20261103。三頁共用同學AgentRail/Topbar、金球、背景、卡片、分頁抽屜與通知；右側預設下單，案例與原K線在聊天，助手名稱開供應商／模型／effort面板，不採登入閘門。原本product/src與dist不改，原版8765仍提供原版資源，新版Vite8766代理相同後端；聊天／草稿依origin分開，券商DEMO帳戶共用。
+- 沿用現ConversationWorkspace狀態、schema3保存／命名刪除、analysis_ref快照、圖表工具、檢索、委託版本與唯一人工確認。捲動聊天有上下界、可調整大小；手機可由指令面板開新對話／紀錄。帳戶側欄首次開啟後保留掛載，切頁／收合不清掉UNKNOWN回報。保留原生tick量、已收／形成中與過期提示。
+- 不採舊聊天截斷、假進度、文字證據改寫、勝率上色、滑動送單。原後端未修改；Vite預覽代理僅允許列明的loopback Origin，轉送既有後端允許Origin，外部來源寫入拒絕。LIVE仍唯讀，原有限價平倉未核實狀態照實呈現。
+- 驗證：前端186/186、normal+Pages build通過（大型chunk提示）；發布白名單2/2；全合成Playwright4/4，涵蓋手機入口、過期圖、UNKNOWN平倉回報保留、聊天切換／重整後案例與原圖。一次獨立review三項P2均經瀏覽器RED→GREEN修正。測試中的平倉確認由合成route完全攔截，沒有真實或DEMO送單。實際程式解讀／唯讀行情的隔離Edge驗收涵蓋三頁、分頁、欄位保留、1660／390寬度、無pageerror；RSI+MACD下圖高480與scroll753連三次穩定。
+- 更新安裝／agent交接與docs/PEER_UI_PREVIEW.md；npm run dev:peer鎖8766，npm run test:ui執行合成瀏覽器測試。新UI依賴Motion/cmdk/Sonner；Playwright只屬開發測試，Vite修補到6.4.5，npm安裝稽核0漏洞。未執行付費推論，macOS未實機驗收，不冒稱模型或實際券商送單已驗收。
+- 只在本分支發布程式與文件，不合併main、不變更原分支，不加入原件、private、設定或截圖。新版單獨安裝一般start-local仍8765；8766是與原版同機並存的開發預覽。
+
 # Gold Desk 本機產品交接
 
 ## 2026-11-03 — 聊天內委託補上檢查及人工確認入口

@@ -8,3 +8,12 @@ def test_public_whitelist_excludes_secrets_runtime_and_new_data(tmp_path):
  assert '.env.local' not in names and 'private/cases.json' not in names and 'frontend/public/data/private-new.json' not in names
  assert not any('__pycache__' in n for n in names)
  assert 'frontend/src/demo-data.json' in names
+
+
+def test_peer_preview_package_includes_reproducible_ui_test_and_proxy_files(tmp_path):
+ for name in ['docs/PEER_UI_PREVIEW.md','frontend/previewProxy.ts','frontend/playwright.config.ts','frontend/e2e/peer-ui.spec.ts','frontend/test-results/error-context.md']:
+  p=tmp_path/name;p.parent.mkdir(parents=True,exist_ok=True);p.write_text('fixture')
+ names=public_files(tmp_path)
+ for name in ['docs/PEER_UI_PREVIEW.md','frontend/previewProxy.ts','frontend/playwright.config.ts','frontend/e2e/peer-ui.spec.ts']:
+  assert name in names
+ assert 'frontend/test-results/error-context.md' not in names

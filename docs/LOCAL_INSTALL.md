@@ -4,7 +4,7 @@
 是本機FastAPI＋一般Vite build；GitHub Pages是不同的靜態展示。
 
 ```sh
-git clone --branch codex/local-distribution-20261031 https://github.com/kuan35/Gold-Trading-Project.git
+git clone --branch codex/peer-ui-integration-20261103 https://github.com/kuan35/Gold-Trading-Project.git
 cd Gold-Trading-Project
 git rev-parse HEAD
 ```

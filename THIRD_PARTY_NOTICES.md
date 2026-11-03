@@ -12,3 +12,5 @@
 
 The package lock lists exact JavaScript dependencies. Re-distributors should
 retain and review the licenses shipped with the dependency versions they build.
+
+- The peer UI shell uses Motion, cmdk and Sonner (MIT). Playwright is a development-only test dependency (Apache-2.0). Preserve installed license files. Inter, Noto Sans TC and JetBrains Mono retain their font licenses; offline execution uses system fallbacks.
