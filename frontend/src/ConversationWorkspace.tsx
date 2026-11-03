@@ -4,7 +4,7 @@ import AgentAnswer from './experience/AgentAnswer';
 import AssistantSettings from './experience/AssistantSettings';
 import ConversationHistoryActions from './ConversationHistoryActions';
 import type {ComparisonSelection} from './caseComparisonData';
-import {useEffect,useRef,useState,type FormEvent,type CSSProperties} from 'react';
+import {memo,useEffect,useRef,useState,type FormEvent,type RefObject} from 'react';
 import {api} from './api';import type {Side} from './types';import type {DemoMarket} from './demoMarket';import type {MarketReply} from './LiveAssistant';
 import ConversationResize from './ConversationResize';import {CHAT_HEIGHT_KEY,savedChatHeight} from './chatSize';
 import ConversationHelp from './ConversationHelp';import {nearChatBottom,turnScrollTarget} from './conversationScroll';
@@ -24,10 +24,20 @@ import {buildDialogueMemory} from './dialogueMemory';
 type TicketOrigin='inline'|'side';
 type Interpretation={intent:string;analysis_side:Side|null;patch:InputPatch;proposal:InputPatch;message:string;missing_fields:string[];input_revision:number};
 type Turn={id:number;question:string;at?:string;note?:string;noteImportant?:boolean;reply?:MarketReply;proposal?:InputPatch;proposalRevision?:number;error?:string;record?:ArchiveTurn};
+type TurnActions={chart:(reply:MarketReply,mode:'analysis'|'cases',period?:'5m'|'15m'|'1h',selection?:ComparisonSelection)=>void;apply:(turn:Turn)=>void};
+const TurnContent=memo(function TurnContent({turn:t,light,revision,locked,actions}:{turn:Turn;light:boolean;revision:number;locked:boolean;actions:RefObject<TurnActions>}){
+ return <><div className="ag-user"><p>{t.question}</p></div>
+  {t.record&&<ArchivedConversationReply record={t.record} light={light} onChart={(...args)=>actions.current.chart(...args)}/>}
+  {t.note&&(t.noteImportant||!t.reply)&&<p className="ag-note">{t.note}</p>}
+  {t.proposal&&<button type="button" className="ag-apply" disabled={locked||revision!==t.proposalRevision} onClick={()=>actions.current.apply(t)}>套用到草稿{revision!==t.proposalRevision?'（欄位已更新，請重新討論）':''}</button>}
+  {t.reply&&<AgentAnswer reply={t.reply} question={t.question} light={light} currentRevision={revision} onChart={(...args)=>actions.current.chart(t.reply!,...args)}/>}
+  {t.error&&<p className="ag-error" role="alert">{t.error}</p>}
+ </>;
+});
 const newThreadId=()=>`chat-${globalThis.crypto?.randomUUID?.()??Date.now()+'-'+Math.random().toString(36).slice(2)}`;
 export default function ConversationWorkspace({market,light,visible,onHistory,onNavigate,onToggleTheme,onBusyChange}:{market:DemoMarket|null;light:boolean;visible:boolean;onHistory:()=>void;onNavigate?:(view:'replay'|'live')=>void;onToggleTheme?:()=>void;onBusyChange?:(busy:boolean)=>void}){
  const assistantSettings=useAssistantSettings();
- const [drawer,setDrawer]=useState(true),[drawerTab,setDrawerTab]=useState<DrawerTab>('order'),[settingsOpen,setSettingsOpen]=useState(false);
+ const [drawer,setDrawer]=useState(true),[drawerTab,setDrawerTab]=useState<DrawerTab>('order'),[settingsOpen,setSettingsOpen]=useState(false),[chooseCaseSide,setChooseCaseSide]=useState(false);
  const historyDialog=useRef<HTMLDialogElement>(null),railRef=useRef<(command:string)=>void>(()=>{});
  useEffect(()=>{const rail=(event:Event)=>railRef.current((event as CustomEvent).detail);const settings=()=>setSettingsOpen(true);window.addEventListener(RAIL_EVENT,rail);window.addEventListener('gd:settings',settings);return()=>{window.removeEventListener(RAIL_EVENT,rail);window.removeEventListener('gd:settings',settings);};},[]);
 
@@ -35,7 +45,7 @@ export default function ConversationWorkspace({market,light,visible,onHistory,on
  const [threadId,setThreadId]=useState(()=>archive.activeId??archive.items[0]?.id??newThreadId()),[historyError,setHistoryError]=useState(''),[mobileTicket,setMobileTicket]=useState(false);
  const [chatShare,setChatShare]=useState<number|null>(null);const grid=useRef<HTMLDivElement>(null);
  const [chatHeight,setChatHeight]=useState<number|null>(()=>{try{return typeof localStorage==='undefined'?null:savedChatHeight(localStorage.getItem(CHAT_HEIGHT_KEY));}catch{return null;}});
- useEffect(()=>{try{if(chatHeight===null)localStorage.removeItem(CHAT_HEIGHT_KEY);else localStorage.setItem(CHAT_HEIGHT_KEY,String(chatHeight));}catch{}},[chatHeight]);
+ useEffect(()=>{const save=()=>{try{if(chatHeight===null)localStorage.removeItem(CHAT_HEIGHT_KEY);else localStorage.setItem(CHAT_HEIGHT_KEY,String(chatHeight));}catch{}};const timer=window.setTimeout(save,200);window.addEventListener('pagehide',save);return()=>{window.clearTimeout(timer);window.removeEventListener('pagehide',save);};},[chatHeight]);
  const [showLatest,setShowLatest]=useState(false);
  const log=useRef<HTMLDivElement>(null),follow=useRef(true),lastSeen=useRef(0);
  const [input,setInput]=useState(emptyInput),[revision,setRevision]=useState(0),[turns,setTurns]=useState<Turn[]>(()=>archive.items.find(e=>e.id===threadId)?.turns.map((record,i)=>({id:-(i+1),question:record.question,at:record.at,record}))??[]),[text,setText]=useState('');
@@ -58,7 +68,7 @@ export default function ConversationWorkspace({market,light,visible,onHistory,on
   sessions.current.save(threadId,turns,currentChart.current);
   const cached=entry?sessions.current.get(entry.id):undefined,nextChart=cached?.chart??entry?.chart??null;
   setTurns(cached?.turns??(entry?entry.turns.map(record=>({id:++sequence.current,question:record.question,at:record.at,record})):[]));
-  setThreadId(entry?.id??newThreadId());setText('');setChart(nextChart);currentChart.current=nextChart;sideRef.current=null;follow.current=true;setShowLatest(false);
+  setThreadId(entry?.id??newThreadId());setText('');setChart(nextChart);currentChart.current=nextChart;sideRef.current=null;follow.current=true;setShowLatest(false);setChooseCaseSide(false);if(log.current)log.current.scrollTop=0;
  };
  const rememberChart=(next:ArchivedChart|null,display=true)=>{
   currentChart.current=next;if(display)setChart(next);
@@ -149,7 +159,10 @@ export default function ConversationWorkspace({market,light,visible,onHistory,on
  const sideLabel=input.side==='BUY'?'做多':input.side==='SELL'?'做空':'尚未選方向';
  const chips=['我想做多，現在有哪些支持與相反訊號？','如果做空，有類似案例嗎？','最近有哪些總經事件會影響黃金？'];
  const openHistory=()=>{setDrawer(true);setDrawerTab('records');};
- return <main id={visible?'market-workspace':undefined} className={`conversation-workspace ag-desk ${drawer?'ag-with-drawer':''}`} hidden={!visible} tabIndex={-1} aria-label="聊天交易工作台">
+ const turnActions=useRef<TurnActions>({chart:showChart,apply:()=>{}});
+ turnActions.current={chart:showChart,apply:t=>{patch(t.proposal!);setInline(true);setDrawer(true);setDrawerTab('order');annotate(t.id,{proposal:undefined,noteImportant:true,note:'已套用到準備中委託。'});}};
+ const prepareTicket=()=>{setDrawer(true);setDrawerTab('order');requestAnimationFrame(()=>document.querySelector<HTMLButtonElement>('#ag-order-panel button')?.focus());};
+ return <main id={visible?'market-workspace':undefined} className={`conversation-workspace ag-desk ${drawer?'ag-with-drawer':''} ${chatHeight!==null?'ag-sized':''}`} hidden={!visible} tabIndex={-1} aria-label="聊天交易工作台">
   <div className="ag-main">
    <AgentTopbar market={market} light={light} onTheme={()=>onToggleTheme?.()} drawerOpen={drawer} onDrawer={()=>setDrawer(v=>!v)}/>
    <div className="ag-body" ref={grid} style={drawer&&chatShare!==null?{gridTemplateColumns:`minmax(0,${chatShare}fr) minmax(300px,${100-chatShare}fr)`}:undefined}>
@@ -157,15 +170,14 @@ export default function ConversationWorkspace({market,light,visible,onHistory,on
      <div className="ag-agent-head"><AgentOrb busy={busy||checking}/><div className="ag-agent-id"><strong>Gold Desk Agent</strong><small>{busy?'正在整理盤面與案例':checking?'正在核對委託':'交易對話'}</small></div>
       <div className="ag-head-tools"><AssistantSettings settings={assistantSettings} busy={busy} open={settingsOpen} onOpen={setSettingsOpen}/><button type="button" className="ag-ghost" disabled={busy} onClick={()=>void send('更新目前盤面與案例')}>{newBar?'有新收盤 · 更新':'更新盤面'}</button></div>
      </div>
-     <div id="conversation-log" className="ag-log" ref={log} style={chatHeight===null?undefined:{flex:'0 1 auto',height:chatHeight,minHeight:180}} role="log" aria-label="聊天紀錄" aria-live="polite" aria-relevant="additions text" tabIndex={0} onScroll={()=>{const el=log.current;if(el){follow.current=nearChatBottom(el.scrollHeight,el.clientHeight,el.scrollTop);setShowLatest(!follow.current&&Boolean(lastTurn.current&&lastTurn.current.getBoundingClientRect().top>el.getBoundingClientRect().top+32));}}}>
-      {!turns.length&&<div className="ag-welcome"><AgentOrb busy={false} size={88}/><h2>今天想怎麼交易黃金？</h2><p>說出你的想法，一起看即時盤面、歷史案例與本筆風險。</p><div className="ag-starters">{[['黃金交易新手要先了解什麼？','新手教學'],['我想做多，現在有哪些支持與相反訊號？','看多空訊號'],['如果做空，有類似案例嗎？','找相似案例'],['幫我準備買進 0.01 手','準備一筆委託']].map(([q,title])=><button type="button" key={q} onClick={()=>void send(q)}><strong>{title}</strong><span>{q}</span></button>)}</div></div>}
-      {turns.map((t,i)=><div key={t.id} ref={i===turns.length-1?lastTurn:undefined} className="ag-turn"><div className="ag-user"><p>{t.question}</p></div>
-       {t.record&&<ArchivedConversationReply record={t.record} light={light} onChart={showChart}/>}
-       {t.note&&(t.noteImportant||!t.reply)&&<p className="ag-note">{t.note}</p>}
-       {t.proposal&&<button type="button" className="ag-apply" disabled={locked||revision!==t.proposalRevision} onClick={()=>{patch(t.proposal!);setInline(true);setDrawer(true);setDrawerTab('order');annotate(t.id,{proposal:undefined,noteImportant:true,note:'已套用到準備中委託。'});}}>套用到草稿{revision!==t.proposalRevision?'（欄位已更新，請重新討論）':''}</button>}
-       {t.reply&&<AgentAnswer reply={t.reply} question={t.question} light={light} currentRevision={revision} onChart={(mode,period,selection)=>showChart(t.reply!,mode,period,selection)}/>}
-       {t.error&&<p className="ag-error" role="alert">{t.error}</p>}
-      </div>)}
+     <div id="conversation-log" className="ag-log" ref={log} style={chatHeight===null?undefined:{height:chatHeight}} role="log" aria-label="聊天紀錄" aria-live="polite" aria-relevant="additions text" tabIndex={0} onScroll={()=>{const el=log.current;if(el){follow.current=nearChatBottom(el.scrollHeight,el.clientHeight,el.scrollTop);setShowLatest(!follow.current&&Boolean(lastTurn.current&&lastTurn.current.getBoundingClientRect().top>el.getBoundingClientRect().top+32));}}}>
+      {!turns.length&&<div className="ag-welcome"><AgentOrb busy={false} size={72}/><h2>今天想怎麼交易黃金？</h2><p>聊盤面、找案例，或準備一筆待確認委託。</p><div className="ag-starters">
+       <button type="button" onClick={()=>void send('黃金交易新手要先了解什麼？')}><strong>新手教學</strong><span>黃金交易新手要先了解什麼？</span></button>
+       <button type="button" onClick={()=>void send('目前黃金盤面有哪些偏多與偏空訊號？')}><strong>看多空訊號</strong><span>目前黃金盤面有哪些偏多與偏空訊號？</span></button>
+       <button type="button" aria-expanded={chooseCaseSide} onClick={()=>setChooseCaseSide(v=>!v)}><strong>找相似案例</strong><span>先選要比較做多還是做空</span></button>
+       <button type="button" onClick={prepareTicket}><strong>準備一筆委託</strong><span>在右側填寫方向、單型與手數</span></button>
+      </div>{chooseCaseSide&&<div className="ag-case-direction" role="group" aria-label="選擇案例比較方向"><p>只用於查案例，不更改委託草稿。</p>{(['BUY','SELL'] as const).map(side=><button type="button" key={side} onClick={()=>{setChooseCaseSide(false);void send(side==='BUY'?'如果做多，有類似案例嗎？':'如果做空，有類似案例嗎？',side);}}>{side==='BUY'?'比較做多案例':'比較做空案例'}</button>)}</div>}</div>}
+      {turns.map((t,i)=><div key={t.id} ref={i===turns.length-1?lastTurn:undefined} className="ag-turn"><TurnContent turn={t} light={light} revision={revision} locked={locked} actions={turnActions}/></div>)}
       {busy&&<div className="ag-thinking" role="status"><AgentOrb busy size={28}/><p>正在整理這次盤面、案例與回覆…</p></div>}
       {chart&&<div className="ag-chart-evidence"><ConversationCharts key={chart.id+chart.mode+chart.period+JSON.stringify(chart.selection)} selection={chart.selection} initialPeriod={chart.period} analysisRef={chart.analysis_ref} reference={input} onViewChange={view=>{if(currentChart.current)rememberChart({...currentChart.current,...view},false);}} snapshotId={chart.id} mode={chart.mode} light={light} onClose={()=>{rememberChart(null);chartTrigger.current?.focus();}}/></div>}
      </div>

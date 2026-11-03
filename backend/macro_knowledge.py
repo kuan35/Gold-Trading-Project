@@ -30,12 +30,13 @@ def question_kind(text):
  if not relevant:return None
  if re.search(r'今天|今晚|本週|這週|下週|最近|最新|目前',text) and re.search(r'新聞|消息|公告|發言|聲明',text):return 'news'
  if re.search(r'盤面|走勢|報價|K線',text,re.I) and not re.search(r'CPI|PCE|GDP|PPI|非農|聯準會|FOMC|事件|新聞|消息',text,re.I):return None
- if re.search(r'是什麼|什麼是|意思|為什麼|如何影響|怎麼影響|有何關聯|有什麼關係|差別|知識|解釋',text):return 'knowledge'
+ if re.search(r'是什麼|什麼是|意思|為什麼|如何影響|怎麼影響|有何關聯|有什麼關係|差別|知識|解釋|新手|入門|先了解',text):return 'knowledge'
  if re.search(r'新聞|消息|公告|發言|聲明',text):return 'news'
  if re.search(r'事件|行事曆|日曆|公布|發布|今天|今晚|本週|這週|下次|下週|何時|什麼時候',text):return 'calendar'
  return 'knowledge' if re.search(r'CPI|PCE|GDP|PPI|非農|FOMC|聯準會|利率|升息|降息|保證金|槓桿|限價單|市價單|停損|停利',text,re.I) else None
 
 def knowledge(text):
+ if re.search(r'新手|入門|先了解',text):return dict(title='先懂委託，再討論盤面',explanation='先分清做多與做空，以及市價單立即依可成交報價執行、限價單等待指定價格條件。手數決定每次價格波動承擔的盈虧，停損用來限制不利情境，但仍可能滑價。可先用DEMO練習：討論盤面、檢查相似案例及差異、填寫草稿，再核對風險並親自確認。案例的歷史結果不等於這次會重演；填寫草稿不會直接成交。',source='https://help.ctrader.com/trading-with-ctrader/orders/')
  if re.search(r'保證金|槓桿',text):return dict(title='槓桿與保證金',explanation='保證金是持有部位所需的資金，不是最大損失。槓桿讓較少資金承擔較大名目部位，盈虧仍依部位、價差與成本變化；實際規則以你的券商商品及帳戶為準。',source='https://help.ctrader.com/trading-with-ctrader/conditions/')
  if re.search(r'tick|成交量|量能',text,re.I):return dict(title='tick量與成交量',explanation='tick量表示券商報價更新的活躍度，不代表全球黃金實際成交手數。較活躍可能伴隨更多價格更新，但不能只靠tick量推論資金淨流入或未來方向。',source='https://help.ctrader.com/open-api/model-messages/')
  if re.search(r'限價單|市價單|停損|停利',text):return dict(title='委託與風險',explanation='市價單依可成交報價執行，限價單等待指定價格條件。停損用來管理不利變動，但跳空與滑價仍可能使成交價不同；委託與修改都要核對方向、手數與價格後由你確認。',source='https://help.ctrader.com/trading-with-ctrader/orders/')

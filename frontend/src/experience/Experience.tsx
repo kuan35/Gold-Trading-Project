@@ -7,33 +7,6 @@ import {DeskIcon} from '../DeskChrome';
 export type ExperienceView='assistant'|'replay'|'live';
 export type ExperienceCommand={type:'navigate';view:ExperienceView}|{type:'step';bars:number}|{type:'theme'}|{type:'reset'}|{type:'conversation';action:'new'|'history'};
 
-// Cursor-following glow on every card: one listener writes --mx/--my on the hovered panel.
-function useSpotlight(){
- useEffect(()=>{
-  const move=(e:PointerEvent)=>{
-   const root=document.documentElement;root.style.setProperty('--cx',`${e.clientX}px`);root.style.setProperty('--cy',`${e.clientY}px`);
-   const card=(e.target as HTMLElement|null)?.closest?.('.panel,.pd-ticket,.assistant-card,.cw-card,section,aside,.order-panel,.case-card,dialog') as HTMLElement|null;
-   if(!card)return;const r=card.getBoundingClientRect();card.style.setProperty('--mx',`${e.clientX-r.left}px`);card.style.setProperty('--my',`${e.clientY-r.top}px`);
-  };
-  window.addEventListener('pointermove',move,{passive:true});return()=>window.removeEventListener('pointermove',move);
- },[]);
-}
-
-// Press ripple for every button, without touching each component.
-function useRipple(){
- useEffect(()=>{
-  const down=(e:PointerEvent)=>{
-   const button=(e.target as HTMLElement|null)?.closest?.('button') as HTMLButtonElement|null;
-   if(!button||button.disabled)return;const r=button.getBoundingClientRect(),size=Math.max(r.width,r.height)*2;
-   const dot=document.createElement('span');dot.className='gx-ripple';dot.style.width=dot.style.height=`${size}px`;
-   dot.style.left=`${e.clientX-r.left-size/2}px`;dot.style.top=`${e.clientY-r.top-size/2}px`;
-   if(getComputedStyle(button).position==='static')button.style.position='relative';
-   button.appendChild(dot);window.setTimeout(()=>dot.remove(),650);
-  };
-  window.addEventListener('pointerdown',down);return()=>window.removeEventListener('pointerdown',down);
- },[]);
-}
-
 function Palette({open,onOpenChange,run}:{open:boolean;onOpenChange:(v:boolean)=>void;run:(c:ExperienceCommand)=>void}){
  const [search,setSearch]=useState('');
  useEffect(()=>{if(!open)setSearch('');},[open]);
@@ -73,7 +46,8 @@ const typing=(t:EventTarget|null)=>t instanceof HTMLElement&&(t.isContentEditabl
 
 export default function Experience({view,light,error,notice,run,children}:{view:ExperienceView;light:boolean;error:string;notice:string;run:(c:ExperienceCommand)=>void;children:ReactNode}){
  const [open,setOpen]=useState(false),stage=useRef<HTMLDivElement>(null);
- useSpotlight();useRipple();
+ // Keep the golden ambience static. Pointer-driven root CSS writes force every
+ // surface to recalculate styles during scrolling, resizing and chart gestures.
  useEffect(()=>{if(error)toast.error(error);},[error]);
  useEffect(()=>{if(notice)toast.message(notice);},[notice]);
  useEffect(()=>{const open=()=>setOpen(true);window.addEventListener('gd:palette',open);return()=>window.removeEventListener('gd:palette',open);},[]);
@@ -93,7 +67,6 @@ export default function Experience({view,light,error,notice,run,children}:{view:
  },[open,run,view]);
  return <>
   <div className="gx-ambient" aria-hidden="true"><i/><i/><i/></div>
-  <div className="gx-cursor" aria-hidden="true"/>
   <div ref={stage} className="gx-stage">{children}</div>
   <Palette open={open} onOpenChange={setOpen} run={run}/>
   <Toaster theme={light?'light':'dark'} position="top-right" richColors closeButton toastOptions={{className:'gx-toast'}}/>

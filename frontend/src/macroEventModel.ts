@@ -21,7 +21,7 @@ export function goldQuestionKind(text:string):'knowledge'|'calendar'|'news'|null
  if(!/黃金|CPI|PCE|GDP|PPI|非農|聯準會|FOMC|總經|經濟事件|利率|升息|降息|保證金|槓桿|限價單|市價單|停損|停利|tick|成交量|消息|新聞|行事曆/i.test(text))return null;
  if(/今天|今晚|本週|這週|下週|最近|最新|目前/.test(text)&&/新聞|消息|公告|發言|聲明/.test(text))return 'news';
  if(/盤面|走勢|報價|K線/i.test(text)&&!/CPI|PCE|GDP|PPI|非農|聯準會|FOMC|事件|新聞|消息/i.test(text))return null;
- if(/是什麼|什麼是|意思|為什麼|如何影響|怎麼影響|有何關聯|有什麼關係|差別|知識|解釋/.test(text))return 'knowledge';
+ if(/是什麼|什麼是|意思|為什麼|如何影響|怎麼影響|有何關聯|有什麼關係|差別|知識|解釋|新手|入門|先了解/.test(text))return 'knowledge';
  if(/新聞|消息|公告|發言|聲明/.test(text))return 'news';
  if(/事件|行事曆|日曆|公布|發布|今天|今晚|本週|這週|下次|下週|何時|什麼時候/.test(text))return 'calendar';
  return /CPI|PCE|GDP|PPI|非農|FOMC|聯準會|利率|升息|降息|保證金|槓桿|限價單|市價單|停損|停利/i.test(text)?'knowledge':null;

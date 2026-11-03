@@ -1,3 +1,13 @@
+## 2026-11-03 — 新版互動、效能與問答切題修正
+
+- 使用者回報8766卡頓、拖曳無效、四入口與問句不符、回答數值牆；同意最多3次純合成Claude問答。修改僅在codex/peer-ui-integration-20261103，原版前端293檔與243原件SHA一致。共享後端5模組與新測試同步回product/backend，已由原啟動器重啟8765；原版介面保持。
+- frontend/src/ConversationWorkspace、ConversationResize、experience/{Experience,AgentAnswer,agent.css}：移除pointermove全頁光效與DOM ripple；靜態金色外觀，memo舊回覆，rAF拖曳＋延後保存。原flex shrink吞掉高度，現實際log210–1000px，整頁可容納超高。固定120事件量測樣式寫入480→0、recalc121→1；同拖140px由0變化→140px。四入口分成知識／中立訊號／先選案例方向／只聚焦委託，無靜默預填；新聊天重設滾動。
+- ConversationReply、MacroEvents與macroEventModel：短標題＋16px正文、展開保留全文，程序修補不擠掉模型正文；無草稿時不硬塞風險空狀態。事件先列時程再按需展開多空關聯，覆蓋／完整數字留詳細區。知識問答不顯示無行情的成交量面板。
+- backend/{claude_code,conversation_intent,live_assistant,macro_assistant,macro_knowledge}.py：確認官方CLI回傳單一JSON fence被誤拒，僅正規化完整單一外框，仍維持JSON／數字／引用檢查；新增白話聚焦提示。純質性偏多偏空訊號是DISCUSS，含數量／改單仍走原保守解析。新手專用知識；最近事件改近7天至未來7天；總經「受到支撐」不誤判成技術價位，具體支撐線及RSI仍須依據。
+- 實際唯讀Edge：新手、總經、盤面HTTP200，官方5來源CURRENT／6事件；1660與390無橫溢出或pageerror，RSI+MACD下body940/chat565/drawer858連3樣本一致。用program模式且攔截其他POST，無交易。3次Claude呼叫已用完：前2 invalid_response，第2stdout證明單一json fence；修正後第3取得2段模型＋1段保守修補，修正用詞誤判後離線重播3段通過。第2離線重播3模型＋1修補保留。沒有第4次；沒有送真實盤面／日期／交易／帳戶。不能把三次說成都成功或聲稱真人評分。
+- 驗證：前端187/187；Playwright8/8（resize/保存/還原、四入口/精確問句、總經、完整段落、手機、UNKNOWN平倉鎖、A→B→A原圖）；相關後端／API／發布政策133/133。Windows sandbox的TestClient卡socketpair，15秒堆疊確認後以require_escalated重跑133全過，非產品API故障。全後端曾在sandbox停止，未宣稱全套通過。normal與Pages build通過，既有大型chunk警告；macOS未實機驗收。新增tests/test_assistant_focus.py、frontend/tests/agent-answer-focus.test.ts及e2e/interaction-quality.spec.ts，發布白名單納入e2e。
+- 詳細before/after量測、3次合成payload與結果、截圖及SHA收據僅保留根product/private/peer_ui_ux_fix_20261103；公開docs/PEER_UI_PREVIEW.md更新。branch codex/peer-ui-integration-20261103，commit N/A（尚未提交）；不合併main、不改原分支、不公開private或env。下一步使用者重新整理8766試用；原8765可對照。
+
 ## 2026-11-03 — 同學完整UI外殼整合，新分支獨立預覽
 
 - 使用者確認完整設計後，從4253e8a建立codex/peer-ui-integration-20261103。三頁共用同學AgentRail/Topbar、金球、背景、卡片、分頁抽屜與通知；右側預設下單，案例與原K線在聊天，助手名稱開供應商／模型／effort面板，不採登入閘門。原本product/src與dist不改，原版8765仍提供原版資源，新版Vite8766代理相同後端；聊天／草稿依origin分開，券商DEMO帳戶共用。

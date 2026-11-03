@@ -133,6 +133,14 @@ def interpret_message(message: str, draft: dict | None = None,
     unsupported = bool(re.search(r'平倉|撤單|(?:取消|撤銷)(?:既有|券商|這張|這筆|全部)?(?:委託|訂單)|實盤|真實資金', text))
     if unsupported and not educational:
         return result('UNSUPPORTED', explanation='對話不執行平倉、撤單或真實資金交易；請使用既有操作入口。')
+    # Comparing bullish/bearish signals is not a request for two order sides.
+    # Keep this exception qualitative and read-only: any quantity or order edit
+    # goes through the original ambiguity checks below.
+    overview = (re.search(r'盤面|走勢',text) and re.search(r'訊號|信號',text)
+                and '偏多' in text and '偏空' in text
+                and not re.search(r'\d|買|賣|做多|做空|下單|委託|準備|建立|修改|改成|改為|設定|手數|停損|停利|限價',text))
+    if overview:
+        return result('DISCUSS',explanation='比較兩邊的盤面訊號，尚未選擇下單方向；草稿維持原值。')
     fields, ambiguous = _extract_fields(text)
     if ambiguous:
         return result('CLARIFY', explanation='請明確指定單一方向、手數、單型與絕對價格；這次尚未修改委託。')

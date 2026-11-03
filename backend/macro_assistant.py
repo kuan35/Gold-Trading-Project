@@ -15,7 +15,7 @@ SYSTEM='''你是Gold Desk黃金交易知識與總經事件討論助手，以繁�
 說明事件經由利率預期、美元、實質利率或避險需求影響黃金的機制。偏多與偏空都是條件式情境，不是當前交易結論。
 沒有實際值或共識不得宣稱高於／低於預期，不把FOMC日期當成已決定升降息，不從標題判定官員鷹鴿，不把時程當新聞全文。
 日期、數值、名稱引用facts的{{token}}，不能猜數字或增加未提供事件。不能宣稱已讀目前金價，除非另有當次盤面facts。
-最多四段，優先直接回答使用者問題，接著說明黃金偏多與偏空情境及未明資訊。所有段落引用對應fact_ids，不輸出HTML。
+通常二至三個短段落、最多四段，優先直接回答使用者問題。新手／委託知識只解釋問題相關內容，不硬加總經方向；問事件時才說明黃金偏多與偏空情境及未明資訊。不用數字列舉步驟，不重複制式聲明。所有段落引用對應fact_ids，不輸出HTML。
 你沒有修改／確認／送出委託權限；可以討論風險與不同假設，不能提供必漲必跌、保證、勝率或直接買賣指令。'''
 
 def relation_fact(topic):
@@ -41,6 +41,7 @@ def select_context(snapshot,question):
  if re.search(r'今天|今晚',question):start,end,label=day,day+timedelta(days=1),'今天（台灣時間）'
  elif '下週' in question:start=day+timedelta(days=7-day.weekday());end=start+timedelta(days=7);label='下週（台灣時間）'
  elif re.search(r'本週|這週',question):start=day-timedelta(days=day.weekday());end=start+timedelta(days=7);label='本週（台灣時間）'
+ elif '最近' in question:start,end,label=day-timedelta(days=7),day+timedelta(days=8),'近7天至未來7天（台灣時間）'
  topic=detect_topic(question);specific=topic not in ('GENERAL','FED_SPEECH')
  def matches(event):
   if specific and event['topic']!=topic:return False
@@ -67,17 +68,18 @@ def augment_bundle(bundle,snapshot):
 def answer(question,kind,snapshot,*,enabled=False,provider=None,model=None,effort=None,conversation=None,conversation_id=None):
  if snapshot:snapshot=select_context(snapshot,question)
  info=knowledge(question);fact=dict(id='gold.knowledge',text=info['explanation'],values={})
+ beginner=bool(re.search(r'新手|入門|先了解',question))
  facts=[fact,relation_fact(detect_topic(question))]
  if snapshot:facts+=macro_facts(snapshot)
  now=snapshot['as_of_utc'] if snapshot else datetime.now(timezone.utc).isoformat()
  base=dict(message='',provider='local_gold_knowledge',llm_status='disabled',model=None,requested_effort=effort,source='gold_knowledge_and_official_events',market_status='INFORMATION',as_of_utc=now,quote_time_utc=None,snapshot_id=None,query_as_of_utc=None,analysis_mode='gold_knowledge' if kind=='knowledge' else 'macro_events',case_comparison=None,outcome_analysis=None,draft=None,followups=['本週有哪些重要事件？','這個事件可能怎麼影響黃金？'],evidence=facts,macro_context=snapshot,knowledge_sources=[info['source'],*relationship(detect_topic(question))['sources']])
  selected=[dict(title=info['title'],text=fact['text'],fact_ids=[fact['id']])]
- if kind=='knowledge':selected.append(dict(title='與黃金多空的條件式關聯',text=facts[1]['text'],fact_ids=['gold.relation']))
- else:
+ if kind=='knowledge' and not beginner:selected.append(dict(title='與黃金多空的條件式關聯',text=facts[1]['text'],fact_ids=['gold.relation']))
+ elif kind!='knowledge':
   selected=[dict(title='事件資料範圍',text=facts[2]['text'],fact_ids=['macro.coverage'])] if snapshot else selected
   if snapshot and not snapshot.get('events') and not snapshot.get('news'):selected.append(dict(title='此範圍沒有已取得的事件',text='這個時間範圍或主題未取得可列出的事件或公告；這不代表完整市場沒有重大消息。可先討論其如何影響黃金，再核對官方時程及來源狀態。',fact_ids=['gold.relation']))
   selected.append(dict(title='黃金多空觀察',text=facts[1]['text'],fact_ids=['gold.relation']))
- base['gold_relation']=relationship(detect_topic(question)) if kind=='knowledge' else None
+ base['gold_relation']=relationship(detect_topic(question)) if kind=='knowledge' and not beginner else None
  base['sections']=[render_sections([s],facts)[0] for s in selected]
  if enabled:
   payload=dict(kind=kind,as_of_utc=now,facts=writer_facts(facts),previous_dialogue=dialogue_history(conversation,conversation_id),coverage=snapshot['coverage'] if snapshot else '策展黃金知識，沒有即時行情')

@@ -144,6 +144,11 @@ def complete(system,prompt,*,json_output=False,model=None,effort=None):
         if not isinstance(text,str) or not text.strip():return dict(result,status='invalid_response')
         if json_output:
             try:
+                # Some official CLI versions wrap otherwise valid JSON in a
+                # single Markdown fence. Accept only that exact envelope; all
+                # downstream fact/number checks still run on the parsed object.
+                fence=re.fullmatch(r'\s*```(?:json)?\s*\n([\s\S]*?)\n```\s*',text,flags=re.I)
+                if fence:text=fence.group(1)
                 parsed=json.loads(text)
                 if not isinstance(parsed,dict):raise ValueError('expected object')
             except ValueError:return dict(result,status='invalid_response')

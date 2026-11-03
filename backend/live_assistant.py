@@ -38,6 +38,8 @@ LIVE_SYSTEM+='''\n量能使用券商原生已收棒tick量與前期均量，是�
 LIVE_SYSTEM+='''\nhistory.outcome是已選案例的事後固定觀察，不是檢索條件或未來預測；不要將它說成交易員實際持倉損益、整個匹配池分布或新單勝率。最大逆向情境損失是未套停損退出的完整路徑，不可說成停損後一定損失。draft.risk只算新增本筆，不含既有倉位；限價情境假設已成交，不能稱會觸價成交。若同根棒碰SL/TP，先後未知；缺資料不補零。只引用已提供token與程式狀態，不自行計算、不建議放寬停損或增加手數。沒有案例時仍說明盤面與可用草稿風險。'''
 
 
+LIVE_SYSTEM+='''\n回答編排：第一段直接回答這次問句，用日常語言概括支持與相反依據；接著只選與問題最相關的事實。不要用Bid/Ask、時間戳或整段均線數值當開場，不為填滿格式列出所有指標。問支撐壓力就先解釋價位參考；問動能才展開RSI/MACD。沒有問總經時不加入泛泛消息聲明；有macro事實且問總經才說明事件與黃金的條件式關係。通常二至三個短段落即可，每段一至三句；數值仍必須用原token。維持已有資料缺漏及來源區別；不要重複制式聲明。'''
+
 def utc(t):return datetime.fromtimestamp(t,timezone.utc).isoformat()
 def money(v):return f'{Decimal(str(v)):.2f}'
 
@@ -188,9 +190,13 @@ def _check_model_topics(section,by_id):
     if not isinstance(ids,list) or any(not isinstance(i,str) or i not in by_id for i in ids):raise ValueError('invalid references')
     plain=str(section.get('title',''))+' '+re.sub(r'\{\{[a-z0-9_]+\}\}','',str(section.get('text','')))
     evidence=' '.join(str(by_id[i]['text'])+' '+ ' '.join(str(k)+' '+str(v) for k,v in by_id[i]['values'].items()) for i in ids)
+    macro_only=bool(ids) and all(i.startswith(('gold.','macro.')) for i in ids)
+    # "Policy may support gold" is not a claimed chart support price.
+    # Explicit technical levels and indicator names still need their evidence.
+    level_claim=r'支撐(?:線|位|價)|壓力(?:線|位|價)|前高|前低' if macro_only else r'支撐|壓力|前高|前低'
     topics=[(r'均線|MA\s*(?:20|60)|EMA',r'均線|ma_?(?:20|60)|ema|_structure'),
       (r'RSI',r'rsi'),(r'MACD',r'macd'),(r'ATR|波動|波幅',r'atr|波動|波幅'),
-      (r'支撐|壓力|前高|前低',r'支撐|壓力|前高|前低|support|resistance|reference_high|reference_low'),
+      (level_claim,r'支撐|壓力|前高|前低|support|resistance|reference_high|reference_low'),
       (r'成交量|量能|\btick\b',r'成交量|量能|volume|tick')]
     if any(re.search(claim,plain,re.I) and not re.search(support,evidence,re.I) for claim,support in topics):
         raise ValueError('unreferenced indicator topic')

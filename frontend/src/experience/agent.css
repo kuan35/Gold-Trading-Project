@@ -417,3 +417,35 @@ body.ag-resizing iframe,body.ag-resizing canvas{pointer-events:none}
  .ag-page .bottom-heading .tabs::-webkit-scrollbar{display:none}
  .ag-topbar{gap:6px!important}
 }
+
+/* Bounded conversation resizing: an explicit size may grow the page, never the log. */
+.pd-view-assistant.ag-shell .pd-route-body{height:auto;min-height:100dvh;overflow:visible}
+.ag-desk.ag-sized{height:auto;min-height:100dvh}
+.ag-sized .ag-body{flex:none;align-items:start}
+.ag-sized .ag-center{height:auto}
+.ag-sized .ag-log{flex:none;min-height:210px;max-height:1000px}
+.ag-sized .ag-drawer{height:calc(100dvh - 82px);position:sticky;top:12px}
+.ag-size-row{flex-shrink:0}
+.ag-size-row .cw-resize-height{touch-action:none;cursor:ns-resize}
+.ag-log{scroll-behavior:auto;overscroll-behavior:contain;overflow-anchor:none}
+.ag-answer-prose{max-width:72ch}
+.ag-answer-prose .cw-answer-section{padding:10px 0;border:0;background:none}
+.ag-answer-prose .cw-answer-section h3{font-size:17px;line-height:1.5;margin:4px 0 8px}
+.ag-answer-prose .cw-answer-section p{font-size:16px;line-height:1.85;font-weight:400;white-space:pre-wrap}
+.ag-answer-prose .cw-answer-preview{-webkit-line-clamp:5}
+.ag-case-count{font-size:13px;color:var(--muted)}
+.ag-case-direction{padding:12px 0;display:flex;gap:10px;flex-wrap:wrap;text-align:left}
+.ag-case-direction p{flex-basis:100%;font-size:14px;margin:0}
+.ag-case-direction button{padding:10px 16px}
+.ag-welcome{padding-top:20px;padding-bottom:16px}
+.ag-welcome h2{font-size:clamp(24px,2.6vw,32px);margin:18px 0 12px}
+.ag-welcome>p{font-size:15px}
+.ag-starters{margin-top:22px;gap:12px}
+.ag-starters button{padding:16px 18px;min-height:86px}
+.gx-ambient i{animation:none}
+.ag-orb:not(.ag-orb-busy),.ag-orb:not(.ag-orb-busy) i,.ag-orb:not(.ag-orb-busy) b{animation:none}
+.ag-center,.ag-drawer{backdrop-filter:none}
+@media(max-width:1100px){.ag-sized .ag-drawer{position:fixed;top:76px;height:auto}}
+@media(prefers-reduced-motion:reduce){.gx-tick,.ag-live i,.ag-orb,.ag-orb *{animation:none!important}}
+
+@media(max-width:1100px){.ag-with-drawer .ag-body{grid-template-columns:minmax(0,1fr)!important}}
