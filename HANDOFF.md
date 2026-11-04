@@ -1,3 +1,12 @@
+## 2026-11-04 — 交易員工作流程五項整合
+
+- 接續使用者接受的五項方案，main新增：回答優先／無匹配細節收合；Decimal風險卡與預算反算；固定原始依據的交易計畫／復盤；即時圖草稿進場SL/TP拖曳；私人價位／已收五分棒／官方事件提醒。原版分支及8765前端保留，8766預覽新版。
+- 計畫隨DEMO草稿檢查保存，確認仍是原人工流程；後續回報關聯不把接受當成交、部分平倉不猜單筆淨ROI。計畫／提醒SQLite在private，不發布。模型回顧僅使用者明確點選，提醒不自動推論或交易。LIVE沒有增權。
+- 後端模組與API測試、前端211項及合成瀏覽器17項驗證；normal／Pages build成功。實際DEMO唯讀驗收風險反算及工具頁，桌機1660／手機390無pageerror／橫溢出。無實際下單或模型呼叫。
+- 修正空lot不能反算、復盤同key重複、拖曳隨tick取消、開站回放初始化中指令無反應等問題。券商來源時鐘實測約快0.1秒；唯讀試算／提醒共用0.25秒容差，過期5秒界線與送單檢查不變。
+- 完整後端與兩項既有檢索／助手研究驗證使用CI相同指令；全部research另有舊numpy／trader_sim缺依賴，不當成本輪產品測試通過。fresh-context審查嘗試因agent額度失敗，改主代理逐項檢視＋測試，未宣稱該審查完成。
+- docs/TRADER_WORKFLOW.md、API_CONTRACT、同學安裝入口及精確白名單更新。原始資料／根文件243、原版UI293 SHA在最終發布前比對；私人驗收與備份留根product/private/trader_workflow_20261104。branch main；commit N/A（待本輪驗證後提交）。
+
 ## 2026-11-04 — 新版整合為GitHub預設main
 
 - GitHub首輪Pages及Windows/macOS本機安裝CI已成功；舊Verify product handoff的backend失敗。其安裝步驟漏列requirements-ctrader.txt，與新增官方SDK協定測試及已成功local-ci不一致；本輪補齊安裝與pip快取鍵。另14項對應研究測試本機全過。公開包白名單納入verify.yml（450檔），待新GitHub回合核對。

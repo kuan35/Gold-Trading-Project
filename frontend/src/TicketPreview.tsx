@@ -1,8 +1,9 @@
 import {useEffect,useState} from 'react';
 import type {DraftInputState} from './conversationState';import type {DemoMarket} from './demoMarket';
+import type {RiskSummary} from './TicketRiskPanel';
 export type LevelPreview={status:string;reason:string|null;pnl_usd:string|null;price_return_pct:string|null;margin_roi_pct?:string|null};
 type MarginPreview={source:'BROKER_EXPECTED'|'LEVERAGE_ESTIMATE'|'UNAVAILABLE';amount_usd:string|null;leverage:string|null;reason:string};
-type Preview={status:string;reason:string|null;entry_price:string|null;quantity_oz:string|null;sl:LevelPreview|null;tp:LevelPreview|null;margin?:MarginPreview|null;basis:string;quote_time_utc:string|null;conditional_on_fill?:boolean};
+type Preview={status:string;reason:string|null;entry_price:string|null;quantity_oz:string|null;sl:LevelPreview|null;tp:LevelPreview|null;margin?:MarginPreview|null;risk?:RiskSummary;basis:string;quote_time_utc:string|null;conditional_on_fill?:boolean};
 export type PreviewState={data:Preview|null;pending:boolean;error:string};
 export function useTicketPreview(value:DraftInputState,market:DemoMarket|null):PreviewState{
  const input=JSON.stringify(value),hasLevel=Boolean(value.sl||value.tp),quote=market?.quote.source_time_utc??'',status=market?.quote.status??'';

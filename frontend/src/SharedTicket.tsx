@@ -1,5 +1,6 @@
 import type {DraftInputState,InputPatch} from './conversationState';
 import {TicketLevel,TicketPreviewNote,type PreviewState} from './TicketPreview';
+import TicketRiskPanel from './TicketRiskPanel';
 export default function SharedTicket({value:v,onPatch,disabled=false,id,preview}:{value:DraftInputState;onPatch:(patch:InputPatch)=>void;disabled?:boolean;id:string;preview?:PreviewState}){
  return <fieldset className="cw-ticket" disabled={disabled}><legend className="sr-only">共用準備中委託</legend>
   <div className="cw-segments" role="group" aria-label="委託方向"><button type="button" className="cw-sell" aria-pressed={v.side==='SELL'} onClick={()=>onPatch({side:'SELL'})}>做空 SELL</button><button type="button" className="cw-buy" aria-pressed={v.side==='BUY'} onClick={()=>onPatch({side:'BUY'})}>做多 BUY</button></div>
@@ -10,5 +11,6 @@ export default function SharedTicket({value:v,onPatch,disabled=false,id,preview}
   {v.order_type==='LIMIT'&&<><label htmlFor={id+'-limit'}>指定限價</label><input id={id+'-limit'} type="number" min="0.01" step="0.01" value={v.limit_price} onChange={e=>onPatch({limit_price:e.target.value})} placeholder="請輸入黃金價格"/></>}
   <div className="cw-two"><label htmlFor={id+'-sl'}>停損 <small>選填</small><input id={id+'-sl'} type="number" min="0.01" step="0.01" value={v.sl} onChange={e=>onPatch({sl:e.target.value})} placeholder="未設定"/><TicketLevel level={preview?.data?.sl}/></label><label htmlFor={id+'-tp'}>停利 <small>選填</small><input id={id+'-tp'} type="number" min="0.01" step="0.01" value={v.tp} onChange={e=>onPatch({tp:e.target.value})} placeholder="未設定"/><TicketLevel level={preview?.data?.tp}/></label></div>
   {preview&&<TicketPreviewNote preview={preview}/>}
+  {preview&&<TicketRiskPanel id={id} value={v} onPatch={onPatch} preview={preview} disabled={disabled}/>}
  </fieldset>;
 }

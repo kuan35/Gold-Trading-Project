@@ -4,7 +4,7 @@ import TicketCheckAction from '../src/TicketCheckAction';
 import SharedTicket from '../src/SharedTicket';import {emptyInput} from '../src/conversationState';
 test('inline ticket exposes its own explicit review action without using chat send or immediate order submission',()=>{
  const html=renderToStaticMarkup(createElement(ConversationWorkspace,{market:null,light:false,visible:true,onHistory:()=>{}}));
- const inline=html.split('class="cw-inline"')[1]?.split('</details>')[0]??'';
+ const inline=html.split('class="cw-inline"')[1]?.split('class="ag-chips"')[0]??'';
  assert.match(inline,/>檢查 DEMO 委託<\/button>/);assert.match(inline,/type="button"/);assert.match(inline,/待填：方向、單型、手數/);
  assert.doesNotMatch(inline,/確認送出 DEMO 委託|type="submit"/);
 });

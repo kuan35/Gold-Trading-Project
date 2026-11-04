@@ -1,7 +1,9 @@
 from __future__ import annotations
 import json
+import sqlite3
 import asyncio
 from datetime import datetime, timezone
+from contextlib import asynccontextmanager
 from decimal import Decimal
 from typing import Literal,Annotated
 from fastapi import FastAPI, Request, Query, HTTPException
@@ -24,6 +26,11 @@ from .execution_store import ExecutionStore
 from .case_review import review_cases,selected_charts
 from .tick_volume import tick_frame
 from .ticket_preview import ticket_preview
+from .trade_risk import risk_summary,size_for_risk
+from .trade_plans import TradePlanStore,enrich as enrich_trade_plan
+from .trade_alerts import LocalAlerts,AlertMonitor,AlertError
+from .market_clock import SOURCE_CLOCK_SKEW_SECONDS
+from .dialogue_memory import mask_context_text
 from .case_vision import preview as case_vision_preview
 from .live_assistant import respond_live,respond_context,build_live_context
 from .case_analysis import prepare_analysis
@@ -36,8 +43,16 @@ from .macro_assistant import answer as gold_answer,augment_bundle,select_context
 from .macro_knowledge import question_kind
 import os
 import time as timing
+import atexit
 
-app=FastAPI(title='Gold Trading Project',version='0.1.0')
+@asynccontextmanager
+async def _local_lifespan(_app):
+    alert_monitor.start()
+    try:yield
+    finally:alert_monitor.stop()
+
+
+app=FastAPI(title='Gold Trading Project',version='0.1.0',lifespan=_local_lifespan)
 engine=Engine()
 broker_orders=BrokerOrders(demo_market_stream)
 analysis_snapshots=SnapshotStore()
@@ -45,6 +60,10 @@ analysis_history=AnalysisHistory(ROOT/'private'/'analysis_history')
 case_forward_store=HistoricalOutcomeStore(ROOT/'private')
 case_execution_store=ExecutionStore(ROOT/'private')
 macro_calendar=MacroCalendar(ROOT/'private'/'macro')
+trade_plans=TradePlanStore(ROOT/'private'/'trade_plans.sqlite')
+trade_alerts=LocalAlerts(ROOT/'private'/'trade_alerts.sqlite')
+alert_monitor=AlertMonitor(trade_alerts,lambda:demo_market_stream.query_snapshot() if trade_alerts.has_active() else {})
+atexit.register(alert_monitor.stop)
 
 def _save_analysis_reply(reply,bundle=None):
     try:return analysis_history.save(reply,bundle)
@@ -128,6 +147,37 @@ class BrokerDraftInput(Body):
     tp:str|None=None
     retrieval_method:Literal['context_contract_v1','dual_path_structure_v1','path_indicator_pattern_v1']='context_contract_v1'
     input_revision:int|None=Field(default=None,ge=0)
+    plan_note:str=Field(default='',max_length=2000)
+    conversation_id:str|None=Field(default=None,min_length=1,max_length=80)
+
+
+class RiskSizeInput(Body):
+    draft:TicketPreviewInput
+    risk_usd:str|None=Field(default=None,max_length=30)
+    equity_pct:str|None=Field(default=None,max_length=30)
+
+
+class PlanReviewInput(Body):
+    revision:int=Field(ge=1)
+    note:str=Field(default='',max_length=10000)
+    adherence:Literal['YES','NO','PARTIAL','UNKNOWN']='UNKNOWN'
+    lesson:str=Field(default='',max_length=10000)
+
+
+class AlertInput(Body):
+    name:str=Field(min_length=1,max_length=120)
+    kind:Literal['PRICE','CLOSE_5M','EVENT']
+    field:Literal['bid','ask']='bid'
+    comparator:Literal['GTE','LTE']='GTE'
+    threshold:str|None=Field(default=None,max_length=30)
+    conversation_id:str|None=Field(default=None,min_length=1,max_length=80)
+    event_id:str|None=Field(default=None,max_length=200)
+    lead_minutes:int|None=Field(default=None,ge=1,le=10080)
+
+
+class AlertUpdateInput(Body):
+    revision:int=Field(ge=1)
+    enabled:bool
 
 
 class BrokerConfirmInput(Body):
@@ -203,6 +253,11 @@ class DraftChatInput(DialogueFields):
 
 class GoldChatInput(DialogueFields):
     message:str=Field(min_length=1,max_length=1500)
+    llm_enabled:bool=False
+
+
+class PlanDiscussInput(ClaudeSelection):
+    message:str=Field(default='回看當時盤面支持、相反訊號，對照我的復盤心得。',min_length=1,max_length=1500)
     llm_enabled:bool=False
 
 
@@ -376,7 +431,130 @@ def broker_ticket_preview(request:Request,body:TicketPreviewInput):
         volume=int(Decimal(preview['quantity_oz'])*100)
         margin=demo_market_stream.expected_margin(snapshot,volume)
         preview=ticket_preview(snapshot,draft,leverage=leverage,expected_margin=margin)
+    preview['risk']=risk_summary(snapshot,draft,preview)
     return JSONResponse(content=preview,headers={'Cache-Control':'no-store'})
+
+
+def _trade_account(request:Request,*,write=False):
+    if not _local_broker_access(request):raise HTTPException(403,'交易工具僅供本機使用')
+    snapshot=demo_market_stream.snapshot();account=snapshot.get('account') or {}
+    key=account.get('account_key') if snapshot.get('environment')=='demo' else None
+    if write:
+        try:
+            age=datetime.now(timezone.utc).timestamp()-datetime.fromisoformat(account['updated_at_utc']).timestamp()
+            if not key or account.get('status')!='CURRENT' or not 0<=age<=10:raise ValueError()
+        except (KeyError,TypeError,ValueError):raise HTTPException(409,'請先連線並同步自己的DEMO帳戶。')
+    return snapshot,key
+
+
+@app.exception_handler(AlertError)
+async def trading_alert_error(_request,exc):
+    messages={'not_found':'找不到此帳戶的提醒。','revision_conflict':'提醒已被變更，請重新載入。','invalid_condition':'提醒條件無效，請核對價位、條件及事件時間。','account_unavailable':'DEMO帳戶尚未就緒。'}
+    return JSONResponse(status_code=exc.status_code,content={'detail':messages.get(exc.code,'提醒操作無法完成，請重新載入。'),'code':exc.code})
+
+
+@app.post('/api/trading/risk-size')
+def trading_risk_size(request:Request,body:RiskSizeInput):
+    snapshot,_key=_trade_account(request,write=True)
+    return JSONResponse(content=size_for_risk(snapshot,body.draft.model_dump(),risk_usd=body.risk_usd,equity_pct=body.equity_pct),headers={'Cache-Control':'no-store'})
+
+
+def _plan_refresh(account_key,plan):
+    try:
+        ident=(plan.get('receipt') or {}).get('client_order_id')
+        getter=getattr(demo_market_stream,'order_status',None)
+        if ident and callable(getter):
+            receipt=getter(ident)
+            if receipt:trade_plans.attach_receipt(account_key,plan['draft_id'],receipt)
+            plan=trade_plans.get(account_key,plan['id'])
+    except DomainError:pass
+    return plan
+
+
+@app.get('/api/trading/plans')
+def trading_plan_list(request:Request,limit:int=Query(default=50,ge=1,le=100),offset:int=Query(default=0,ge=0,le=100000)):
+    _snapshot,key=_trade_account(request)
+    if not key:return JSONResponse(content=dict(status='UNAVAILABLE',reason='連線DEMO帳戶後可查看這個帳戶的交易計畫。',items=[],total=None),headers={'Cache-Control':'no-store'})
+    value=trade_plans.list(key,limit=limit,offset=offset)
+    for row in value['items']:_plan_refresh(key,row)
+    return JSONResponse(content=dict(trade_plans.list(key,limit=limit,offset=offset),status='AVAILABLE'),headers={'Cache-Control':'no-store'})
+
+
+@app.get('/api/trading/plans/{plan_id}')
+def trading_plan_detail(request:Request,plan_id:str):
+    snapshot,key=_trade_account(request)
+    if not key:raise HTTPException(409,'帳戶識別尚未就緒。')
+    plan=_plan_refresh(key,trade_plans.get(key,plan_id))
+    activity=demo_market_stream.activity_snapshot()
+    if (activity.get('account') or {}).get('account_key')==key:plan=enrich_trade_plan(plan,activity)
+    bundle=plan.pop('snapshot_bundle',None) or {};plan['charts']=bundle.get('charts',{})
+    return JSONResponse(content=plan,headers={'Cache-Control':'no-store'})
+
+
+@app.patch('/api/trading/plans/{plan_id}/review')
+def trading_plan_review(request:Request,plan_id:str,body:PlanReviewInput):
+    _snapshot,key=_trade_account(request,write=True)
+    value=trade_plans.update_review(key,plan_id,body.revision,note=body.note,adherence=body.adherence,lesson=body.lesson)
+    value.pop('snapshot_bundle',None)
+    return JSONResponse(content=value,headers={'Cache-Control':'no-store'})
+
+
+def _trading_calendar(*,refresh=False):
+    data=macro_calendar.snapshot(refresh=refresh,days=14);now=datetime.now(timezone.utc).timestamp()
+    sources={s['id'] for s in data.get('sources',[]) if s.get('status')=='CURRENT'}
+    events=[]
+    for row in data.get('events',[]):
+        try:
+            stamp=datetime.fromisoformat(row['scheduled_at_utc']).timestamp()
+            if (row.get('source') in sources and row.get('status')=='SCHEDULED' and stamp>now
+                and row.get('freshness','CURRENT')=='CURRENT' and row.get('timing_precision') in ('EXACT','MINUTE','SECOND')):
+                events.append(dict(id=row['id'],name=row['title'],time_utc=row['scheduled_at_utc']))
+        except (KeyError,ValueError,TypeError):continue
+    return dict(status=data['status'],events=events)
+
+
+@app.get('/api/trading/calendar')
+def trading_calendar(request:Request,refresh:bool=False):
+    _trade_account(request)
+    return JSONResponse(content=_trading_calendar(refresh=refresh),headers={'Cache-Control':'no-store'})
+
+
+@app.get('/api/trading/alerts')
+def trading_alert_list(request:Request):
+    snapshot,key=_trade_account(request)
+    if not key:return JSONResponse(content=dict(status='UNAVAILABLE',reason='請先連線自己的DEMO帳戶。',items=[],events=[],monitor_running=False),headers={'Cache-Control':'no-store'})
+    return JSONResponse(content=dict(trade_alerts.list(key),status='AVAILABLE',monitor_running=alert_monitor.running,monitor_error=alert_monitor.last_error),headers={'Cache-Control':'no-store'})
+
+
+@app.post('/api/trading/alerts')
+def trading_alert_create(request:Request,body:AlertInput):
+    snapshot,key=_trade_account(request,write=True);value=body.model_dump(exclude_none=True)
+    if body.kind=='EVENT':
+        event=next((e for e in _trading_calendar()['events'] if e['id']==body.event_id),None)
+        if not event or not body.lead_minutes or datetime.fromisoformat(event['time_utc']).timestamp()-body.lead_minutes*60<=datetime.now(timezone.utc).timestamp():raise HTTPException(409,'請選擇來源仍有效、提醒時間尚未到的官方事件。')
+        value['event_time_utc']=event['time_utc']
+    else:
+        quote=snapshot.get('quote') or {}
+        try:
+            age=datetime.now(timezone.utc).timestamp()-datetime.fromisoformat(quote['source_time_utc']).timestamp()
+            if quote.get('status')!='CURRENT' or not -SOURCE_CLOCK_SKEW_SECONDS<=age<=5:raise ValueError()
+            threshold=amount(body.threshold,'提醒價位');digits=(snapshot.get('symbol') or {})['digits']
+            if threshold%Decimal(1).scaleb(-digits):raise ValueError()
+        except (KeyError,TypeError,ValueError):raise HTTPException(409,'請等待有效新報價，並核對提醒價位的小數級距。')
+    result=trade_alerts.create(key,value)
+    return JSONResponse(content=result,headers={'Cache-Control':'no-store'})
+
+
+@app.patch('/api/trading/alerts/{alert_id}')
+def trading_alert_update(request:Request,alert_id:str,body:AlertUpdateInput):
+    _snapshot,key=_trade_account(request,write=True)
+    return JSONResponse(content=trade_alerts.update(key,alert_id,body.revision,enabled=body.enabled),headers={'Cache-Control':'no-store'})
+
+
+@app.delete('/api/trading/alerts/{alert_id}')
+def trading_alert_delete(request:Request,alert_id:str,revision:int=Query(ge=1)):
+    _snapshot,key=_trade_account(request,write=True);trade_alerts.delete(key,alert_id,revision)
+    return JSONResponse(content=dict(status='DELETED'),headers={'Cache-Control':'no-store'})
 
 @app.post('/api/broker/drafts')
 def broker_demo_draft(request: Request, body: BrokerDraftInput):
@@ -388,25 +566,42 @@ def broker_demo_draft(request: Request, body: BrokerDraftInput):
     draft=broker_orders.create(snapshot, side=body.side, lot=body.lot,
                                 order_type=body.order_type, limit_price=body.limit_price,
                                 sl=body.sl, tp=body.tp, retrieval=retrieval)
-    bundle=prepare_analysis(snapshot,body.side,retrieval,query,profiles=getattr(engine.cases,'candidate_profiles',{}),now=captured_at,operation_sources=_analysis_operation_sources(retrieval),draft=body.model_dump(),input_revision=body.input_revision,forward_store=case_forward_store,execution_store=case_execution_store)
+    bundle=prepare_analysis(snapshot,body.side,retrieval,query,profiles=getattr(engine.cases,'candidate_profiles',{}),now=captured_at,operation_sources=_analysis_operation_sources(retrieval),draft=body.model_dump(exclude={'plan_note','conversation_id'}),input_revision=body.input_revision,forward_store=case_forward_store,execution_store=case_execution_store)
     saved=analysis_snapshots.put(bundle,draft_id=draft['id'])
     reply=respond_context(saved['context'],'說明草稿建立時的盤面支持與相反依據、案例差異',enabled=False,frozen=True)
     reply=_save_analysis_reply(reply,saved)
-    return JSONResponse(content=dict(draft,analysis_snapshot_id=saved['snapshot_id'],analysis_as_of_utc=saved['context']['as_of_utc'],analysis_reply=reply),headers={'Cache-Control':'no-store'})
+    recording={}
+    try:
+        key=snapshot['account']['account_key']
+        preview=ticket_preview(snapshot,body.model_dump(),leverage=os.environ.get('GOLD_PREVIEW_LEVERAGE','200'))
+        plan=trade_plans.capture(key,draft,reply,note=body.plan_note,conversation_id=body.conversation_id,risk=risk_summary(snapshot,body.model_dump(),preview),snapshot_bundle=saved)
+        recording['plan_id']=plan['id']
+    except (OSError,sqlite3.Error,ValueError,TypeError,KeyError,DomainError):recording['plan_record_error']='本次交易計畫未能保存，請確認本機儲存空間。'
+    return JSONResponse(content=dict(draft,analysis_snapshot_id=saved['snapshot_id'],analysis_as_of_utc=saved['context']['as_of_utc'],analysis_reply=reply,**recording),headers={'Cache-Control':'no-store'})
 
 
 @app.post('/api/broker/drafts/{draft_id}/confirm')
 def broker_demo_confirm(request: Request, draft_id: str, body: BrokerConfirmInput):
     if not _local_broker_access(request):
         return JSONResponse(status_code=403, content={'detail': 'DEMO 委託僅供本機確認'})
-    return broker_orders.confirm(draft_id, body.revision, body.idempotency_key)
+    result=broker_orders.confirm(draft_id, body.revision, body.idempotency_key)
+    try:
+        draft=broker_orders.drafts.get(draft_id) or {};key=draft.get('account_key')
+        if key:trade_plans.attach_receipt(key,draft_id,result)
+    except (OSError,sqlite3.Error,ValueError,DomainError):pass
+    return result
 
 
 @app.get('/api/broker/drafts/{draft_id}/status')
 def broker_demo_order_status(request: Request, draft_id: str):
     if not _local_broker_access(request):
         return JSONResponse(status_code=403, content={'detail': 'DEMO 委託僅供本機查看'})
-    return JSONResponse(content=broker_orders.status(draft_id), headers={'Cache-Control': 'no-store'})
+    result=broker_orders.status(draft_id)
+    try:
+        key=(demo_market_stream.snapshot().get('account') or {}).get('account_key')
+        if key:trade_plans.attach_receipt(key,draft_id,result)
+    except (OSError,sqlite3.Error,ValueError,DomainError):pass
+    return JSONResponse(content=result, headers={'Cache-Control': 'no-store'})
 
 
 @app.post('/api/broker/positions/{position_id}/close-draft')
@@ -588,6 +783,17 @@ def draft_chat(request:Request,body:DraftChatInput):
     bundle=analysis_snapshots.for_draft(body.draft_id)
     reply=respond_context(bundle['context'],body.message,enabled=body.llm_enabled,
         previous_questions=body.previous_questions,frozen=True,conversation_id=body.conversation_id,conversation=[row.model_dump() for row in body.conversation],**_model_options(body))
+    return JSONResponse(content=_save_analysis_reply(reply,bundle),headers={'Cache-Control':'no-store'})
+
+
+@app.post('/api/trading/plans/{plan_id}/discuss')
+def trading_plan_discuss(request:Request,plan_id:str,body:PlanDiscussInput):
+    _snapshot,key=_trade_account(request)
+    if not key:raise HTTPException(409,'帳戶識別尚未就緒。')
+    plan=trade_plans.get(key,plan_id);bundle=plan.get('snapshot_bundle') or {}
+    if not bundle.get('context'):raise HTTPException(409,'這筆舊計畫沒有可解讀的固定盤面。')
+    memory=[dict(thread_id=plan['id'],question=mask_context_text(plan.get('note','')),answer=mask_context_text('本人復盤：'+plan.get('review_note','')+'；心得：'+plan.get('lesson','')))]
+    reply=respond_context(bundle['context'],body.message,enabled=body.llm_enabled,frozen=True,conversation_id=plan['id'],conversation=memory,**_model_options(body))
     return JSONResponse(content=_save_analysis_reply(reply,bundle),headers={'Cache-Control':'no-store'})
 
 @app.get('/api/assistant/analyses/{analysis_ref}')

@@ -3,6 +3,7 @@ from datetime import datetime,timezone
 from decimal import Decimal
 from .engine import amount,DomainError
 from .broker_orders import _volume,_price
+from .market_clock import SOURCE_CLOCK_SKEW_SECONDS
 
 def _margin(entry,quantity,side,kind,expected,clock,leverage):
  result=dict(source='UNAVAILABLE',amount_usd=None,leverage=None,
@@ -33,7 +34,7 @@ def ticket_preview(snapshot,draft,*,now=None,leverage='200',expected_margin=None
  try:
   clock=datetime.now(timezone.utc).timestamp() if now is None else now
   stamp=datetime.fromisoformat(quote['source_time_utc']).timestamp()
-  if snapshot.get('environment')!='demo' or quote.get('status')!='CURRENT' or not -.1<=clock-stamp<=5 or not 0<=quote['age_seconds']<=5:raise ValueError()
+  if snapshot.get('environment')!='demo' or quote.get('status')!='CURRENT' or not -SOURCE_CLOCK_SKEW_SECONDS<=clock-stamp<=5 or not 0<=quote['age_seconds']<=5:raise ValueError()
  except (KeyError,TypeError,ValueError,OverflowError):return dict(result,status='UNAVAILABLE',reason='報價未就緒或已過期，暫不試算。')
  try:
   lot=amount(draft.get('lot'),'手數');_,units=_volume(lot,symbol)

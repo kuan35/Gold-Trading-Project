@@ -4,13 +4,14 @@ import {useEffect,useRef,useState} from 'react';
 import {CandlestickSeries,ColorType,createChart,HistogramSeries,LineSeries,type UTCTimestamp,type IChartApi,type ISeriesApi} from 'lightweight-charts';
 import type {Bar} from './types';
 import {interpolateClose,liveUpdateKind} from './liveCandles';
+import DraftChartOverlay,{type DraftChartState} from './DraftChartOverlay';
 
 type Controller={chart:IChartApi;candles:ISeriesApi<'Candlestick'>;volume:ISeriesApi<'Histogram'>;lines:ISeriesApi<'Line'>[]};
 const point=(b:Bar)=>({...b,time:b.time as UTCTimestamp});
 const vol=(b:Bar)=>({time:b.time as UTCTimestamp,value:b.volume,color:b.close>=b.open?'#6ab5a359':'#d6848559'});
 const average=(bars:Bar[],period:number)=>bars.flatMap((b,i)=>i<period-1?[]:[{time:b.time as UTCTimestamp,value:bars.slice(i-period+1,i+1).reduce((sum,p)=>sum+p.close,0)/period}]);
 
-export default function LiveCandleChart({bars,light,interval}:{bars:Bar[];light:boolean;interval:string}){
+export default function LiveCandleChart({bars,light,interval,draft}:{bars:Bar[];light:boolean;interval:string;draft?:DraftChartState}){
  const [toolsRuntime,setToolsRuntime]=useState<ChartRuntime|null>(null);
  const host=useRef<HTMLDivElement>(null),controller=useRef<Controller|null>(null),previous=useRef<Bar[]>([]),drawn=useRef<Bar|null>(null),raf=useRef<number|undefined>(undefined);
  useEffect(()=>{
@@ -53,5 +54,5 @@ export default function LiveCandleChart({bars,light,interval}:{bars:Bar[];light:
   }
   previous.current=bars;
  },[bars,light,interval]);
- return <div className="gd-chart-workspace" style={{height:"100%",minHeight:360}}><ChartWorkspaceTools runtime={toolsRuntime} bars={bars} scope={`ctrader-demo-${interval}`} /><div className="gd-chart-plot"><div ref={host} className="chart-canvas live-candle-canvas" role="img" aria-label={`cTrader DEMO ${interval} Bid K線與tick量，最後一根形成中`}/></div></div>;
+ return <div className="gd-chart-workspace" style={{height:"100%",minHeight:360}}><ChartWorkspaceTools runtime={toolsRuntime} bars={bars} scope={`ctrader-demo-${interval}`} /><div className="gd-chart-plot"><div ref={host} className="chart-canvas live-candle-canvas" role="img" aria-label={`cTrader DEMO ${interval} Bid K線與tick量，最後一根形成中`}/>{draft&&<DraftChartOverlay runtime={toolsRuntime} draft={draft}/>}</div></div>;
 }

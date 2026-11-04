@@ -50,11 +50,11 @@ export default function ConversationReply({reply:r,onChart,question='',light=fal
  return <article className="cw-reply"><header><strong>{r.market_status==='INFORMATION'?'黃金知識與事件':'盤面重點'}</strong><small>{new Date(r.as_of_utc).toLocaleTimeString('zh-TW',{hour12:false})} · {provider}{r.model?` · ${selectionLabel(r.model,r.requested_effort)}`:''}</small></header>
   {r.analysis_history_error&&<p role="status">{r.analysis_history_error}</p>}
   {r.market_status!=='CURRENT'&&r.market_status!=='FROZEN'&&r.market_status!=='INFORMATION'&&<p role="status">{r.message||'行情尚未就緒，此次無法判讀完整盤面。'}</p>}
-  {c&&!first&&<NoCaseReasons comparison={c}/>}
   {(displayed.length>0||Boolean(c))&&<div className="pd-answer-grid"><div className="pd-summary">{displayed.map((s,i)=><AnswerSection key={i} section={s} onChart={r.snapshot_id&&s.fact_ids.some(id=>/^f(5|15|1)\./.test(id))?()=>onChart('analysis',s.fact_ids.some(id=>id.startsWith('f1.'))?'1h':s.fact_ids.some(id=>id.startsWith('f15.'))?'15m':'5m'):undefined}/>)}</div>
   {c?.side&&['CURRENT','FROZEN'].includes(r.market_status)&&<>{signalPanel(c.side==='BUY'?'做多支持':'做空支持',signals.support,'support')}{signalPanel('相反訊號',signals.against,'against')}</>}
   {c&&first&&<section className="cw-case"><h3>{first?'相似歷史案例':c.label}</h3>{first?<><p>{c.side==='BUY'?'做多':'做空'} · {first.event} · {operationLabel(p?.action)}</p><p className={p?.result==='LOSS'?'negative':p?.result==='WIN'?'positive':''}>代表單筆原報表結果：<strong>{p?.profit??'未提供'}</strong> {p?.currency_stated?p.currency:'幣別未載'}</p><button type="button" onClick={()=>onChart('cases')}>查看 K 線證據</button><CaseOperations snapshotId={r.snapshot_id??null} caseRef={first.ref}/></>:<p>{c.reason}</p>}
   </section>}</div>}
+  {c&&!first&&<NoCaseReasons comparison={c} compact/>}
   {r.outcome_analysis&&<div className="scenario-sections"><DraftScenarioRisk analysis={r.outcome_analysis} currentRevision={currentRevision}/><CaseOutcomePanel analysis={r.outcome_analysis} snapshotId={r.snapshot_id??null} light={light} currentRevision={currentRevision} onCompare={selection=>onChart('cases',undefined,selection)}/></div>}
   {r.gold_relation&&<GoldInfluence relation={r.gold_relation}/>} {r.macro_context&&<MacroEvents snapshot={r.macro_context}/>}
   {!!r.knowledge_sources?.length&&<div className="macro-sources">{[...new Set(r.knowledge_sources)].map(url=><Source key={url} url={url} label="知識來源"/>)}</div>}

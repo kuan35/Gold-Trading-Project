@@ -4,18 +4,20 @@ import {SHORTCUT} from './platform';
 import type {DemoMarket} from '../demoMarket';
 import {useLiveCandles} from '../useLiveCandles';import {mergeLiveBars,type LiveChartFrame} from '../liveCandles';
 import LiveCandleChart from '../LiveCandleChart';import {DeskIcon} from '../DeskChrome';import AnimatedPrice from './AnimatedPrice';
+import type {DraftChartState} from '../DraftChartOverlay';
 export function AgentOrb({busy,size=44}:{busy:boolean;size?:number}){
  return <span className={`ag-orb ${busy?'ag-orb-busy':''}`} style={{width:size,height:size}} aria-hidden="true"><i/><b/></span>;
 }
 
 
-export function MiniChart({light}:{light:boolean}){
+export function MiniChart({light,draft}:{light:boolean;draft?:DraftChartState}){
  const [interval,setInterval]=useState<'5m'|'15m'|'1h'>('5m');
  const {frame,pending}=useLiveCandles(interval);
  const bars=useMemo(()=>mergeLiveBars(frame?.bars??[],frame?.status==='CURRENT'?frame.forming?.pending_bars??[]:[],frame?.status==='CURRENT'?frame.forming?.bar??null:null),[frame]);
  return <div className="ag-mini-chart"><div className="ag-seg">{(['5m','15m','1h'] as const).map(k=><button key={k} type="button" aria-pressed={interval===k} onClick={()=>setInterval(k)}>{k==='5m'?'5 分':k==='15m'?'15 分':'1 小時'}</button>)}</div>
   <LiveFrameStatus frame={frame} pending={pending}/>
-  {bars.length?<LiveCandleChart key={interval} bars={bars} light={light} interval={interval} />:<p className="ag-empty">{pending?'載入即時 K 線…':'即時 K 線未就緒'}</p>}</div>;
+  {draft?.side&&<p className="fine">圖上價位屬於目前草稿；拖曳只改欄位，仍需重新檢查。市價進場隨報價。</p>}
+  {bars.length?<LiveCandleChart key={interval} bars={bars} light={light} interval={interval} draft={draft?{...draft,disabled:draft.disabled||frame?.status!=='CURRENT'}:undefined}/>:<p className="ag-empty">{pending?'載入即時 K 線…':'即時 K 線未就緒'}</p>}</div>;
 }
 
 export function LiveFrameStatus({frame,pending}:{frame:LiveChartFrame|null;pending:boolean}){

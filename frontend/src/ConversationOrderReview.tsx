@@ -1,6 +1,6 @@
 import {useEffect,useRef,useState} from 'react';
 import {api,key} from './api';import type {Draft} from './types';import type {MarketReply} from './LiveAssistant';import {CloseConfirmError,confirmBrokerClose} from './BrokerClosePanel';import {submissionLocked} from './conversationState';
-export type CheckedOrder=Draft&{expires_at_utc:string;analysis_reply:MarketReply;analysis_snapshot_id:string;analysis_as_of_utc:string};
+export type CheckedOrder=Draft&{expires_at_utc:string;analysis_reply:MarketReply;analysis_snapshot_id:string;analysis_as_of_utc:string;plan_id?:string;plan_record_error?:string};
 type Result={status:string;execution_price?:string|null;order_id?:string|null;status_observed_at_utc?:string;error_code?:string|null;message?:string};
 const label=(s:string)=>({UNKNOWN:'券商回報待核對，請勿重送',ACCEPTED:'券商已接受委託，等待成交或觸價',PARTIALLY_FILLED:'部分成交，等待券商後續回報',FILLED:'券商已回報成交',REJECTED:'委託未通過或遭券商拒絕',CANCELLED:'券商已取消',EXPIRED:'委託已過期'}[s]??'券商狀態待核對，請勿重送');
 export default function ConversationOrderReview({draft,checkedRevision,currentRevision,accountUpdated,onClear,onLock,onHistory}:{draft:CheckedOrder;checkedRevision:number;currentRevision:number;accountUpdated?:string;onClear:()=>void;onLock:(value:boolean)=>void;onHistory:()=>void}){
@@ -21,6 +21,7 @@ export default function ConversationOrderReview({draft,checkedRevision,currentRe
   finally{working.current=false;setBusy(false);}
  };
  return <section className="cw-review" aria-label="最新 DEMO 委託核對"><h3>{result?'委託回報':'確認前核對'}</h3>
+  {draft.plan_id&&<p className="fine">交易計畫已保存，可從上方「計畫」回顧當時依據。</p>}
   <p><strong>{draft.side==='BUY'?'做多':'做空'} {draft.lot} 手 · {draft.order_type==='LIMIT'?'限價':'市價'}</strong></p><p>參考價 {draft.price} · SL {draft.sl??'未設定'} · TP {draft.tp??'未設定'}</p>
   <p>總曝險手數 {draft.risk.before_lot} → {draft.risk.after_lot}</p><p>停損情境損失 {draft.risk.stop_loss_usd===null?'未設定':draft.risk.stop_loss_usd+' USD'}</p>
   <details><summary>價格情境與提醒</summary>{draft.risk.scenarios.map((s,i)=><p key={i}>逆向 {s.move}：{s.loss} USD</p>)}{draft.risk.warnings.map((w,i)=><p key={i}>{w}</p>)}</details>

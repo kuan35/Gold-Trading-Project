@@ -1,5 +1,24 @@
 # Frontend API contract v1
 
+## 2026-11-04 本機交易員工具
+
+本節全部沿用loopback／Origin檢查及`Cache-Control: no-store`，僅DEMO帳戶；缺帳戶讀取回UNAVAILABLE／空集合，寫入需10秒內CURRENT帳戶。帳戶身份由伺服器取得，不接受前端指定account key。金額／比例／手數為十進位字串。
+唯讀試算與提醒的來源時間允許0.25秒前向時鐘誤差；5秒過期上限不變，不修改券商草稿／確認的有效性規則。
+
+- `POST /api/broker/ticket-preview`新增`risk`：`status,reason,stop_loss_usd,stop_equity_pct,reward_risk_ratio,existing_positions_risk_usd,pending_orders_risk_usd,gold_total_risk_usd,gold_total_equity_pct,unprotected_positions,unprotected_orders,scope`。未知為null；不是損失上限。USD正淨值與PnL需10秒內，報價需5秒內。
+- `POST /api/trading/risk-size`：`{draft:<原ticket-preview輸入>,risk_usd?:string,equity_pct?:string}`，預算二擇一。回`{status,reason,lot,actual_risk_usd,budget_usd,stop_equity_pct}`。可不填原lot；依合約min/max/step向下取整。只讀，沒有草稿或交易副作用；UI套用時再次試算。
+- `POST /api/broker/drafts`增加選填`plan_note`（2000字）、`conversation_id`（80字）。原金融草稿／固定快照不含這兩個註記。核對成功另保存不可變原始證據，回`plan_id`或`plan_record_error`。保存失敗不虛稱成功，也不改送單權限。
+- `GET /api/trading/plans?limit=50&offset=0`：`{status,items,total,limit,offset}`，summary不含完整盤面。`GET /api/trading/plans/{id}`含原draft/analysis/risk/charts與receipt；不輸出原始context bundle。只以本人帳戶快取刷新券商狀態；平倉證據不推定整筆淨ROI。
+- `PATCH /api/trading/plans/{id}/review`：`{revision,note,adherence:UNKNOWN|YES|NO|PARTIAL,lesson}`；原理由／分析不改。版本衝突409，跨帳戶404。
+- `POST /api/trading/plans/{id}/discuss`：原ClaudeSelection加`message,llm_enabled`；使用計畫保存的固定context，回原MarketReply／analysis_ref。只在使用者主動要求回顧時呼叫所選模型；沒有重查盤面或送單。
+- `GET /api/trading/calendar?refresh=false`：`{status,events:[{id,name,time_utc}]}`；預設只讀官方快取，`refresh=true`是使用者主動更新。只保留CURRENT來源、精確未來時間與SCHEDULED事件。
+- `GET /api/trading/alerts`：`{status,items,events,monitoring_note,monitor_running,monitor_error}`；同帳戶列表及通知。
+- `POST /api/trading/alerts`：`{name,kind:PRICE|CLOSE_5M|EVENT,conversation_id?,field?:bid|ask,comparator?:GTE|LTE,threshold?:string,event_id?:string,lead_minutes?:int}`。PRICE／CLOSE需有效報價及價位級距；CLOSE僅Bid；EVENT時間只能由後端官方快取確認，不接受瀏覽器event_time。提前時間1至10080分鐘，提醒時點須在未來。
+- `PATCH /api/trading/alerts/{id}`：`{revision,enabled}`；每次重新啟用產生新generation，舊事件過提醒時間拒絕。`DELETE /api/trading/alerts/{id}?revision=...`；版本衝突409、非本人404。
+- FastAPI lifespan啟動一個唯讀監測worker；沒有active提醒時不抓行情。每代至多一個持久化事件，ACTIVE→TRIGGERED與通知寫入同一SQLite交易。只使用有效DEMO新報價／新完整五分棒，斷線、重啟、換帳戶或長缺口後先建立基準，不補漏觸價。事件不自動呼叫模型或送單。
+
+私人資料庫為`private/trade_plans.sqlite`與`private/trade_alerts.sqlite`，不納入公開白名單。完整使用方式見`docs/TRADER_WORKFLOW.md`。
+
 ## 2026-11-04 即時SL/TP試算與背景草稿解讀
 
 `POST /api/broker/ticket-preview`僅本機、no-store，只讀快取行情與商品規格，可排程唯讀保證金查詢；不建立、

@@ -1,8 +1,9 @@
 import {useEffect,useState,type ReactNode} from 'react';
 import {MiniChart} from './AgentDesk';import type {DemoMarket} from '../demoMarket';
 import DeskAccountTray from '../DeskAccountTray';import BrokerAccountPanel from '../BrokerAccountPanel';
+import type {DraftChartState} from '../DraftChartOverlay';
 export type DrawerTab='order'|'chart'|'account'|'records';
-export default function AgentDrawer({open,tab,onTab,onClose,light,market,order,resizer}:{open:boolean;tab:DrawerTab;onTab:(tab:DrawerTab)=>void;onClose:()=>void;light:boolean;market:DemoMarket|null;order:ReactNode;resizer?:ReactNode}){
+export default function AgentDrawer({open,tab,onTab,onClose,light,market,order,resizer,draft,tools}:{open:boolean;tab:DrawerTab;onTab:(tab:DrawerTab)=>void;onClose:()=>void;light:boolean;market:DemoMarket|null;order:ReactNode;resizer?:ReactNode;draft?:DraftChartState;tools?:ReactNode}){
  const [expanded,setExpanded]=useState(false);
  const [seen,setSeen]=useState({account:tab==='account',records:tab==='records'});
  useEffect(()=>{if(open&&(tab==='account'||tab==='records'))setSeen(previous=>previous[tab]?previous:{...previous,[tab]:true});},[open,tab]);
@@ -13,10 +14,10 @@ export default function AgentDrawer({open,tab,onTab,onClose,light,market,order,r
    <div className="ag-order-slot" id="ag-order-panel" role="tabpanel" aria-labelledby="ag-tab-order" hidden={tab!=='order'}>{order}</div>
    {tab!=='order'&&<div id={contentId} role="tabpanel" aria-labelledby={'ag-tab-'+tab}>
     <button type="button" className="ag-ghost ag-account-full" onClick={()=>setExpanded(v=>!v)}>{expanded?'還原側欄大小':'放大檢視'}</button>
-    {open&&tab==='chart'&&<MiniChart light={light}/>}
+    {open&&tab==='chart'&&<MiniChart light={light} draft={draft}/>}
    </div>}
    {(seen.account||tab==='account')&&<div key="retained-account" hidden={!open||tab!=='account'}><DeskAccountTray market={market} idPrefix="drawer-account-"/></div>}
-   {(seen.records||tab==='records')&&<div key="retained-records" hidden={!open||tab!=='records'}><BrokerAccountPanel market={market} initialTab="history" idPrefix="drawer-records-"/></div>}
+   {(seen.records||tab==='records')&&<div key="retained-records" hidden={!open||tab!=='records'}>{tools??<BrokerAccountPanel market={market} initialTab="history" idPrefix="drawer-records-"/>}</div>}
   </div>
  </aside>;
 }

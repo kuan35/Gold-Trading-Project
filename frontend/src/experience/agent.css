@@ -453,3 +453,28 @@ body.ag-resizing iframe,body.ag-resizing canvas{pointer-events:none}
 .ticket-level{display:grid;gap:3px;font-size:13px;line-height:1.5;margin-top:8px;font-variant-numeric:tabular-nums}.ticket-level strong{font-size:15px}.ticket-level span{font-size:12px;color:var(--muted)}.ticket-preview-note{font-size:12px;color:var(--muted);line-height:1.6}.ticket-preview-note summary{cursor:pointer}.ticket-preview-warning{display:block;color:var(--gold-1);font-size:12px;margin-top:6px}
 
 @media(max-width:1100px){.ag-drawer{background:var(--bg)!important}}
+
+/* Trading decisions share the ticket's existing typography and color semantics. */
+.cw-no-case-compact{padding:12px 14px;margin-block:14px;border-width:1px;border-left-width:2px;background:transparent}
+.cw-no-case-compact p{margin:0 0 6px;font-size:14px;line-height:1.65}.cw-no-case-compact details{font-size:13px}
+.ticket-risk-summary{margin-block:12px;padding-block:12px;border-block:1px solid var(--border,#303944)}
+.ticket-risk-summary dl{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:0 0 10px}.ticket-risk-summary dt{font-size:13px;color:var(--muted,#a4afbe)}
+.ticket-risk-summary dd{margin:5px 0 0;font-size:17px;font-weight:650;font-variant-numeric:tabular-nums}
+.ticket-risk-panel summary,.ticket-plan-note summary{font-size:14px;padding:8px 0;cursor:pointer}
+.ticket-risk-panel details label,.ticket-plan-note textarea{display:block;margin-block:10px}
+.ticket-risk-panel select,.ticket-risk-panel input,.ticket-plan-note textarea{width:100%;min-height:40px;box-sizing:border-box;background:var(--input,#0c1117);color:inherit;border:1px solid var(--border,#303944);border-radius:9px;padding:9px 10px;font:inherit;font-size:14px}
+.ticket-sizing-result{padding-block:8px}.ticket-sizing-result p{font-size:14px}.ticket-risk-panel button{max-width:100%;white-space:normal}
+.ag-head-tools{flex-wrap:wrap}.ag-head-tools>.ag-ghost{white-space:nowrap}
+.trading-tools-panel{font-size:14px;line-height:1.65}.trading-tools-panel .tabs{display:flex;gap:4px;position:sticky;top:0;background:var(--bg,#10151c);z-index:2}
+.trading-tools-panel .tabs button{flex:1;padding:9px 5px;white-space:normal;font-size:13px}
+.trading-tools-panel form{display:grid;gap:10px;margin-block:12px}.trading-tools-panel label{display:grid;gap:5px}
+.trading-tools-panel input,.trading-tools-panel select,.trading-tools-panel textarea{width:100%;min-width:0;box-sizing:border-box;border:1px solid var(--border,#303944);background:var(--input,#0c1117);color:inherit;border-radius:8px;padding:9px;font:inherit}
+.trading-tools-panel fieldset{border:0;padding:0;display:grid;gap:12px}.trading-tools-panel article{border-bottom:1px solid var(--border,#303944);padding-block:12px}
+.trading-tools-panel article button{margin:4px 6px 4px 0}.trading-tools-panel details{margin-block:12px}.trading-tools-panel summary{cursor:pointer;font-weight:600}
+.trading-tools-panel h4{margin:12px 0 7px;font-size:15px}.trading-tools-panel [role=alert]{color:var(--down,#f28a94)}
+.trading-tools-panel .gd-chart-workspace{height:280px!important;min-height:280px!important;max-height:280px}
+.gd-draft-zone-sl{background:rgba(226,104,119,.11)}.gd-draft-zone-tp{background:rgba(65,181,143,.11)}
+.gd-draft-handle,.gd-draft-label{display:inline-block;max-width:90%;font-family:inherit;font-weight:600;font-size:12px;line-height:1.4;padding:4px 7px;margin-left:8px;border-radius:5px;color:var(--text,#e8edf3);background:var(--bg,#121923);border:1px solid currentColor;white-space:nowrap}
+.gd-draft-line-entry{color:#d6af68}.gd-draft-line-sl{color:#e47e88}.gd-draft-line-tp{color:#59cda7}
+.gd-draft-line button,.gd-draft-line span{color:inherit}.gd-draft-handle:focus-visible{outline:2px solid var(--accent,#e8bd71);outline-offset:2px}
+@media(max-width:600px){.ag-head-tools{gap:5px}.ag-head-tools>.ag-ghost{font-size:12px;padding:7px}.ticket-risk-summary dd{font-size:16px}.trading-tools-panel{font-size:15px}}

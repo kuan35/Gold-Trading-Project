@@ -1,8 +1,9 @@
-import {useEffect,useRef,useState,type ReactNode} from 'react';
+import {useCallback,useEffect,useRef,useState,type ReactNode} from 'react';
 import {Command} from 'cmdk';
 import {Toaster,toast} from 'sonner';
 import {AnimatePresence,motion} from 'motion/react';
 import {DeskIcon} from '../DeskChrome';
+import ReminderNotifications from '../ReminderNotifications';
 
 export type ExperienceView='assistant'|'replay'|'live';
 export type ExperienceCommand={type:'navigate';view:ExperienceView}|{type:'step';bars:number}|{type:'theme'}|{type:'reset'}|{type:'conversation';action:'new'|'history'};
@@ -46,6 +47,7 @@ const typing=(t:EventTarget|null)=>t instanceof HTMLElement&&(t.isContentEditabl
 
 export default function Experience({view,light,error,notice,run,children}:{view:ExperienceView;light:boolean;error:string;notice:string;run:(c:ExperienceCommand)=>void;children:ReactNode}){
  const [open,setOpen]=useState(false),stage=useRef<HTMLDivElement>(null);
+ const showReminder=useCallback((conversationId?:string)=>{run({type:'navigate',view:'assistant'});requestAnimationFrame(()=>window.dispatchEvent(new CustomEvent('gd:trading-tools',{detail:{tab:'alerts',conversationId}})));},[run]);
  // Keep the golden ambience static. Pointer-driven root CSS writes force every
  // surface to recalculate styles during scrolling, resizing and chart gestures.
  useEffect(()=>{if(error)toast.error(error);},[error]);
@@ -70,5 +72,6 @@ export default function Experience({view,light,error,notice,run,children}:{view:
   <div ref={stage} className="gx-stage">{children}</div>
   <Palette open={open} onOpenChange={setOpen} run={run}/>
   <Toaster theme={light?'light':'dark'} position="top-right" richColors closeButton toastOptions={{className:'gx-toast'}}/>
+  <ReminderNotifications onView={showReminder}/>
  </>;
 }

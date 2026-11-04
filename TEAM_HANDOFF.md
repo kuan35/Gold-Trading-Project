@@ -1,3 +1,8 @@
+## 2026-11-04 新增交易員流程
+
+main包含風險卡／反算、交易計畫／復盤、即時圖草稿拖曳及條件提醒，使用方式與API界線見docs/TRADER_WORKFLOW.md與API_CONTRACT.md。
+個人SQLite只存private；請勿把作者的計畫／提醒／憑證放進runtime案例包。每人本人DEMO、本人AI，人工確認送單不變。
+
 # 新版UI交接入口（2026-11-04）
 
 先讀[同學安裝與可貼用prompt](docs/TEAM_START_20261104.md)。本輪SL/TP已加預估保證金ROI；

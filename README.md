@@ -8,6 +8,8 @@
 詳見[官方事件工具](docs/gold_macro_assistant_20261101.md)。
 聊天可回看完整分析、案例與原K線，切換／重整／本機服務重啟後可還原；
 詳見[聊天保存](docs/conversation_history_20261031.md)。首頁常用問題亦可查近期總經事件。
+另提供帳戶停損風險／反算手數、固定交易計畫與復盤、圖上調整草稿、條件提醒；
+詳見[交易員工作流程](docs/TRADER_WORKFLOW.md)。個人紀錄只存本機。
 
 本分支已採完整同學UI外殼，右側預設下單、案例留聊天，模型選項位於助手設定。
 原版仍保留於 `codex/local-distribution-20261031`；[雙版本預覽與交接](docs/PEER_UI_PREVIEW.md)。

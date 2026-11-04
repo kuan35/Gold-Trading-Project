@@ -16,9 +16,9 @@ export default function AgentAnswer(props:ComponentProps<typeof ConversationRepl
  return <article className="ag-insight"><header><span className="ag-chip ag-chip-soft">{analysisLabel(r.provider)}{r.model&&isModelAnalysis(r.provider)?` · ${selectionLabel(r.model,r.requested_effort)}`:''}</span><time>{new Date(r.as_of_utc).toLocaleTimeString('zh-TW',{hour12:false})}</time></header>
   {r.analysis_history_error&&<p role="status">{r.analysis_history_error}</p>}
   {!['CURRENT','FROZEN'].includes(r.market_status)&&<p role="status">{r.message||'行情尚未就緒，無法判讀完整盤面。'}</p>}
-  {c&&!first&&<NoCaseReasons comparison={c}/>}
   <div className="ag-answer-prose">{primary.map((s,i)=><AnswerSection key={i} section={s}/>)}</div>
   {(signals.support.length>0||signals.against.length>0)&&<div className="ag-signals">{signals.support.map(s=><span key={s.factId} className="ag-chip ag-chip-up">支持 · {s.period} · {s.text}</span>)}{signals.against.map(s=><span key={s.factId} className="ag-chip ag-chip-down">相反 · {s.period} · {s.text}</span>)}</div>}
+  {c&&!first&&<NoCaseReasons comparison={c} compact/>}
   {c&&first&&<p className="ag-case-count">符合情境 {c.counts.passed??'—'} 群 · 合格觀察列 {c.counts.eligible??'—'}</p>}
   {first&&<section className="ag-case-preview"><strong>{first.ref} · {first.event}</strong><p>{first.similarities[0]??'相同操作方向'}</p>{first.differences[0]&&<p>差異：{first.differences[0]}</p>}<p>代表單筆原報表結果：<strong className={p?.result==='WIN'?'positive':p?.result==='LOSS'?'negative':''}>{p?.profit??'未提供'}</strong> {p?.currency_stated?p.currency:'幣別未載'}</p></section>}
   {r.outcome_analysis&&(r.outcome_analysis.draft_risk.side||/草稿|風險|停損|停利/.test(question))&&<DraftScenarioRisk analysis={r.outcome_analysis} currentRevision={currentRevision}/>}

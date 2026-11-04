@@ -8,7 +8,8 @@ export function noCaseReasons(c:CaseComparisonData):string[]{
  reasons.push(...rows.map(r=>`${r.label}：${r.count}筆觀察列`));
  return reasons.length?reasons:[c.reason||'本次所需盤面資料尚未齊全。'];
 }
-export default function NoCaseReasons({comparison:c}:{comparison:CaseComparisonData}){
+export default function NoCaseReasons({comparison:c,compact=false}:{comparison:CaseComparisonData;compact?:boolean}){
  if(c.status==='PASSED')return null;
+ if(compact)return <section className="cw-no-case cw-no-case-compact" aria-label="案例狀態"><p><strong>{c.label}</strong> · {c.reason||'本次沒有可參考案例，仍可核對目前盤面與草稿風險。'}</p><details><summary>檢視未通過原因</summary><ul>{noCaseReasons(c).map((text,i)=><li key={i}>{text}</li>)}</ul></details></section>;
  return <section className="cw-no-case" aria-label="無案例原因"><h3>{c.label}</h3><strong>{c.status==='INSUFFICIENT_DATA'?'本次資料不足':'主要未通過原因'}</strong><ul>{noCaseReasons(c).map((text,i)=><li key={i}>{text}</li>)}</ul></section>;
 }
