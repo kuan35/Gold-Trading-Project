@@ -1,3 +1,14 @@
+## 2026-11-04 — 完整歷史看盤與日期跳轉
+
+- 使用者選擇獨立歷史看盤，不新增日期重設交易。歷史回放頁預設新看盤子頁，原交易演練可切換。日期／時分、台灣UTC+8／UTC與圖表時間軸一致，5m／15m／1h，金色定位點、前後分頁與手勢邊緣載入，圖表最多2400棒並固定高度；保留原指標／畫線／PNG／全螢幕。
+- 私人SQLite按來源／週期／時間索引，API每次上限1200棒、背景原子建庫，5m完整連續才彙整15m/H1。缺口／範圍外／未完成高週期明示、不補棒或缺量為0。不同資料來源不拼同一根。查詢不改engine游標、版本、持倉、草稿或案例／模型。
+- 作者本機參考CSV讀取433,119根M5（2020起），另透過本人既有DEMO歷史請求新增32週43,573根M5（近期待載部分，與參考來源重疊）。初次36次及最後一週增量5次SDK請求，0送單／模型。存獨立private/history_native，不碰原案例量能索引。可用資料最新至2026-11-04當次已保存棒，後續按HISTORY_BROWSER說明自行補取。
+- 新增backend/history_library.py、3項測試模組、scripts/update_history_library.py；既有下載器只加選填output_folder維持預設行為。app新增3個loopback history API；前端HistoryBrowser、日期／合併模型、Chart日期格式／定位／有限分頁、App／DeskRouteFrame模式隔離，CSS與e2e。文件API_CONTRACT、HISTORY_BROWSER、README、TEAM_START、白名單更新。
+- TDD與最終審查修正：讀取跨索引代次競態、更新metadata取消日期請求而卡住、舊圖錯標新週期、分頁邊界漏缺口、原進出場／案例跳轉誤進看盤模式；新增來源變動回滾／非法來源保留／未知量不補0等測試。fresh-context審查五項重要發現已修正並複查無剩餘重要問題。
+- 指令／驗證：pytest -q backend/tests research/test_context_similarity_ab.py research/test_assistant_case_acceptance.py、npm test、npm run test:ui、normal與Pages build；最終log在private/history_browser_20261104。真實Edge1660／390，2020~2026七日期各600棒成功（72~103ms本次單機觀察），錯誤0、無橫溢出，手機圖高480px，engine時鐘／版本不變。沒有實際送單或付費推論。
+- root backend／tests／scripts／docs選擇性同步且備份；8765原版frontend/src與dist保留，8766預覽新版。新行情／SQLite／QA不公開，現有runtime匯出白名單不擴大，同學程式相同、行情另用授權包／本人DEMO更新。
+- 最終850項後端與相關研究／1skip、214前端、22合成瀏覽器通過；normal／Pages build成功。待SHA／公開包及main推送。branch main；commit N/A。
+
 ## 2026-11-04 — 交易員工作流程五項整合
 
 - 接續使用者接受的五項方案，main新增：回答優先／無匹配細節收合；Decimal風險卡與預算反算；固定原始依據的交易計畫／復盤；即時圖草稿進場SL/TP拖曳；私人價位／已收五分棒／官方事件提醒。原版分支及8765前端保留，8766預覽新版。

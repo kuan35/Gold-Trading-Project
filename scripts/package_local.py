@@ -15,6 +15,7 @@ FILES.update({'docs/PEER_UI_PREVIEW.md','frontend/previewProxy.ts','frontend/pla
 FILES.add('frontend/e2e/interaction-quality.spec.ts')
 FILES.add('frontend/e2e/draft-assistance.spec.ts')
 FILES.update({'frontend/e2e/trader-workflow.spec.ts','docs/TRADER_WORKFLOW.md'})
+FILES.update({'frontend/e2e/history-browser.spec.ts','docs/HISTORY_BROWSER.md'})
 PUBLIC_DATA={'trader-cases.json','trader-market-index.json','synthetic-query-profiles.json'}
 def public_files(root=ROOT):
  root=Path(root).resolve();out=[]

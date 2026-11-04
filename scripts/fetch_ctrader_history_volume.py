@@ -51,7 +51,7 @@ def next_cursor(page,cursor):
     return result
 
 
-def fetch(tasks,*,max_chunks=None):
+def fetch(tasks,*,max_chunks=None,output_folder=None):
     config=load_local_config()
     from ctrader_open_api import Client,EndPoints,Protobuf,TcpProtocol
     from ctrader_open_api.messages.OpenApiMessages_pb2 import (
@@ -60,7 +60,7 @@ def fetch(tasks,*,max_chunks=None):
     from ctrader_open_api.messages.OpenApiCommonMessages_pb2 import ProtoHeartbeatEvent
     from twisted.internet import reactor
     client=Client(EndPoints.PROTOBUF_DEMO_HOST,EndPoints.PROTOBUF_PORT,TcpProtocol)
-    output=volume_folder(ROOT/'private');output.mkdir(exist_ok=True)
+    output=Path(output_folder) if output_folder is not None else volume_folder(ROOT/'private');output.mkdir(parents=True,exist_ok=True)
     state=dict(status='CONNECTING',source='ctrader_demo_native',volume_basis='broker_native_tick_count',orders_sent=0,
       requested_chunks=len(tasks),requests_sent=0,completed_chunks=0,empty_chunks=0,rows=0,failures=[])
     queue=[];active=None;bars={};cursor=None;account=None;symbol=None;stopping=False;identity=None;processed=0

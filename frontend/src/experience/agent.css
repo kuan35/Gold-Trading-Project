@@ -455,6 +455,15 @@ body.ag-resizing iframe,body.ag-resizing canvas{pointer-events:none}
 @media(max-width:1100px){.ag-drawer{background:var(--bg)!important}}
 
 /* Trading decisions share the ticket's existing typography and color semantics. */
+.history-mode-tabs{display:flex;gap:8px;padding:16px 24px 0;flex-wrap:wrap}.history-mode-tabs button{padding:10px 16px;border:1px solid var(--line);border-radius:9px;background:var(--surface);color:var(--muted)}.history-mode-tabs button[aria-pressed=true]{color:var(--gold-1);border-color:var(--gold-1);background:rgba(210,167,85,.10)}
+.history-browser{padding:20px 24px 32px;width:100%;max-width:1900px;margin:auto;box-sizing:border-box;color:var(--text)}
+.history-heading{display:flex;align-items:center;justify-content:space-between;gap:14px}.history-heading h2{font-size:23px;margin:0 0 8px}.history-heading p,.history-status{font-size:14px;line-height:1.7;color:var(--muted)}
+.history-controls{display:flex;align-items:end;gap:12px;flex-wrap:wrap;margin:18px 0 14px}.history-controls label{display:grid;gap:6px;font-size:14px;min-width:0}.history-controls input,.history-controls select{min-height:42px;box-sizing:border-box;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--text);padding:9px;font:inherit;color-scheme:dark}
+[data-theme=light] .history-controls input,[data-theme=light] .history-controls select{color-scheme:light}
+.history-browser button{min-height:40px;font:inherit;font-size:14px;border-radius:8px}.history-navigation{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}.history-status{display:grid;gap:4px}.history-chart-label{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:14px;margin:16px 0 10px}.history-chart-label span{color:var(--muted)}
+.history-chart{height:clamp(380px,62vh,780px);min-height:380px;max-height:780px;min-width:0;border:1px solid var(--line);border-radius:12px;overflow:hidden}.history-chart .gd-chart-workspace{height:100%!important;min-height:0!important;max-height:100%}.history-chart .gd-chart-plot{min-height:0}
+.history-gap{padding:10px 14px;color:var(--gold-1);font-size:14px;border-left:2px solid var(--gold-1)}.history-gaps{font-size:13px;color:var(--muted);margin-top:10px}.history-empty{padding:56px 18px;border:1px solid var(--line);border-radius:12px;text-align:center;font-size:16px}.history-topbar h1{font-size:21px;margin:0}.history-topbar span{color:var(--muted);font-size:13px}.history-topbar button{margin-left:auto}
+@media(max-width:650px){.history-mode-tabs{padding:12px 10px 0}.history-browser{padding:16px 10px}.history-heading{align-items:start;flex-direction:column}.history-controls{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.history-controls label:first-child{grid-column:1/-1}.history-controls input,.history-controls select{width:100%;font-size:14px}.history-chart{height:480px;min-height:380px}.history-topbar{gap:12px;flex-wrap:wrap}.history-topbar span{display:none}}
 .cw-no-case-compact{padding:12px 14px;margin-block:14px;border-width:1px;border-left-width:2px;background:transparent}
 .cw-no-case-compact p{margin:0 0 6px;font-size:14px;line-height:1.65}.cw-no-case-compact details{font-size:13px}
 .ticket-risk-summary{margin-block:12px;padding-block:12px;border-block:1px solid var(--border,#303944)}
@@ -478,3 +487,5 @@ body.ag-resizing iframe,body.ag-resizing canvas{pointer-events:none}
 .gd-draft-line-entry{color:#d6af68}.gd-draft-line-sl{color:#e47e88}.gd-draft-line-tp{color:#59cda7}
 .gd-draft-line button,.gd-draft-line span{color:inherit}.gd-draft-handle:focus-visible{outline:2px solid var(--accent,#e8bd71);outline-offset:2px}
 @media(max-width:600px){.ag-head-tools{gap:5px}.ag-head-tools>.ag-ghost{font-size:12px;padding:7px}.ticket-risk-summary dd{font-size:16px}.trading-tools-panel{font-size:15px}}
+
+.pd-view-replay .terminal:has(.history-browser)>.source-strip{display:none}

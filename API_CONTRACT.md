@@ -1,5 +1,14 @@
 # Frontend API contract v1
 
+## 2026-11-04 獨立歷史看盤
+
+- `GET /api/history/metadata`：loopback、no-store，啟動／檢查背景索引，回`{status:AVAILABLE|INDEXING|UNAVAILABLE,indexing,error,sources:[{id,label,first,last,count,quote_side,volume_basis}],first,last,earliest_year,built_at_utc,skipped_rows}`。時間為UTC秒；範圍以M5起點計，非全區間完整保證。不公開檔案路徑、hash或帳戶來源key。
+- `POST /api/history/refresh`：同Origin／loopback限制，重新整理本機檔案索引；不下載行情、不呼叫模型或改交易狀態。回同metadata。
+- `GET /api/history/bars?at=<UTC秒>&interval=5m|15m|1h&source=auto|reference|ctrader_demo&limit=600&direction=around|before|after`。日期2020至2099；limit10至1200。回`{status,bars,requested_at,interval,source,source_label,quote_side,volume_basis,available_range,anchor_time,shifted,has_before,has_after,gaps:[{from_time,to_time,seconds}],reason?}`。Bar的OHLC及可用量轉float僅供繪圖，未知volume欄位不輸出。範圍外回OUT_OF_RANGE；不足完整週期回EMPTY，不補棒。
+- around從指定期間或之後第一完整棒定位；最新未完成的高週期定位到最後完整棒，`shifted=true`明示。before／after嚴格不含起點，用於分頁。每個視窗只有一個來源。
+- SQL讀取coverage、週期範圍及bars採同一讀取交易，建庫提交原子切換；來源檔建庫期間改變則回滾，保留前次資料。
+- 索引為私人`history_library.sqlite`，參考CSV與DEMO `history_native/`分開；M15/H1用Decimal彙整完整連續M5，不用缺棒拼成完整棒。讀取API不改engine游標、版本、帳戶、持倉或草稿，不觸發檢索或模型。
+
 ## 2026-11-04 本機交易員工具
 
 本節全部沿用loopback／Origin檢查及`Cache-Control: no-store`，僅DEMO帳戶；缺帳戶讀取回UNAVAILABLE／空集合，寫入需10秒內CURRENT帳戶。帳戶身份由伺服器取得，不接受前端指定account key。金額／比例／手數為十進位字串。

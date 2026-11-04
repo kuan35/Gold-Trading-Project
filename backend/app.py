@@ -30,6 +30,7 @@ from .trade_risk import risk_summary,size_for_risk
 from .trade_plans import TradePlanStore,enrich as enrich_trade_plan
 from .trade_alerts import LocalAlerts,AlertMonitor,AlertError
 from .market_clock import SOURCE_CLOCK_SKEW_SECONDS
+from .history_library import HistoryLibrary,HistoryError,START as HISTORY_START
 from .dialogue_memory import mask_context_text
 from .case_vision import preview as case_vision_preview
 from .live_assistant import respond_live,respond_context,build_live_context
@@ -64,6 +65,7 @@ trade_plans=TradePlanStore(ROOT/'private'/'trade_plans.sqlite')
 trade_alerts=LocalAlerts(ROOT/'private'/'trade_alerts.sqlite')
 alert_monitor=AlertMonitor(trade_alerts,lambda:demo_market_stream.query_snapshot() if trade_alerts.has_active() else {})
 atexit.register(alert_monitor.stop)
+history_library=HistoryLibrary(ROOT/'private')
 
 def _save_analysis_reply(reply,bundle=None):
     try:return analysis_history.save(reply,bundle)
@@ -517,6 +519,26 @@ def _trading_calendar(*,refresh=False):
 def trading_calendar(request:Request,refresh:bool=False):
     _trade_account(request)
     return JSONResponse(content=_trading_calendar(refresh=refresh),headers={'Cache-Control':'no-store'})
+
+
+@app.get('/api/history/metadata')
+def history_metadata(request:Request):
+    if not _local_broker_access(request):raise HTTPException(403,'歷史看盤僅供本機使用')
+    history_library.refresh()
+    return JSONResponse(content=history_library.metadata(),headers={'Cache-Control':'no-store'})
+
+@app.post('/api/history/refresh')
+def history_refresh(request:Request):
+    if not _local_broker_access(request):raise HTTPException(403,'歷史看盤僅供本機使用')
+    history_library.refresh(force=True)
+    return JSONResponse(content=history_library.metadata(),headers={'Cache-Control':'no-store'})
+
+@app.get('/api/history/bars')
+def history_bars(request:Request,at:int=Query(ge=HISTORY_START,lt=4102444800),interval:Literal['5m','15m','1h']='5m',source:Literal['auto','reference','ctrader_demo']='auto',limit:int=Query(default=600,ge=10,le=1200),direction:Literal['around','before','after']='around'):
+    if not _local_broker_access(request):raise HTTPException(403,'歷史看盤僅供本機使用')
+    try:value=history_library.window(at,interval=interval,source=source,limit=limit,direction=direction)
+    except HistoryError as exc:raise HTTPException(422,str(exc))
+    return JSONResponse(content=value,headers={'Cache-Control':'no-store'})
 
 
 @app.get('/api/trading/alerts')
