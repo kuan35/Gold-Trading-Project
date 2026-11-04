@@ -14,3 +14,7 @@ def test_platform_paths_and_server_arguments_are_local_and_single_worker(tmp_pat
  assert venv_python(tmp_path,'darwin')==tmp_path/'.venv/bin/python'
  args=start_arguments(tmp_path,'darwin');assert args[-3:]==['127.0.0.1','--port','8765']
  assert '--reload' not in args and '--workers' not in args
+
+def test_personal_leverage_setting_is_loaded_without_touching_other_settings(tmp_path):
+ p=tmp_path/'.env.local';p.write_text('GOLD_PREVIEW_LEVERAGE=100\nGOLD_LLM_PROVIDER=program\n',encoding='utf8')
+ assert read_settings(p)['GOLD_PREVIEW_LEVERAGE']=='100'

@@ -369,7 +369,14 @@ def _analysis_operation_sources(retrieval):
 @app.post('/api/broker/ticket-preview')
 def broker_ticket_preview(request:Request,body:TicketPreviewInput):
     if not _local_broker_access(request):return JSONResponse(status_code=403,content={'detail':'委託試算僅供本機查看'})
-    return JSONResponse(content=ticket_preview(demo_market_stream.snapshot(),body.model_dump()),headers={'Cache-Control':'no-store'})
+    snapshot=demo_market_stream.snapshot();draft=body.model_dump()
+    leverage=os.environ.get('GOLD_PREVIEW_LEVERAGE','200')
+    preview=ticket_preview(snapshot,draft,leverage=leverage)
+    if preview['status']=='AVAILABLE' and body.order_type=='MARKET':
+        volume=int(Decimal(preview['quantity_oz'])*100)
+        margin=demo_market_stream.expected_margin(snapshot,volume)
+        preview=ticket_preview(snapshot,draft,leverage=leverage,expected_margin=margin)
+    return JSONResponse(content=preview,headers={'Cache-Control':'no-store'})
 
 @app.post('/api/broker/drafts')
 def broker_demo_draft(request: Request, body: BrokerDraftInput):

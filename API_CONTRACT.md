@@ -2,18 +2,29 @@
 
 ## 2026-11-04 即時SL/TP試算與背景草稿解讀
 
-`POST /api/broker/ticket-preview`僅本機、no-store，只讀快取行情與商品規格；不建立、
+`POST /api/broker/ticket-preview`僅本機、no-store，只讀快取行情與商品規格，可排程唯讀保證金查詢；不建立、
 取消或確認草稿，不呼叫LLM。body為`{side?:BUY|SELL|null,order_type?:MARKET|LIMIT|null,
 lot?:string,limit_price?:string|null,sl?:string|null,tp?:string|null}`，字串最多30字元、
 禁止額外欄位。未填完整回WAITING；過期／缺報價回UNAVAILABLE。價格、USD與百分率
 全是後端Decimal運算的十進位字串。
 
-AVAILABLE回`entry_price,quantity_oz,sl,tp,quote_time_utc,conditional_on_fill,basis`。
-SL/TP各回`{status,reason,price,pnl_usd,price_return_pct}`，未設定UNSET，錯邊
+AVAILABLE回`entry_price,quantity_oz,sl,tp,margin,quote_time_utc,conditional_on_fill,basis`。
+SL/TP各回`{status,reason,price,pnl_usd,price_return_pct,margin_roi_pct}`，未設定UNSET，錯邊
 INVALID_SIDE、數值無效INVALID。方向調整價差×盎司數為名目USD；方向調整價差
 除擬進場價×100為價格報酬率。市價BUY用Ask、SELL用Bid；限價用指定價、假設已成交。
-佣金／隔夜費／滑價未扣，`margin_roi_pct:null`，不得稱作保證金ROI。
-這是顯示試算，不代替正式手數、限價、保證金或送單檢查。
+`margin={source:BROKER_EXPECTED|LEVERAGE_ESTIMATE|UNAVAILABLE,amount_usd,leverage,reason}`。
+市價優先同帳戶／商品／數量／持倉狀態的cTrader ExpectedMargin（USD）；讀取不阻塞，
+首輪尚未回覆／逾期／失敗時回退估算。快取有效期從請求起算5秒，單一待回覆、每秒至多1次，
+不連動交易命令、日誌或草稿。回覆先核對account、volume及moneyDigits，再保留十進位精度。
+重連／帳戶／商品／持倉變更不沿用舊值，LIVE不使用此橋接。
+限價指定價、非USD帳戶或券商資料不可用時，按`GOLD_PREVIEW_LEVERAGE`計算
+`進場價×盎司數÷槓桿`（USD）。預設200是試算假設，可於.env.local修改；不冒稱已核實商品槓桿。
+各SL/TP的`margin_roi_pct=未四捨五入名目USD÷未四捨五入預估保證金×100`，
+價格報酬率維持原公式，槓桿不另乘USD損益。槓桿非法／缺保證金不補0，仍保留有效價格報酬與USD。
+佣金／隔夜費／滑價未扣，稱「預估保證金ROI」；非實際實現淨報酬。頂層舊`margin_roi_pct:null`
+只為相容舊回覆保留，不代表SL/TP的值。歷史案例未有單筆保證金，仍只顯示價格報酬率。
+這是顯示試算，不代替正式手數、限價、保證金或送單檢查。ExpectedMargin沒有指定限價欄位，
+因此不把現價的券商估值套成限價的保證金。
 
 前端的檢查DEMO委託先呈現原`/broker/drafts`程式結果與人工核對區，再以當次選定
 provider/model/effort呼叫既有`/assistant/draft-chat`。只傳draft_id與解讀問題，後端

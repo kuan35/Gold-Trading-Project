@@ -19,8 +19,8 @@ async function setup(page:Page,fail=false){
    if(path==='/api/assistant/interpret')return json({intent:'DISCUSS',analysis_side:'BUY',patch:{},proposal:{},message:'合成討論',input_revision:body.input_revision});
    if(path==='/api/assistant/live-chat')return json({...program,market_status:'CURRENT',analysis_mode:'live'});
    if(path==='/api/broker/ticket-preview'){
-    const level=(price:string)=>price?{status:'AVAILABLE',reason:null,pnl_usd:((Number(price)-4000)*Number(body.lot)*100).toFixed(2),price_return_pct:((Number(price)-4000)/4000*100).toFixed(4)}:null;
-    return json({status:'AVAILABLE',reason:null,entry_price:'4000',quantity_oz:'50',sl:level(body.sl),tp:level(body.tp),margin_roi_pct:null,basis:'合成試算，非保證金ROI',quote_time_utc:at});
+    const level=(price:string)=>price?{status:'AVAILABLE',reason:null,pnl_usd:((Number(price)-4000)*Number(body.lot)*100).toFixed(2),price_return_pct:((Number(price)-4000)/4000*100).toFixed(4),margin_roi_pct:((Number(price)-4000)/4000*100*200).toFixed(4)}:null;
+    return json({status:'AVAILABLE',reason:null,entry_price:'4000',quantity_oz:'50',sl:level(body.sl),tp:level(body.tp),margin:{source:'LEVERAGE_ESTIMATE',amount_usd:'1000.00',leverage:'200',reason:'合成槓桿假設'},basis:'未扣交易成本',quote_time_utc:at});
    }
    if(path==='/api/broker/drafts')return json({id:'synthetic-draft',revision:1,side:'BUY',lot:'0.5',order_type:'LIMIT',price:'4000',sl:'3990',tp:'4020',expires_at_utc:new Date(Date.now()+30000).toISOString(),risk:{before_lot:'0',after_lot:'0.5',stop_loss_usd:'500',scenarios:[],warnings:[]},analysis_reply:program,analysis_snapshot_id:sid,analysis_as_of_utc:at});
    if(path==='/api/assistant/draft-chat'){await gate;try{return fail?await r.fulfill({status:503,json:{detail:'合成模型失敗'}}):await json(agent);}catch{return;}}
@@ -38,6 +38,9 @@ test('instant preview shows USD and price returns before checking; agent does no
  const {panel,posts,release}=await setup(page);
  await expect(panel.locator('.ticket-level').first()).toContainText('-500.00 USD');await expect(panel.locator('.ticket-level').last()).toContainText('+1000.00 USD');
  await expect(panel.locator('.ticket-level').first()).toContainText('-0.2500%');expect(posts.some(p=>p.path==='/api/broker/drafts')).toBe(false);
+ await expect(panel.locator('.ticket-level').first()).toContainText('預估保證金ROI -50.0000%');
+ await expect(panel.locator('.ticket-level').last()).toContainText('預估保證金ROI +100.0000%');
+ await expect(panel).toContainText('1000.00 USD · 1:200 試算');
  await panel.getByRole('button',{name:'檢查 DEMO 委託',exact:true}).click();
  await expect(page.getByRole('button',{name:'確認送出 DEMO 委託',exact:true})).toBeVisible();
  await expect(page.getByText('助手正在解讀這份固定草稿快照…',{exact:true})).toBeVisible();

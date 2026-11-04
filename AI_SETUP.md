@@ -1,5 +1,7 @@
 # 直接貼給本機Codex或Claude Code
 
+本輪新增的ROI語意與完整同學prompt見docs/TEAM_START_20261104.md。
+
 你是在使用者本機協助安裝Gold Desk的coding agent。先讀本repo的README、
 AGENTS.md、DATA_POLICY.md、docs/LOCAL_INSTALL.md。沿用現有React/FastAPI，
 不要重新生成介面、換框架或另建雲端站。

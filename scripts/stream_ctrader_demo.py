@@ -1,7 +1,7 @@
 """Single cTrader DEMO stream for local quotes and explicitly confirmed orders.
 
-Stdout is newline-delimited, sanitized JSON. Stdin accepts only a validated
-order command from the loopback parent. Credentials and raw responses never
+Stdout is newline-delimited, sanitized JSON. Stdin accepts validated order
+commands and separate read-only margin queries from the loopback parent. Credentials and raw responses never
 leave this process. No live-account endpoint is used.
 """
 
@@ -20,6 +20,7 @@ from scripts.ctrader_account_payloads import money, decode_positions, decode_ord
 from scripts.live_candles import LiveCandles
 from scripts.position_command_payloads import close_limit_args,protection_args,protection_ack,verify_close_ack
 from backend.order_binding import history_result
+from scripts.expected_margin import decode_margin
 
 
 PERIODS = {'5m': (5, 5, 7), '15m': (7, 15, 21), '1h': (9, 60, 60)}
@@ -65,6 +66,7 @@ def run(config: dict[str, str], *, readonly_live: bool=False) -> None:
         ProtoOAAssetListReq, ProtoOAAssetListRes,
         ProtoOAGetAccountListByAccessTokenReq, ProtoOAGetAccountListByAccessTokenRes,
         ProtoOAGetPositionUnrealizedPnLReq, ProtoOAGetPositionUnrealizedPnLRes,
+        ProtoOAExpectedMarginReq, ProtoOAExpectedMarginRes,
         ProtoOAGetTrendbarsReq, ProtoOAGetTrendbarsRes,
         ProtoOAReconcileReq, ProtoOAReconcileRes,
         ProtoOAOrderListReq, ProtoOAOrderListRes, ProtoOADealListReq, ProtoOADealListRes,
@@ -498,12 +500,29 @@ def run(config: dict[str, str], *, readonly_live: bool=False) -> None:
         return ProtoOANewOrderReq(**args)
 
 
+    def handle_margin(command:dict) -> None:
+        ident=command.get('request_id');volume=command.get('volume_cents')
+        if not isinstance(ident,str) or not ident.startswith('gm-') or len(ident)>50:return
+        def unavailable():emit('expected_margin',dict(request_id=ident,status='UNAVAILABLE'))
+        if (readonly_live or not selected_demo or account_id is None or symbol_id is None
+            or not isinstance(volume,int) or not 0<volume<=2**63-1 or account.get('currency')!='USD'):
+            unavailable();return
+        generation=account_generation
+        def received(message):
+            if generation!=account_generation or message.payloadType!=ProtoOAExpectedMarginRes().payloadType:
+                unavailable();return
+            data=decode_margin(Protobuf.extract(message),account_id,volume,account['currency'])
+            emit('expected_margin',dict(data,request_id=ident))
+        optional_send(ProtoOAExpectedMarginReq(ctidTraderAccountId=account_id,symbolId=symbol_id,volume=[volume]),received,unavailable)
+
     def read_commands() -> None:
         for line in sys.stdin:
             try:
                 command = json.loads(line)
                 if isinstance(command, dict) and command.get('kind') == 'place_order':
                     reactor.callFromThread(handle_command, command)
+                elif isinstance(command,dict) and command.get('kind')=='expected_margin':
+                    reactor.callFromThread(handle_margin,command)
             except (json.JSONDecodeError, TypeError, ValueError):
                 continue
 

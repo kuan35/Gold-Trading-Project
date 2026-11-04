@@ -16,6 +16,15 @@ from threading import Event, Lock, Thread
 from time import monotonic
 
 from .demo_quote_bridge import CONFIG, PRODUCT, sanitize_quote_result
+from .margin_cache import MarginCache
+
+
+def _margin_context(snapshot):
+    account=snapshot.get('account') or {}
+    exposure=lambda rows: [[p.get(k) for k in ('id','side','volume_units','limit_price','intent','position_id')] for p in rows]
+    return json.dumps([account.get('account_key'),account.get('currency'),snapshot.get('symbol'),
+                       account.get('all_positions_count'),account.get('all_pending_orders_count'),
+                       exposure(account.get('positions',[])),exposure(account.get('pending_orders',[]))],sort_keys=True)
 
 
 _ORDER_PROGRESS = {'UNKNOWN': 0, 'ACCEPTED': 1, 'PARTIALLY_FILLED': 2,
@@ -48,6 +57,7 @@ class DemoMarketStream:
         self._order_results: dict[str, dict] = {}
         self._commands:dict[str,dict]={}
         self._waiting: dict[str, Event] = {}
+        self._margin_cache = MarginCache()
 
     def _start(self) -> None:
         if not self.config_path.is_file():
@@ -60,6 +70,7 @@ class DemoMarketStream:
             return
         self._retry_after = now + 8
         self._quote = None
+        self._margin_cache.invalidate()
         self._account = None
         self._bars = {}
         self._history = {}
@@ -99,7 +110,9 @@ class DemoMarketStream:
                         self._status = str(data.get('status', 'UNAVAILABLE'))
                         self._scope = str(data.get('scope', 'UNKNOWN'))
                         self._orders_enabled = bool(data.get('orders_enabled'))
+                        if self._status!='CONNECTED':self._margin_cache.invalidate()
                     elif kind == 'symbol':
+                        if self._symbol!=data:self._margin_cache.invalidate()
                         self._symbol = data
                     elif kind == 'tick_volume_source':
                         self._tick_volume_source_key = data.get('source_key')
@@ -107,7 +120,10 @@ class DemoMarketStream:
                         self._quote = sanitize_quote_result(
                             {'quote_status': data.get('freshness'), 'quote': data})
                     elif kind == 'account':
+                        if _margin_context({'account':self._account})!=_margin_context({'account':data}):self._margin_cache.invalidate()
                         self._account = data
+                    elif kind == 'expected_margin':
+                        self._margin_cache.accept(data,now=monotonic())
                     elif kind == 'forming' and data.get('interval') in ('5m','15m','1h'):
                         self._forming[data['interval']]=data['forming']
                     elif kind in ('broker_orders','broker_deals'):
@@ -126,6 +142,7 @@ class DemoMarketStream:
                 if self._process is process:
                     self._status = 'DISCONNECTED'
                     self._process = None
+                    self._margin_cache.invalidate()
                     for waiting in self._waiting.values():
                         waiting.set()
             process.stdout.close()
@@ -178,6 +195,24 @@ class DemoMarketStream:
             value = self._snapshot_locked()
             value['bars'] = deepcopy(self._bars)
             value['tick_volume_source_key'] = self._tick_volume_source_key
+            return value
+
+    def expected_margin(self, snapshot:dict, volume:int) -> dict | None:
+        """Schedule a read-only query; never wait for the broker or use order IPC."""
+        with self._lock:
+            current=self._snapshot_locked();account=current.get('account') or {}
+            if (self.module!='scripts.stream_ctrader_demo' or current['connection_status']!='CONNECTED'
+                or current['quote']['status']!='CURRENT' or account.get('status')!='CURRENT'
+                or account.get('currency')!='USD' or not account.get('account_key')
+                or _margin_context(snapshot)!=_margin_context(current)
+                or not isinstance(volume,int) or not 0<volume<=2**63-1):return None
+            value,command=self._margin_cache.get(_margin_context(current),volume,now=monotonic())
+            if command:
+                try:
+                    assert self._process is not None and self._process.stdin is not None
+                    self._process.stdin.write(json.dumps(command)+'\n');self._process.stdin.flush()
+                except (OSError,ValueError,AssertionError):
+                    self._margin_cache.accept(dict(request_id=command['request_id'],status='UNAVAILABLE'),now=monotonic())
             return value
 
     def place_order(self, command: dict, timeout: float = 15) -> dict:

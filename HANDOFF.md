@@ -1,3 +1,15 @@
+## 2026-11-04 — 預估保證金ROI與新版同學分發
+
+- 使用者提供DEMO槓桿1:200並要求修改報酬率、推送新版供同學建置。沿codex/peer-ui-integration-20261103；原版codex/local-distribution-20261031及main不合併。計畫：docs/superpowers/plans/2026-11-04-margin-roi-distribution.md。
+- ticket_preview與TicketPreview：原USD損益、價格報酬率保留；各SL/TP增加margin_roi_pct，按未四捨五入損益／預估保證金計算，不重複乘槓桿。顯示保證金金額及券商預估／1:200試算來源，詳細成本與假設可展開。限價按指定進場價、每人.env.local可設GOLD_PREVIEW_LEVERAGE；非法設定仍保留USD但不補ROI為0。歷史原單未有保證金，維持價格報酬率。
+- demo_market_stream／margin_cache／stream_ctrader_demo／expected_margin：市價經現有SDK子程序獨立唯讀ExpectedMargin查詢。Decimal解碼moneyDigits，核對帳戶與volume、USD幣別；快取綁定商品／帳戶／曝光，請求起5秒有效、最多1待回覆、每秒至多1請求，過期／重連／變更拒用。非阻塞、錯誤不停止行情；未就緒、非USD與限價回退槓桿估算。LIVE不增權限，沒有草稿／確認／交易通道副作用。
+- API_CONTRACT、README、AI_SETUP、TEAM_HANDOFF、PEER_UI_PREVIEW與docs/TEAM_START_20261104更新；可貼給同學agent的分支clone／Windows與macOS安裝prompt。公開白名單449檔；新建乾淨程式包，npm離線安裝／一般build通過，另以完整setup建全新venv／安裝Python依賴／npm ci／build成功，TestClient首頁與state API皆200。Mac只有入口／路徑測試，未實機驗收。
+- 私人runtime由既有受控匯出器建立379檔、86,660,808 bytes ZIP，測試副本匯入及validate_runtime通過：11,902 cases／10,887 profiles、execution AVAILABLE／outcomes READY／native_ticks READY。未匯出.env、CLI登入、帳戶或聊天快取；ZIP僅留根product/private/margin_roi_distribution_20261104，不加入GitHub。不同帳戶量來源仍須按安裝指南重建。
+- TDD紅→綠；前端192通過、相關後端／DEMO草稿平倉／API／分發93通過、合成瀏覽器13通過、normal與Pages build成功（既有大chunk提示）。一次fresh-context唯讀審查無重要問題。Windows TestClient及SDK protobuf驗證使用require_escalated避開本機socket sandbox限制。
+- 真實隔離Edge唯讀桌機1660及手機390：SL/TP -500／+1000USD、價格-0.25／+0.50%、預估保證金ROI -50／+100%，無pageerror／橫溢出。實際券商ExpectedMargin成功返回，限價fallback來源清楚。真實模型呼叫0、送單0。收據／截圖／原root備份在上述private資料夾。
+- 共用後端app／串流／新模組／local_app及測試同步root product；原8765服務當時未啟動，已由官方本機啟動器啟動，新8766Vite背景啟動。原243份資料原件SHA與293個原版前端檔SHA一致。下一步：使用者重新整理8766；同學下載指定分支，自己的AI／DEMO與受控runtime另設。
+- branch: codex/peer-ui-integration-20261103；commit: N/A（本紀錄隨本次提交發布，精確版本請查git log -1）。
+
 ## 2026-11-04 — 不同日期無匹配實測、委託Agent與SL/TP即時試算
 
 - 使用者要求不同盤面測無案例頻率、程式先核對再由所選Agent解讀原草稿，另加SL/TP即時金額與百分率。沿現有8766獨立分支實作，8765原版介面保留。plan：docs/superpowers/plans/2026-11-04-retrieval-draft-review.md。
