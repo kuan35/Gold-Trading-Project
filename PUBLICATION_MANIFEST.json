@@ -21,6 +21,10 @@
       "bytes": 1212,
       "sha256": "181ad36eb1dd694cdb45a9fac022a048734ab97f8a04ecf5825652d8f1191f10"
     },
+    ".github/workflows/verify.yml": {
+      "bytes": 1237,
+      "sha256": "a2079466e9e5bfb54f346eec839bdb3116e6a0fab6ab50aadc60d1d75ba63063"
+    },
     ".gitignore": {
       "bytes": 270,
       "sha256": "b88d8d8b03027e75802f79ddf90e10378615b4ee60e01eaba7a52a7867142b36"
@@ -46,8 +50,8 @@
       "sha256": "89cd7a1982b1bf9419a05a7519423d0d82409eb7c9e2341add813f0a871b1c2f"
     },
     "HANDOFF.md": {
-      "bytes": 27726,
-      "sha256": "4a895c6e4ca7ce1fd78e3584c4e6c9aa700ca9617cf672133640b2d4007bf0e7"
+      "bytes": 28096,
+      "sha256": "3f54e5fa877e8d0e08b9de9de098bbba59e5bf2fc3cee91918574d23df88e1d2"
     },
     "LICENSE": {
       "bytes": 1304,
@@ -1734,8 +1738,8 @@
       "sha256": "f158bb2cd1f9871ee6e7dc99ffd03a975e101cb10212271361f32055abf65111"
     },
     "scripts/package_local.py": {
-      "bytes": 3380,
-      "sha256": "13d04eba09a6756523cb1918e2207a267dcbc10efb1340b5dc2666c8f95b0806"
+      "bytes": 3423,
+      "sha256": "adedda7228e852f6f2d7c6b5a0fb98bdbff0b169fe0e166f1c9ba38f6cdaa6c5"
     },
     "scripts/position_command_payloads.py": {
       "bytes": 2794,

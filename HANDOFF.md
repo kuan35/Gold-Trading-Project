@@ -1,5 +1,6 @@
 ## 2026-11-04 — 新版整合為GitHub預設main
 
+- GitHub首輪Pages及Windows/macOS本機安裝CI已成功；舊Verify product handoff的backend失敗。其安裝步驟漏列requirements-ctrader.txt，與新增官方SDK協定測試及已成功local-ci不一致；本輪補齊安裝與pip快取鍵。另14項對應研究測試本機全過。公開包白名單納入verify.yml（450檔），待新GitHub回合核對。
 - 使用者指定以目前新版為主，讓同學直接下載。git remote show origin核對預設main原為5bf88de，origin/main為新版祖先、沒有分歧；本機main以--ff-only整合至62cd931，保留codex/local-distribution-20261031（4253e8a）及codex/peer-ui-integration-20261103（62cd931），不刪分支、不重寫歷史。
 - README、AI_SETUP、TEAM_HANDOFF、docs/{TEAM_START_20261104,PEER_UI_PREVIEW,LOCAL_INSTALL}改為main下載／clone與現況；移除「main尚未合併」的現行指引，補舊分支同學安全切main更新方式。PUBLICATION_MANIFEST以449檔公開白名單重新計算雜湊；私人runtime包、憑證與聊天不新增公開。
 - main整合後完整backend/tests：686 passed／1 skipped；前端192 passed。程式內容與前輪已驗證新版一致，本輪其餘只調整下載與交接文件。上輪normal／Pages build、13項合成瀏覽器、Windows乾淨安裝及唯讀ROI驗證仍適用；未再呼叫模型或交易。

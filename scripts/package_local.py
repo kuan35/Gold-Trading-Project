@@ -5,6 +5,7 @@ ROOT=Path(__file__).resolve().parents[1]
 FILES={'README.md','AI_SETUP.md','AGENTS.md','CLAUDE.md','API_CONTRACT.md','LICENSE','DATA_POLICY.md','THIRD_PARTY_NOTICES.md','.gitignore','.env.example','.env.local.example','ctrader.env.example','.env.ctrader.live.example','requirements.txt','requirements-ctrader.txt','setup.ps1','setup.sh','start-local.ps1','start-local.sh','start.ps1','start-groq.ps1','start-claude.ps1','frontend/package.json','frontend/package-lock.json','frontend/index.html','frontend/tsconfig.json','frontend/vite.config.ts','research/requirements.txt','.github/workflows/local-ci.yml','.github/workflows/pages.yml','docs/LOCAL_INSTALL.md'}
 FILES.add('TEAM_HANDOFF.md')
 FILES.add('docs/TEAM_START_20261104.md')
+FILES.add('.github/workflows/verify.yml')
 FILES.add('frontend/src/demo-data.json')
 FILES.add('docs/LOCAL_RELEASE_CHECK.md')
 FILES.add('HANDOFF.md')
