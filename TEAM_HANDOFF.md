@@ -4,7 +4,7 @@
 券商USD現價預估優先，限價／不可用時用個人槓桿假設。下載指定分支＋setup即可還原介面，
 完整runtime案例包、AI登入、cTrader憑證分開設定；不要承諾同學會看到相同的即時資料或歷史結果。
 
-本分支codex/peer-ui-integration-20261103已完整整合同學外殼與現有功能。
+目前預設main已完整整合同學外殼與現有功能，直接clone／Download ZIP就會取得新版。
 先讀[雙版本啟動與agent安裝prompt](docs/PEER_UI_PREVIEW.md)及README；原版仍保留於codex/local-distribution-20261031。
 以下保留原功能交接紀錄。
 

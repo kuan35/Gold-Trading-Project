@@ -6,12 +6,12 @@ SL/TP即時顯示USD、價格報酬率與預估保證金ROI；按檢查後可由
 
 ## 下載
 
-使用分支 `codex/peer-ui-integration-20261103`，不要下載main的舊版。
-[直接下載完整程式ZIP](https://github.com/kuan35/Gold-Trading-Project/archive/refs/heads/codex/peer-ui-integration-20261103.zip)
+新版現已整合到預設 `main`；直接按GitHub的Code／Download ZIP即可取得。
+[直接下載完整程式ZIP](https://github.com/kuan35/Gold-Trading-Project/archive/refs/heads/main.zip)
 或：
 
 ```sh
-git clone --branch codex/peer-ui-integration-20261103 https://github.com/kuan35/Gold-Trading-Project.git
+git clone https://github.com/kuan35/Gold-Trading-Project.git
 cd Gold-Trading-Project
 ```
 
@@ -55,10 +55,10 @@ Windows已實測；macOS有安裝入口及路徑測試，尚未做Mac實機驗�
 ```text
 請協助在我的電腦安裝Gold Desk。
 Repo: https://github.com/kuan35/Gold-Trading-Project
-分支: codex/peer-ui-integration-20261103
+分支: main（預設分支，即目前新版）
 
 先讀README.md、AGENTS.md、AI_SETUP.md、docs/TEAM_START_20261104.md及docs/LOCAL_INSTALL.md。
-沿用完整前後端，不重新生成介面；clone指定分支並記錄commit。
+沿用完整前後端，不重新生成介面；clone預設main並記錄commit。
 檢查Python與Node，依Windows/macOS執行setup與start-local。
 先用程式解讀驗收首頁、三分頁、聊天A→B→A→重整及案例K線還原。
 未匯入完整runtime包時，回報只有示範資料，不冒稱完整案例就緒。
@@ -71,4 +71,9 @@ AI官方登入及cTrader憑證由我自行填寫，不讀或複製其他人的�
 ```
 
 更新時停止服務、git pull同一分支、重跑setup／start-local，保留個人.env、private及瀏覽器資料。
-原版保留在 `codex/local-distribution-20261031`，這輪不合併main。
+原版保留在 `codex/local-distribution-20261031`，新版開發分支也保留。
+GitHub Pages只提供靜態展示；下載main後在本機啟動，才有完整後端功能。
+
+已clone舊分支的同學：先以git status確認並保存自己的修改，再git fetch origin、
+git switch main、git pull --ff-only，接著重跑setup與start-local。
+若有衝突，請agent協助保留本人修改；不要用reset --hard或clean刪除本機設定與資料。

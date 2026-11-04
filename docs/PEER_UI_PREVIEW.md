@@ -1,7 +1,9 @@
 # 新版完整 UI 與原版並存
 
-此分支 `codex/peer-ui-integration-20261103` 採同學完整介面外殼，接入現版功能。
-原版仍在 `codex/local-distribution-20261031`，不合併 main、不變更公開 Pages 主站。
+新版採同學完整介面外殼，接入現版功能，2026-11-04依使用者指定整合至預設main。
+原版仍在 `codex/local-distribution-20261031`，新版開發分支也保留。
+以下兩個網址是同機並存的開發方式；同學一般安裝直接使用main及8765。
+main的Pages工作流程會更新靜態展示，完整券商與AI功能仍需本機後端。
 
 ## 介面與功能
 
@@ -17,7 +19,7 @@
 ## 同學從 GitHub 安裝
 
 ```sh
-git clone --branch codex/peer-ui-integration-20261103 https://github.com/kuan35/Gold-Trading-Project.git
+git clone https://github.com/kuan35/Gold-Trading-Project.git
 cd Gold-Trading-Project
 ```
 
@@ -48,7 +50,7 @@ npm run dev:peer
 ## 可直接交給本機 agent
 
 > 請讀README、AGENTS.md、AI_SETUP.md與docs/PEER_UI_PREVIEW.md，clone或切到
-> codex/peer-ui-integration-20261103，不要切回main或重新生成UI。
+> main（現在的預設新版），不要切到舊版分支或重新生成UI。
 > 沿用現有React/FastAPI，以我的作業系統安裝並診斷；保留.env與private資料。
 > 單獨安裝用start-local啟動8765；若本機已有原版8765，請僅在新版frontend執行
 > npm run dev:peer，使用8766代理既有後端，不能再啟動第二個券商後端。

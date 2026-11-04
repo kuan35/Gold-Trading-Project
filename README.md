@@ -17,14 +17,14 @@
 先安裝Python3.11與Node.js24 LTS，再clone本repo。
 公開repo根目錄就是產品根目錄，不需要再cd product。
 
-本輪版本位於 `codex/peer-ui-integration-20261103` 分支；尚未合併main時請用：
+目前 `main` 就是新版，GitHub預設下載與一般clone都會取得這版；舊版另留分支。
 
-不使用Git也可[下載這個分支的完整程式ZIP](https://github.com/kuan35/Gold-Trading-Project/archive/refs/heads/codex/peer-ui-integration-20261103.zip)，
+不使用Git也可[下載新版完整程式ZIP](https://github.com/kuan35/Gold-Trading-Project/archive/refs/heads/main.zip)，
 解壓縮後進入同時含backend、frontend與setup.ps1的資料夾，依下表安裝／啟動。
 此包包含相同介面與功能程式；完整案例包另由資料擁有者私下提供，AI與券商設定各自填寫。
 
 ```sh
-git clone --branch codex/peer-ui-integration-20261103 https://github.com/kuan35/Gold-Trading-Project.git
+git clone https://github.com/kuan35/Gold-Trading-Project.git
 cd Gold-Trading-Project
 ```
 
