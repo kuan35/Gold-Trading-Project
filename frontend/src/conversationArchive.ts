@@ -3,6 +3,7 @@ import type {ArchiveTurn} from './deskConversations';
 import {analysisLabel} from './assistantProvider';import {selectionLabel} from './modelSettings';
 import {trendSignals} from './discussionPanels';
 import {validAnalysisRef} from './analysisHistory';
+import {adviceDraftDetails,adviceRows} from './tradeAdvice';
 
 type ConversationTurn={question:string;at?:string;record?:ArchiveTurn;note?:string;noteImportant?:boolean;error?:string;reply?:MarketReply};
 const shown=(value:unknown)=>value===null||value===undefined?'未提供':String(value);
@@ -12,6 +13,19 @@ const factText=(fact:MarketReply['evidence'][number])=>fact.text.replace(/\{\{([
 export function archiveTurn(turn:ConversationTurn):ArchiveTurn{
  if(turn.record)return turn.record;
  const r=turn.reply,parts:string[]=[];
+ if(r?.trade_advice){
+  const a=r.trade_advice;
+  parts.push([a.direction?(a.direction.side==='BUY'?'方向偏多':'方向偏空'):null,a.direction?.reason,a.headline,a.reason,a.signal,
+   ...(a.protection?.status==='AVAILABLE'?[
+    `進場基準 ${a.protection.entry} USD/oz · ${a.protection.entry_basis} · 預估報酬／風險 ${a.protection.reward_risk_ratio} 倍`,
+    `建議停損 ${a.protection.stop} · ${a.protection.stop_basis}`,
+    `建議停利 ${a.protection.target} · ${a.protection.target_basis}`,
+   ]:a.protection?[a.protection.reason]:[]),
+   ...adviceRows(a).map(row=>`${row.label} · 同盤面 30 分鐘 ${row.simulation} · 較高成本中位數 ${row.stress} · 原單價格報酬 ${row.original}`),
+   ...(a.costs?[`往返成本假設 · 基準 ${a.costs.baseline_usd_per_oz} USD/oz · 較高 ${a.costs.stress_usd_per_oz} USD/oz`]:[]),
+   ...adviceDraftDetails(a.draft),
+  ].filter(Boolean).join('\n'));
+ }
  if(turn.note&&(turn.noteImportant||!r))parts.push(turn.note);
  if(r){
   parts.push([analysisLabel(r.provider),r.model?selectionLabel(r.model,r.requested_effort):null].filter(Boolean).join(' · '));

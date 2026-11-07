@@ -3,7 +3,7 @@ from datetime import datetime,timezone
 from decimal import Decimal
 from math import isfinite
 from .analysis_snapshots import snapshot_fingerprint
-from .live_assistant import build_live_context
+from .live_assistant import build_live_context,directional_bias
 from .case_context import build_case_context
 from .analysis_visuals import build_analysis_visuals
 from .case_operations import build_case_operations
@@ -27,20 +27,34 @@ def chart_bars(rows,span,cutoff,count):
     return result
 
 
-def prepare_analysis(snapshot,side,retrieval=None,query=None,*,profiles=None,now=None,operation_sources=None,draft=None,input_revision=None,forward_store=None,execution_store=None):
+def prepare_analysis(snapshot,side,retrieval=None,query=None,*,profiles=None,now=None,operation_sources=None,draft=None,input_revision=None,forward_store=None,execution_store=None,advice=None):
     context=build_live_context(snapshot,now=now,retrieval=retrieval)
     if retrieval is not None and 'case_comparison' not in context:
         detail=build_case_context(retrieval)
         context['facts'].extend(detail.pop('facts'));context['case_comparison']=detail
     method=(retrieval or {}).get('comparison',{}).get('method','context_contract_v1')
     ruleset=(retrieval or {}).get('comparison',{}).get('ruleset')
-    sid=snapshot_fingerprint(snapshot,side,method+(':'+ruleset if ruleset else ''),analysis_time=context['as_of_utc'],include_cases=retrieval is not None,validity=context['status'],draft=draft,input_revision=input_revision);query=query or {}
+    if advice is not None:
+        advice=dict(advice,direction=directional_bias(context,advice))
+        if advice['direction'] and advice['reason_code']=='SIGNAL_UNAVAILABLE':
+            advice['reason']='進場確認所需的完整盤面或歷史案例資料不足，待行情更新後再評估。'
+    sid=snapshot_fingerprint(snapshot,side,method+(':'+ruleset if ruleset else ''),analysis_time=context['as_of_utc'],include_cases=retrieval is not None,validity=context['status'],draft=draft,input_revision=input_revision,advice=advice);query=query or {}
     context.update(snapshot_id=sid,query_as_of_utc=query.get('as_of'))
+    if advice is not None:
+        context['trade_advice']=advice
     if context.get('case_comparison') is not None:
         context['case_comparison'].update(snapshot_id=sid,query_as_of_utc=query.get('as_of'))
     frames=query.get('pre_entry_bars') or {};cutoff=query.get('as_of')
     charts=dict(snapshot_id=sid,query_as_of_utc=cutoff,source='ctrader_demo_xauusd',query={},cases=[])
     charts['analysis']=build_analysis_visuals(snapshot,context,now if now is not None else datetime.now(timezone.utc).timestamp())
+    protection=(advice or {}).get('protection') or {}
+    five=charts['analysis']['frames']['5m']
+    if protection.get('status')=='AVAILABLE' and five['bars']:
+        prefix='條件式參考' if protection['conditional'] else '建議'
+        five['layers'].extend([
+            dict(id='advice.stop',kind='line',label=prefix+'停損',price=protection['stop']),
+            dict(id='advice.target',kind='line',label=prefix+'停利',price=protection['target']),
+        ])
     for interval,span,n in [('5m',300,60),('1h',3600,20)]:
         charts['query'][interval]=chart_bars(frames.get(interval,[]),span,cutoff,n)
     operations={}

@@ -185,6 +185,67 @@ def test_one_bad_model_paragraph_is_replaced_without_discarding_other_grounded_p
     assert '部分模型段落' in answer['message']
 
 
+def test_claude_explains_protection_with_bound_values_despite_an_invalid_section(monkeypatch):
+    context=live.build_live_context(snapshot(),now=NOW)
+    context['trade_advice']=dict(action='WAIT',signal_code='ABOVE',reason_code='INSUFFICIENT_PAIRS',
+        headline='建議先等待',reason='有 5 組完整配對。',signal='向上突破',
+        protection=dict(status='AVAILABLE',conditional=True,entry='4101.23',stop='4091.23',
+            target='4121.23',reward_risk_ratio='2.00',stop_basis='區間上緣下方',target_basis='區間高度延伸'))
+    def provider(*args,**kwargs):
+        payload=kwargs['catalog']
+        assert '4091.23' not in json.dumps(payload) and '5 組完整配對' not in str(payload)
+        fact=next(f for f in payload['facts'] if f['id']=='advice.protection')
+        assert '區間上緣下方' in fact['basis']['advice_stop_basis_state']
+        return dict(status='ok',provider='claude_code',text=json.dumps({'sections':[
+            dict(title='停損依據',text='停損參考 {{advice_stop}}，若結構失效就重新評估。',fact_ids=['advice.protection']),
+            dict(title='無依據',text='價格會到 9999。',fact_ids=['made.up']),
+        ]}))
+    monkeypatch.setattr(live,'explain_context',provider)
+    answer=live.respond_context(context,'為什麼設這個停損？',enabled=True,provider='claude_code')
+    assert answer['provider']=='claude_market_analysis' and answer['llm_status']=='partial_grounding'
+    assert '4091.23' in answer['message'] and '9999' not in answer['message']
+
+
+def test_draft_agent_gets_trader_playbook_levels_and_same_snapshot_case_evidence(monkeypatch):
+    context = live.build_live_context(snapshot(), now=NOW)
+    context['trade_advice'] = dict(
+        action='WAIT', signal_code='RECLAIM_LOW', reason_code='INSUFFICIENT_PAIRS',
+        headline='建議先等待', reason='配對不足。', signal='跌破後收回',
+        simulations={'count': 3, **{side: dict(positive=2, median_pct='0.11', stress_median_pct='0.08')
+                                    for side in ('BUY', 'SELL')}},
+        original={'BUY': dict(count=3, median_pct='0.6712')},
+    )
+    context['facts'].extend([
+        dict(id='history.case1', text='案例甲末段反彈。', values={}),
+        dict(id='history.outcome', text='其他觀察區間。', values={}),
+    ])
+    context['outcome_analysis'] = {'cases': [
+        {'ref': '案例甲', 'horizons': {'30': dict(status='AVAILABLE', minutes=30,
+                                               change_pct='0.1234', mae_pct='0.0567')}}
+    ]}
+
+    def provider(*args, **kwargs):
+        catalog = kwargs['catalog']
+        facts = {fact['id']: fact for fact in catalog['facts']}
+        assert 'trader_playbook' in catalog and '斜率線' in str(catalog['trader_playbook'])
+        assert {'f1.trend', 'f5.trend', 'f5.levels', 'history.case1',
+                'advice.case_outcome', 'advice.comparison'} <= facts.keys()
+        assert 'advice_buy_positive' in facts['advice.comparison']['tokens']
+        assert 'advice.original.buy' in facts
+        assert all(value not in str(catalog) for value in ('0.1234', '0.0567', '0.6712'))
+        return dict(status='ok', provider='claude_code', text=json.dumps({'sections': [
+            dict(title='綜合建議', text='等回踩再考慮做多。案例甲途中最大逆向為{{advice_case_mae}}%。',
+                 fact_ids=['f5.levels', 'advice.case_outcome']),
+            dict(title='未證實', text='價格已突破斜率線。', fact_ids=['f5.levels']),
+        ]}))
+
+    monkeypatch.setattr(live, 'explain_context', provider)
+    reply = live.respond_context(context, '停損停利怎麼看？', enabled=True, frozen=True, provider='claude_code')
+    assert reply['provider'] == 'claude_market_analysis'
+    assert '0.0567%' in reply['sections'][0]['text']
+    assert '價格已突破斜率線' not in reply['message']
+
+
 def test_live_quote_below_averages_is_separate_from_last_closed_bullish_structure():
     s=snapshot();s['quote'].update(bid='4000.12',ask='4000.32')
     context=live.build_live_context(s,now=NOW)
@@ -194,6 +255,23 @@ def test_live_quote_below_averages_is_separate_from_last_closed_bullish_structur
     assert '高於 MA20' in trend['f5_structure']
     narrative=live.writer_facts([next(f for f in context['facts'] if f['id']=='f5.trend')])[0]
     assert '低於 MA20' in narrative['basis']['f5_live_structure'] and '4000.12' not in str(narrative)
+
+
+@pytest.mark.parametrize('action,reason,side,expected', [
+    ('BUY', 'CONFIRMED', 'BUY', '建議做多'),
+    ('SELL', 'CONFIRMED', 'SELL', '建議做空'),
+    ('WAIT', 'INSUFFICIENT_PAIRS', 'BUY', '偏多，優先找做多機會'),
+    ('WAIT', 'COST_UNAVAILABLE', 'SELL', '偏空，優先找做空機會'),
+    ('WAIT', 'STRESS_COST', 'BUY', None),
+    ('ADJUST', 'RISK_BUDGET', 'BUY', None),
+])
+def test_trade_summary_has_a_direct_opening_without_overriding_entry_checks(action, reason, side, expected):
+    facts = live.trade_advice_facts(dict(
+        action=action, reason_code=reason, headline='原判斷', reason='原原因',
+        direction=dict(side=side, reason='已收棒訊號'),
+    ))
+    opening = next((f['values']['advice_opening_state'] for f in facts if f['id']=='advice.opening'), None)
+    assert opening == expected
 
 
 def test_followup_inherits_recent_explicit_period_and_general_analysis_can_reset_it(monkeypatch):

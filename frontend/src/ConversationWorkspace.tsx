@@ -1,7 +1,8 @@
 import {AgentOrb,AgentTopbar,RAIL_EVENT} from './experience/AgentDesk';
 import AgentDrawer,{type DrawerTab} from './experience/AgentDrawer';
 import AgentAnswer from './experience/AgentAnswer';
-import {DraftAgentSession,rebindDraftChart} from './draftAgent';
+import {DraftAgentSession} from './draftAgent';
+import {requestModelOptions} from './modelSettings';
 import {useTicketPreview} from './TicketPreview';
 import TradingToolsPanel from './TradingToolsPanel';
 import {isModelAnalysis} from './assistantProvider';
@@ -25,17 +26,21 @@ import {DeskRail,DeskMarketHeader,DeskIcon} from './DeskChrome';
 import DeskAccountTray from './DeskAccountTray';
 import AssistantControl,{useAssistantSettings} from './AssistantControl';
 import {buildDialogueMemory} from './dialogueMemory';
+import {adviceMode,adviceSide,riskBudgetFields,type AdviceMode,type RiskBudget} from './tradeAdvice';
 type TicketOrigin='inline'|'side';
+const cancelledDraftAnalysis={agentPending:false,noteImportant:true,note:'這次助手分析已取消。請用目前欄位重新檢查委託。'};
 type Interpretation={intent:string;analysis_side:Side|null;patch:InputPatch;proposal:InputPatch;message:string;missing_fields:string[];input_revision:number};
 type Turn={id:number;question:string;at?:string;note?:string;noteImportant?:boolean;agentPending?:boolean;reply?:MarketReply;proposal?:InputPatch;proposalRevision?:number;error?:string;record?:ArchiveTurn};
 type TurnActions={chart:(reply:MarketReply,mode:'analysis'|'cases',period?:'5m'|'15m'|'1h',selection?:ComparisonSelection)=>void;apply:(turn:Turn)=>void};
 const TurnContent=memo(function TurnContent({turn:t,light,revision,locked,actions}:{turn:Turn;light:boolean;revision:number;locked:boolean;actions:RefObject<TurnActions>}){
+ const answer=t.reply&&<AgentAnswer reply={t.reply} question={t.question} light={light} currentRevision={revision} onChart={(...args)=>actions.current.chart(t.reply!,...args)}/>;
  return <><div className="ag-user"><p>{t.question}</p></div>
   {t.record&&<ArchivedConversationReply record={t.record} light={light} onChart={(...args)=>actions.current.chart(...args)}/>}
+  {t.reply?.trade_advice&&answer}
   {t.note&&(t.noteImportant||!t.reply)&&<p className="ag-note">{t.note}</p>}
   {t.agentPending&&<p className="ag-note" role="status">助手正在解讀這份固定草稿快照…</p>}
   {t.proposal&&<button type="button" className="ag-apply" disabled={locked||revision!==t.proposalRevision} onClick={()=>actions.current.apply(t)}>套用到草稿{revision!==t.proposalRevision?'（欄位已更新，請重新討論）':''}</button>}
-  {t.reply&&<AgentAnswer reply={t.reply} question={t.question} light={light} currentRevision={revision} onChart={(...args)=>actions.current.chart(t.reply!,...args)}/>}
+  {!t.reply?.trade_advice&&answer}
   {t.error&&<p className="ag-error" role="alert">{t.error}</p>}
  </>;
 });
@@ -57,6 +62,8 @@ export default function ConversationWorkspace({market,light,visible,onHistory,on
  const [showLatest,setShowLatest]=useState(false);
  const log=useRef<HTMLDivElement>(null),follow=useRef(true),lastSeen=useRef(0);
  const [input,setInput]=useState(emptyInput),[revision,setRevision]=useState(0),[turns,setTurns]=useState<Turn[]>(()=>archive.items.find(e=>e.id===threadId)?.turns.map((record,i)=>({id:-(i+1),question:record.question,at:record.at,record}))??[]),[text,setText]=useState('');
+ const [riskBudget,setRiskBudget]=useState<RiskBudget>({mode:'usd',value:''});
+ const budgetRef=useRef(riskBudget);
  const ticketPreview=useTicketPreview(input,market);
  const [busy,setBusy]=useState(false),[checking,setChecking]=useState(false),[locked,setLocked]=useState(false),[error,setError]=useState('');
  useEffect(()=>{onBusyChange?.(busy||checking||locked);},[busy,checking,locked,onBusyChange]);
@@ -76,7 +83,7 @@ export default function ConversationWorkspace({market,light,visible,onHistory,on
   if(working.current||checkWorking.current||lockedRef.current)return;
   if(entry?.id===threadId)return;
   planNotes.current.set(threadId,planNote);setPlanNote(entry?planNotes.current.get(entry.id)??'':'');
-  cancelDraftAgent();sessions.current.save(threadId,turns.map(t=>t.agentPending?{...t,agentPending:false}:t),currentChart.current);
+  cancelDraftAgent();sessions.current.save(threadId,turns.map(t=>t.agentPending?{...t,...cancelledDraftAnalysis}:t),currentChart.current);
   const cached=entry?sessions.current.get(entry.id):undefined,nextChart=cached?.chart??entry?.chart??null;
   setTurns(cached?.turns??(entry?entry.turns.map(record=>({id:++sequence.current,question:record.question,at:record.at,record})):[]));
   setThreadId(entry?.id??newThreadId());setText('');setChart(nextChart);currentChart.current=nextChart;sideRef.current=null;follow.current=true;setShowLatest(false);setChooseCaseSide(false);if(log.current)log.current.scrollTop=0;
@@ -111,21 +118,45 @@ export default function ConversationWorkspace({market,light,visible,onHistory,on
  inputRef.current=input;checkedRef.current=checked;
  useEffect(()=>()=>{request.current?.abort();draftAgent.current.cancel();},[]);
  const setLock=(v:boolean)=>{lockedRef.current=v;setLocked(v);};
+ const invalidateCheck=()=>{
+  cancelDraftAgent();revisionRef.current+=1;setRevision(revisionRef.current);setError('');
+  const previous=checkedRef.current;
+  if(previous){setChecked(null);checkedRef.current=null;void api(`/broker/drafts/${previous.draft.id}/cancel`,{}).catch(()=>{});}
+ };
  const patch=(p:InputPatch)=>{
   if(lockedRef.current)return;const next=patchInput(inputRef.current,p);if(JSON.stringify(next)===JSON.stringify(inputRef.current))return;
-  cancelDraftAgent();inputRef.current=next;revisionRef.current+=1;setRevision(revisionRef.current);setInput(next);setError('');
-  const previous=checkedRef.current;if(previous){setChecked(null);checkedRef.current=null;void api(`/broker/drafts/${previous.draft.id}/cancel`,{}).catch(()=>{});}
+  inputRef.current=next;setInput(next);invalidateCheck();
+ };
+ const changeRiskBudget=(next:RiskBudget)=>{
+  if(lockedRef.current)return;
+  const previous=budgetRef.current;
+  budgetRef.current=next;setRiskBudget(next);
+  if(JSON.stringify(riskBudgetFields(previous))!==JSON.stringify(riskBudgetFields(next)))invalidateCheck();
  };
  const annotate=(id:number,part:Partial<Turn>)=>setTurns(items=>items.map(t=>t.id===id?{...t,...part}:t));
- const cancelDraftAgent=()=>{draftAgent.current.cancel();if(pendingAgent.current!==null){annotate(pendingAgent.current,{agentPending:false,noteImportant:true,note:'助手解讀已停止顯示；保留原草稿的程式檢查，欄位變更後請重新檢查。'});pendingAgent.current=null;}};
+ const cancelDraftAgent=()=>{draftAgent.current.cancel();if(pendingAgent.current!==null){annotate(pendingAgent.current,cancelledDraftAnalysis);pendingAgent.current=null;}};
  const send=async(question:string,forcedSide?:Side)=>{
   if(working.current||!question.trim())return;working.current=true;setBusy(true);setError('');setText('');
   const id=++sequence.current,sentRevision=revisionRef.current;setTurns(v=>[...v,{id,question,at:new Date().toISOString()}]);
   const selectedOptions={...assistantSettings.requestOptions};
   const controller=new AbortController();request.current=controller;const timeout=window.setTimeout(()=>controller.abort(),180000);
   const post=async<T,>(path:string,body:unknown):Promise<T>=>{const r=await fetch('/api'+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal:controller.signal});const v=await r.json().catch(()=>null);if(!r.ok||v===null)throw Error(typeof v?.detail==='string'?v.detail:'盤面服務暫時無法回覆，請稍後再試。');return v;};
+  const requestAnalysis=async(message:string,side:Side|null,advice_mode?:AdviceMode)=>{
+   const reply=await post<MarketReply>('/assistant/live-chat',{
+    message,llm_enabled:true,...selectedOptions,conversation_id:threadId,conversation:buildDialogueMemory(turns,threadId),
+    previous_questions:turns.slice(-4).map(t=>t.question.slice(0,600)),
+    ...(side?{side}:{}),advice_mode,include_cases:Boolean(side),include_macro:requestsMacroContext(question),
+    draft:{...inputRef.current,...riskBudgetFields(budgetRef.current)},input_revision:revisionRef.current,
+   });
+   annotate(id,{reply});
+  };
   try{
-   if(goldQuestionKind(question)){
+   const intentMode=adviceMode(question,adviceSide(question));
+   if(intentMode==='COMPARE'){
+    await requestAnalysis(question,inputRef.current.side??sideRef.current,'COMPARE');
+    return;
+   }
+   if(!intentMode&&goldQuestionKind(question)){
     if(import.meta.env.MODE==='pages'){annotate(id,{error:'黃金知識與事件工具需啟動本機後端。'});return;}
     const reply=await post<MarketReply>('/assistant/gold-chat',{message:question,llm_enabled:true,...selectedOptions,conversation_id:threadId,conversation:buildDialogueMemory(turns,threadId)});
     annotate(id,{reply});return;
@@ -142,8 +173,7 @@ export default function ConversationWorkspace({market,light,visible,onHistory,on
     return;
    }
    const safeQuestion=['PREPARE','EDIT'].includes(interpretation.intent)?`分析${side==='BUY'?'做多':side==='SELL'?'做空':''}想法的盤面支持、相反訊號與案例差異。`:question;
-   const reply=await post<MarketReply>('/assistant/live-chat',{message:safeQuestion,llm_enabled:true,...selectedOptions,conversation_id:threadId,conversation:buildDialogueMemory(turns,threadId),previous_questions:turns.slice(-4).map(t=>t.question.slice(0,600)),...(side?{side}:{}),include_cases:Boolean(side),include_macro:requestsMacroContext(question),draft:{...inputRef.current},input_revision:revisionRef.current});
-   annotate(id,{reply});
+   await requestAnalysis(safeQuestion,side,adviceMode(question,side));
   }catch(e){annotate(id,{error:controller.signal.aborted?'分析逾時或已取消，請重試。':e instanceof Error?e.message:'盤面分析失敗。'});}
   finally{window.clearTimeout(timeout);working.current=false;setBusy(false);}
  };
@@ -152,27 +182,30 @@ export default function ConversationWorkspace({market,light,visible,onHistory,on
   if(checkWorking.current||lockedRef.current)return;
   setErrorOrigin(origin);
   const sent=revisionRef.current,v={...inputRef.current};const missing=missingInput(v);if(missing.length){setInline(true);setError('請先填寫：'+missing.join('、'));return;}
-  cancelDraftAgent();const modelOptions={...assistantSettings.requestOptions};
-  const explain=Boolean(assistantSettings.status?.configured&&assistantSettings.status.enabled&&(modelOptions.provider??assistantSettings.status.provider)!=='program');
+  cancelDraftAgent();
+  const configuredProvider=assistantSettings.status?.provider;
+  const provider=assistantSettings.selection.provider??(configuredProvider==='program'||configuredProvider==='codex'||configuredProvider==='openai_compatible'?configuredProvider:'claude_code');
+  const modelOptions=requestModelOptions(assistantSettings.status,{...assistantSettings.selection,provider});
+  const explain=provider!=='program';
   checkWorking.current=true;setChecking(true);setError('');
   try{
    const previous=checkedRef.current;if(previous){await api(`/broker/drafts/${previous.draft.id}/cancel`,{});setChecked(null);checkedRef.current=null;}
-   const draft=await api<CheckedOrder>('/broker/drafts',{...v,limit_price:v.order_type==='LIMIT'?v.limit_price:null,sl:v.sl.trim()||null,tp:v.tp.trim()||null,retrieval_method:'context_contract_v1',input_revision:sent,plan_note:planNote.trim()||turns.filter(t=>t.question!=='檢查目前委託').at(-1)?.question||'',conversation_id:threadId});
+   const draft=await api<CheckedOrder>('/broker/drafts',{...v,...riskBudgetFields(budgetRef.current),limit_price:v.order_type==='LIMIT'?v.limit_price:null,sl:v.sl.trim()||null,tp:v.tp.trim()||null,retrieval_method:'context_contract_v1',input_revision:sent,plan_note:planNote.trim()||turns.filter(t=>t.question!=='檢查目前委託').at(-1)?.question||'',conversation_id:threadId});
    if(!acceptRevision(sent,revisionRef.current)){await api(`/broker/drafts/${draft.id}/cancel`,{});setError('欄位已變更，舊檢查已取消。請用最新欄位重新檢查。');return;}
    const next={draft,revision:sent};setChecked(next);checkedRef.current=next;setReviewOrigin(origin);
    if(draft.plan_record_error)setError(draft.plan_record_error);
-   const id=++sequence.current;setTurns(t=>[...t,{id,question:'檢查目前委託',at:new Date().toISOString(),reply:draft.analysis_reply,agentPending:explain,noteImportant:true,note:explain?'程式檢查完成，請核對委託與風險；助手解讀不延長草稿有效時間。':'程式檢查完成；目前助手未啟用或未就緒。請核對委託內容與風險，再由你確認。'}]);
+   const id=++sequence.current;setTurns(t=>[...t,{id,question:'檢查目前委託',at:new Date().toISOString(),agentPending:explain,note:explain?undefined:'請在助手設定選擇 AI 助手，再重新檢查委託。'}]);
    if(explain){
     pendingAgent.current=id;
     void draftAgent.current.start(draft,modelOptions,async(path,body,signal)=>{const response=await fetch('/api'+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal});const value=await response.json();if(!response.ok)throw Error(typeof value?.detail==='string'?value.detail:'助手解讀暫不可用。');return value;},result=>{
      if(checkedRef.current?.draft.id!==draft.id||revisionRef.current!==sent)return;
      pendingAgent.current=null;
      if(result.status==='done'&&isModelAnalysis(result.reply.provider)){
-      const rebound=rebindDraftChart(currentChart.current,draft.analysis_reply,result.reply);
-      if(rebound!==currentChart.current){currentChart.current=rebound;setChart(rebound);}
-      annotate(id,{agentPending:false,reply:result.reply,noteImportant:true,note:'助手依原草稿快照解讀；程式檢查與人工確認規則不變。'});
+      annotate(id,{agentPending:false,reply:result.reply});
+     }else{
+      const detail=result.status==='error'?result.message:result.reply.llm_status==='invalid_grounding'?'AI 回覆未通過資料核對。':result.reply.llm_status==='market_unavailable'?'這份草稿沒有有效行情，請更新盤面。':'請檢查助手連線。';
+      annotate(id,{agentPending:false,error:`助手未能完成這次委託分析。 ${detail} 請重新檢查委託。`});
      }
-     else annotate(id,{agentPending:false,noteImportant:true,note:'助手未能完成解讀，保留程式檢查結果。'+(result.status==='error'?result.message:'請確認模型連線；你仍需自行核對委託。')});
     });
    }
   }catch(e){setError(e instanceof Error?e.message:'委託檢查失敗');}finally{checkWorking.current=false;setChecking(false);}
@@ -186,7 +219,7 @@ export default function ConversationWorkspace({market,light,visible,onHistory,on
  const orderReview=checked&&<ConversationOrderReview key={checked.draft.id} draft={checked.draft} checkedRevision={checked.revision} currentRevision={revision} accountUpdated={market?.account?.updated_at_utc} onClear={()=>{cancelDraftAgent();setChecked(null);checkedRef.current=null;setLock(false);}} onLock={setLock} onHistory={()=>{setToolsTab('broker');setDrawer(true);setDrawerTab('records');}}/>;
  railRef.current=command=>{if(working.current||checkWorking.current||lockedRef.current)return;if(command==='new')openThread();else if(command==='history')historyDialog.current?.showModal();};
  const sideLabel=input.side==='BUY'?'做多':input.side==='SELL'?'做空':'尚未選方向';
- const chips=['我想做多，現在有哪些支持與相反訊號？','如果做空，有類似案例嗎？','最近有哪些總經事件會影響黃金？'];
+ const chips=['現在該做多還是做空？','我想做多，現在有哪些支持與相反訊號？','如果做空，有類似案例嗎？','最近有哪些總經事件會影響黃金？'];
  const openHistory=()=>{setToolsTab('broker');setDrawer(true);setDrawerTab('records');};
  const openTools=(tab:'plans'|'alerts'|'broker'='plans')=>{setToolsTab(tab);setDrawer(true);setDrawerTab('records');};
  const openPlanThread=(id:string)=>{if(working.current||checkWorking.current||lockedRef.current)return;const entry=archive.items.find(e=>e.id===id);if(entry)openThread(entry);else setHistoryError('原對話已移除，交易計畫中的固定依據仍保留。');};
@@ -215,7 +248,7 @@ export default function ConversationWorkspace({market,light,visible,onHistory,on
      </div>
      {showLatest&&<button type="button" className="ag-latest" onClick={jumpToLatest}>回到最新對話 ↓</button>}
      <div className="ag-size-row"><ConversationResize axis="height" value={chatHeight} target={log} onChange={setChatHeight}/><button type="button" onClick={()=>{setChatHeight(null);setChatShare(null);}}>還原大小</button></div>
-     <div className="ag-dock"><details className="cw-inline" open={inline||(reviewOrigin==='inline'&&Boolean(checked))} onToggle={e=>setInline(e.currentTarget.open)}><summary><strong>準備中委託</strong>{sideLabel} · {input.lot?input.lot+' 手':'手數未填'} · {input.order_type==='LIMIT'?'限價 '+(input.limit_price||'未填'):input.order_type==='MARKET'?'市價':'單型未選'}<small>編輯委託</small></summary><div className="ag-inline-ticket"><SharedTicket preview={ticketPreview} id="chat-ticket" value={input} onPatch={edit} disabled={locked}/><TicketCheckAction id="chat-ticket-check" ready={ready} checking={checking} locked={locked} missing={missing} error={errorOrigin==='inline'?error:undefined} onCheck={()=>void check('inline')}/>{reviewOrigin==='inline'&&orderReview}</div></details>
+     <div className="ag-dock"><details className="cw-inline" open={inline||(reviewOrigin==='inline'&&Boolean(checked))} onToggle={e=>setInline(e.currentTarget.open)}><summary><strong>準備中委託</strong>{sideLabel} · {input.lot?input.lot+' 手':'手數未填'} · {input.order_type==='LIMIT'?'限價 '+(input.limit_price||'未填'):input.order_type==='MARKET'?'市價':'單型未選'}<small>編輯委託</small></summary><div className="ag-inline-ticket"><SharedTicket preview={ticketPreview} id="chat-ticket" value={input} onPatch={edit} disabled={locked} riskBudget={riskBudget} onRiskBudgetChange={changeRiskBudget}/><TicketCheckAction id="chat-ticket-check" ready={ready} checking={checking} locked={locked} missing={missing} error={errorOrigin==='inline'?error:undefined} onCheck={()=>void check('inline')}/>{reviewOrigin==='inline'&&orderReview}</div></details>
       <div className="ag-chips">{chips.map(q=><button type="button" key={q} disabled={busy} onClick={()=>void send(q)}>{q}</button>)}</div>
       <form className="ag-composer" onSubmit={(e:FormEvent)=>{e.preventDefault();void send(text);}}><label className="sr-only" htmlFor="conversation-message">輸入交易想法或委託條件</label><textarea id="conversation-message" rows={1} maxLength={1500} value={text} onChange={e=>setText(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing){e.preventDefault();void send(text);}}} placeholder="和 Agent 說你的想法，例如「買進 0.02 手，停損 4020」"/><button className="ag-send" aria-label="送出對話" disabled={busy||!text.trim()}><DeskIcon name="arrow"/></button></form>
       {(historyError||archive.error)&&<p className="ag-error" role="alert">{historyError||archive.error}</p>}
@@ -224,7 +257,7 @@ export default function ConversationWorkspace({market,light,visible,onHistory,on
     <AgentDrawer resizer={<ConversationResize axis="width" value={chatShare} target={grid} onChange={setChatShare}/>} open={drawer&&visible} tab={drawerTab} onTab={tab=>{if(tab==='records')setToolsTab('plans');setDrawerTab(tab);}} onClose={()=>setDrawer(false)} light={light} market={market}
      draft={{...input,entry_price:input.order_type==='LIMIT'?input.limit_price:input.side==='BUY'?market?.quote.ask:market?.quote.bid,digits:market?.symbol?.digits??2,disabled:locked||market?.quote.status!=='CURRENT'||(market?.quote.age_seconds??Infinity)>5,onPatch:edit}}
      tools={<TradingToolsPanel active={drawer&&visible&&drawerTab==='records'} initialTab={toolsTab} market={market} conversationId={threadId} light={light} onOpenThread={openPlanThread}/>}
-     order={<><h2 className="ag-ticket-title">準備中委託 <small>cTrader DEMO</small></h2><SharedTicket preview={ticketPreview} id="side-ticket" value={input} onPatch={edit} disabled={locked}/><details className="ticket-plan-note"><summary>這筆交易的理由</summary><textarea aria-label="交易計畫理由" rows={2} maxLength={2000} value={planNote} disabled={locked||checking} onChange={e=>setPlanNote(e.target.value)} placeholder="選填；空白時保存最近一次討論問題"/><small>檢查委託時保存當時草稿與分析。</small></details><TicketCheckAction id="side-ticket-check" ready={ready} checking={checking} locked={locked} missing={missing} error={errorOrigin==='side'?error:undefined} onCheck={()=>void check('side')}/>{reviewOrigin==='side'&&orderReview}<p className="fine">先檢查，再核對本筆委託與風險。</p></>}/>
+     order={<><h2 className="ag-ticket-title">準備中委託 <small>cTrader DEMO</small></h2><SharedTicket preview={ticketPreview} id="side-ticket" value={input} onPatch={edit} disabled={locked} riskBudget={riskBudget} onRiskBudgetChange={changeRiskBudget}/><details className="ticket-plan-note"><summary>這筆交易的理由</summary><textarea aria-label="交易計畫理由" rows={2} maxLength={2000} value={planNote} disabled={locked||checking} onChange={e=>setPlanNote(e.target.value)} placeholder="選填；空白時保存最近一次討論問題"/><small>檢查委託時保存當時草稿與分析。</small></details><TicketCheckAction id="side-ticket-check" ready={ready} checking={checking} locked={locked} missing={missing} error={errorOrigin==='side'?error:undefined} onCheck={()=>void check('side')}/>{reviewOrigin==='side'&&orderReview}<p className="fine">先檢查，再核對本筆委託與風險。</p></>}/>
    </div>
   </div>
   <dialog ref={historyDialog} className="ag-history-dialog" aria-labelledby="ag-history-heading"><header><h2 id="ag-history-heading">對話紀錄</h2><button type="button" aria-label="關閉對話紀錄" onClick={()=>historyDialog.current?.close()}>×</button></header><div className="pd-history">{archive.items.length?archive.items.map(entry=><div className="pd-history-entry" key={entry.id}><button className="pd-history-open" type="button" disabled={busy||checking||locked} aria-pressed={entry.id===threadId} onClick={()=>{openThread(entry);historyDialog.current?.close();}}>{entry.title}<small>{new Date(entry.updatedAt).toLocaleString('zh-TW')}</small></button><ConversationHistoryActions entry={entry} busy={busy||checking||locked} onRename={(id,title)=>setArchive(v=>({...v,items:renameConversation(v.items,id,title)}))} onDelete={removeThread}/></div>):<p className="ag-empty">完成對話後會保存在這裡。</p>}</div><ConversationHelp/></dialog>

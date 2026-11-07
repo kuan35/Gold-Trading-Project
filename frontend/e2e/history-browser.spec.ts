@@ -1,10 +1,21 @@
 import {test,expect,type Page} from '@playwright/test';
+import type {State} from '../src/types';
 const start=Date.UTC(2020,0,2)/1000,last=Date.UTC(2026,10,4,10)/1000;
+const replayState:State={
+ mode:'replay',version:1,clock:last,data_source:'synthetic_demo',
+ broker_connected:false,llm_enabled:false,
+ quote:{bid:'2000',ask:'2000.20',time:last},account:{balance:'10000',equity:'10000'},
+ positions:[],orders:[],pending_orders:[],
+ market:{change_pct:'0',range_pct:'0',high:'2002',low:'1999',ma20:null,ma60:null},
+ data_quality:[],
+};
 async function setup(page:Page){
  const calls:Array<{path:string;method:string;query:URLSearchParams}>=[];
  let hold=false,failHourly=false,release!:()=>void;const gate=new Promise<void>(r=>release=r);
  await page.route('**/api/**',async r=>{
   const u=new URL(r.request().url()),p=u.pathname,m=r.request().method();calls.push({path:p,method:m,query:u.searchParams});
+  if(p==='/api/state')return r.fulfill({json:replayState});
+  if(p==='/api/audit')return r.fulfill({json:{source_files:0,total_gold_records:0,period:'synthetic',groups:[],limitations:[],refreshed_at:'2026-01-01T00:00:00Z',source:'synthetic_demo'}});
   if(p==='/api/history/metadata'||p==='/api/history/refresh')return r.fulfill({json:{status:'AVAILABLE',indexing:false,first:start,last,sources:[{id:'reference',label:'參考歷史行情',first:start,last,count:400000}]}});
   if(p==='/api/history/bars'){
    const at=Number(u.searchParams.get('at')),interval=u.searchParams.get('interval')!,span=interval==='1h'?3600:interval==='15m'?900:300;

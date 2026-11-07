@@ -1,9 +1,5 @@
 import type {MarketReply} from './LiveAssistant';
 import type {ModelSelection} from './modelSettings';
-import type {ArchivedChart} from './analysisHistory';
-export function rebindDraftChart(chart:ArchivedChart|null,before:Pick<MarketReply,'snapshot_id'|'analysis_ref'>,after:Pick<MarketReply,'snapshot_id'|'analysis_ref'>):ArchivedChart|null{
- return chart&&after.analysis_ref&&chart.id===before.snapshot_id&&before.snapshot_id===after.snapshot_id&&chart.analysis_ref===before.analysis_ref?{...chart,analysis_ref:after.analysis_ref}:chart;
-}
 type OriginalDraft={id:string;analysis_snapshot_id:string;analysis_as_of_utc:string};
 type Result={status:'done';reply:MarketReply}|{status:'error';message:string};
 type Post=(path:string,body:unknown,signal:AbortSignal)=>Promise<MarketReply>;
@@ -14,7 +10,7 @@ export class DraftAgentSession{
   this.cancel();const generation=this.generation,controller=new AbortController();this.controller=controller;
   const timer=setTimeout(()=>controller.abort(),180000);
   try{
-   const reply=await post('/assistant/draft-chat',{draft_id:draft.id,message:'請用白話解釋這份待確認委託的盤面支持、相反依據、相似案例與差異，以及程式算出的停損停利風險。沒有案例時請明說。這是草稿建立時的固定快照，不是現在行情；不要修改草稿或指示送單。',llm_enabled:true,...options},controller.signal);
+   const reply=await post('/assistant/draft-chat',{draft_id:draft.id,message:'先用一句白話說明這筆委託的方向、進場條件與主要風險，再解釋支持和相反訊號、相似案例及差異，以及已計算的停損停利風險。歷史配對不足時，請說明不足的是可同時試算多空的歷史情境，不要把它當成盤面沒有方向。只依這份固定草稿快照回答，不要修改草稿或指示送單。',llm_enabled:true,...options},controller.signal);
    if(generation!==this.generation)return;
    if(reply.snapshot_id!==draft.analysis_snapshot_id||reply.as_of_utc!==draft.analysis_as_of_utc||reply.analysis_mode!=='draft_snapshot'||reply.market_status!=='FROZEN')throw Error('助手回覆與原委託快照不一致。');
    receive({status:'done',reply});

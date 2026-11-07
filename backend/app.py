@@ -27,13 +27,15 @@ from .case_review import review_cases,selected_charts
 from .tick_volume import tick_frame
 from .ticket_preview import ticket_preview
 from .trade_risk import risk_summary,size_for_risk
+from .trade_advice import signal_for_query, trade_advice
+from .trade_protection_advice import protection_advice
 from .trade_plans import TradePlanStore,enrich as enrich_trade_plan
 from .trade_alerts import LocalAlerts,AlertMonitor,AlertError
 from .market_clock import SOURCE_CLOCK_SKEW_SECONDS
 from .history_library import HistoryLibrary,HistoryError,START as HISTORY_START
 from .dialogue_memory import mask_context_text
 from .case_vision import preview as case_vision_preview
-from .live_assistant import respond_live,respond_context,build_live_context
+from .live_assistant import respond_live,respond_context,build_live_context,QUOTE_CLOCK_TOLERANCE_MS
 from .case_analysis import prepare_analysis
 from .analysis_snapshots import SnapshotStore
 from .analysis_history import AnalysisHistory
@@ -151,6 +153,8 @@ class BrokerDraftInput(Body):
     input_revision:int|None=Field(default=None,ge=0)
     plan_note:str=Field(default='',max_length=2000)
     conversation_id:str|None=Field(default=None,min_length=1,max_length=80)
+    risk_usd:str|None=Field(default=None,max_length=30)
+    equity_pct:str|None=Field(default=None,max_length=30)
 
 
 class RiskSizeInput(Body):
@@ -244,6 +248,7 @@ class LiveChatInput(DialogueFields):
     include_macro:bool=False
     draft:ConversationDraftInput|None=None
     input_revision:int|None=Field(default=None,ge=0)
+    advice_mode:Literal['COMPARE','SIDE']|None=None
 
 
 class DraftChatInput(DialogueFields):
@@ -270,6 +275,8 @@ class ConversationDraftInput(Body):
     limit_price:str=Field(default='',max_length=30)
     sl:str=Field(default='',max_length=30)
     tp:str=Field(default='',max_length=30)
+    risk_usd:str|None=Field(default=None,max_length=30)
+    equity_pct:str|None=Field(default=None,max_length=30)
 
 
 class InterpretInput(Body):
@@ -414,6 +421,57 @@ def _live_retrieval(snapshot: dict, side: str, method: str = CONTEXT_METHOD) -> 
     result.setdefault('query_status',query['status'])
     result.setdefault('query_reason',query.get('reason'))
     return result, query
+
+
+def _advice_costs():
+    totals = {}
+    try:
+        for scenario in ('baseline', 'stress'):
+            prefix = f'GOLD_ADVICE_{scenario.upper()}'
+            values = [Decimal(os.environ[f'{prefix}_{kind}_USD_PER_OZ'])
+                      for kind in ('SPREAD', 'COMMISSION', 'SLIPPAGE')]
+            if any(not v.is_finite() or not 0 <= v <= 1000 for v in values):
+                return None
+            totals[scenario + '_usd_per_oz'] = str(sum(values))
+    except (KeyError, ArithmeticError, ValueError):
+        return None
+    return totals
+
+
+def _frozen_trade_advice(snapshot, query, side, draft, now):
+    risk = scenario = None
+    if draft and draft.get('side') in ('BUY', 'SELL') and (side is None or draft['side'] == side):
+        preview = ticket_preview(snapshot, draft, now=now)
+        current = risk_summary(snapshot, draft, preview, now=now)
+        sizing = size_for_risk(snapshot, draft, risk_usd=draft.get('risk_usd'),
+                               equity_pct=draft.get('equity_pct'), now=now)
+        loss, budget = current['stop_loss_usd'], sizing['budget_usd']
+        exceeds = loss is not None and budget is not None and Decimal(loss) > Decimal(budget)
+        risk = dict(stop_loss_usd=loss, equity_pct=current['stop_equity_pct'], budget_usd=budget,
+                    over_budget=exceeds, suggested_lot=sizing['lot'] if exceeds else None)
+        if preview['status'] == 'AVAILABLE':
+            scenario = dict(side=draft['side'], entry=preview['entry_price'],
+                            sl=(preview.get('sl') or {}).get('price'), tp=(preview.get('tp') or {}).get('price'))
+    index = getattr(engine.cases, 'context_index', None)
+    advice = trade_advice(index, query, case_forward_store, _advice_costs(), side=side, draft=scenario, risk=risk)
+    signal = signal_for_query(query)
+    direction = side or advice['side'] or signal['side']
+    if direction != signal['side']:
+        signal = {}
+    use_limit = bool(draft and draft.get('side') == direction and draft.get('order_type') == 'LIMIT')
+    quote = snapshot.get('quote') or {}
+    if use_limit:
+        entry = draft.get('limit_price')
+    else:
+        entry = quote.get('ask' if direction == 'BUY' else 'bid')
+    bars = (query['pre_entry_bars']['5m'][-6:]
+            if signal.get('kind') in ('LOWER_RECLAIM','UPPER_RECLAIM') else ())
+    levels = protection_advice(signal, entry=entry, digits=(snapshot.get('symbol') or {}).get('digits'),
+                               recent_low=min((Decimal(str(b['low'])) for b in bars), default=None),
+                               recent_high=max((Decimal(str(b['high'])) for b in bars), default=None))
+    advice['protection'] = dict(levels, entry_basis='草稿限價' if use_limit else '查詢快照報價',
+                                conditional=advice['action'] not in ('BUY','SELL'))
+    return advice
 
 
 def _analysis_operation_sources(retrieval):
@@ -588,7 +646,9 @@ def broker_demo_draft(request: Request, body: BrokerDraftInput):
     draft=broker_orders.create(snapshot, side=body.side, lot=body.lot,
                                 order_type=body.order_type, limit_price=body.limit_price,
                                 sl=body.sl, tp=body.tp, retrieval=retrieval)
-    bundle=prepare_analysis(snapshot,body.side,retrieval,query,profiles=getattr(engine.cases,'candidate_profiles',{}),now=captured_at,operation_sources=_analysis_operation_sources(retrieval),draft=body.model_dump(exclude={'plan_note','conversation_id'}),input_revision=body.input_revision,forward_store=case_forward_store,execution_store=case_execution_store)
+    values=body.model_dump(exclude={'plan_note','conversation_id'})
+    advice=_frozen_trade_advice(snapshot,query,body.side,values,captured_at) if body.retrieval_method==CONTEXT_METHOD else None
+    bundle=prepare_analysis(snapshot,body.side,retrieval,query,profiles=getattr(engine.cases,'candidate_profiles',{}),now=captured_at,operation_sources=_analysis_operation_sources(retrieval),draft=values,input_revision=body.input_revision,forward_store=case_forward_store,execution_store=case_execution_store,advice=advice)
     saved=analysis_snapshots.put(bundle,draft_id=draft['id'])
     reply=respond_context(saved['context'],'說明草稿建立時的盤面支持與相反依據、案例差異',enabled=False,frozen=True)
     reply=_save_analysis_reply(reply,saved)
@@ -738,11 +798,19 @@ def live_chat(request:Request,body:LiveChatInput):
     macro=select_context(macro_calendar.snapshot(refresh=True),body.message) if body.include_macro else None
     snapshot=demo_market_stream.query_snapshot()
     now=_analysis_capture_time(snapshot);retrieval=None;query={}
-    if body.include_cases:
-        if build_live_context(snapshot,now=now)['status']=='CURRENT':retrieval,query=_live_retrieval(snapshot,body.side)
+    mode=body.advice_mode
+    analysis_side=body.side
+    if body.include_cases or mode:
+        if build_live_context(snapshot,now=now)['status']=='CURRENT':
+            if mode=='COMPARE':
+                signal=signal_for_query(profile_from_live_dual_snapshot(snapshot))
+                analysis_side=signal['side'] or body.side
+            retrieval,query=_live_retrieval(snapshot,analysis_side)
         else:retrieval=context_unavailable('BROKER_QUOTE_UNAVAILABLE')
-        retrieval=dict(retrieval,query_side=body.side)
-    bundle=prepare_analysis(snapshot,body.side,retrieval,query,profiles=getattr(engine.cases,'candidate_profiles',{}),now=now,operation_sources=_analysis_operation_sources(retrieval),draft=body.draft.model_dump() if body.draft else None,input_revision=body.input_revision,forward_store=case_forward_store,execution_store=case_execution_store)
+        retrieval=dict(retrieval,query_side=analysis_side)
+    draft=body.draft.model_dump() if body.draft else None
+    advice=_frozen_trade_advice(snapshot,query,body.side if mode=='SIDE' else None,draft,now) if mode else None
+    bundle=prepare_analysis(snapshot,analysis_side,retrieval,query,profiles=getattr(engine.cases,'candidate_profiles',{}),now=now,operation_sources=_analysis_operation_sources(retrieval),draft=draft,input_revision=body.input_revision,forward_store=case_forward_store,execution_store=case_execution_store,advice=advice)
     if macro is not None:bundle=augment_bundle(bundle,macro)
     saved=analysis_snapshots.put(bundle)
     reply=respond_context(saved['context'],body.message,enabled=body.llm_enabled,previous_questions=body.previous_questions,conversation_id=body.conversation_id,conversation=[row.model_dump() for row in body.conversation],**_model_options(body))
@@ -774,6 +842,10 @@ def _analysis_clock_wait(seconds):
     timing.sleep(seconds)
 
 
+MAX_ANALYSIS_SOURCE_LEAD_SECONDS = 0.75
+ANALYSIS_CLOCK_SETTLE_SECONDS = 0.005
+
+
 def _analysis_capture_time(snapshot):
     """Wait briefly for an already received tick; never advance the clock or bars.
 
@@ -782,11 +854,15 @@ def _analysis_capture_time(snapshot):
     """
     now=_analysis_now()
     try:
-        source=datetime.fromisoformat(snapshot['quote']['source_time_utc'].replace('Z','+00:00'))
+        quote=snapshot['quote']
+        if snapshot.get('connection_status')!='CONNECTED' or quote.get('status')!='CURRENT':
+            return now
+        source=datetime.fromisoformat(quote['source_time_utc'].replace('Z','+00:00'))
         if source.tzinfo is None:return now
-        lead=source.timestamp()-now
-        if .1<lead<=.25 and int(source.timestamp())//300==int(now)//300:
-            _analysis_clock_wait(lead+.005)
+        source_time=source.timestamp()
+        lead=source_time-now
+        if QUOTE_CLOCK_TOLERANCE_MS/1000 < lead <= MAX_ANALYSIS_SOURCE_LEAD_SECONDS and int(source_time)//300==int(now)//300:
+            _analysis_clock_wait(lead+ANALYSIS_CLOCK_SETTLE_SECONDS)
             return _analysis_now()
     except (KeyError,TypeError,ValueError,AttributeError):pass
     return now

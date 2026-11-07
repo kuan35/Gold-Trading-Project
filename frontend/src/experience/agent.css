@@ -473,6 +473,16 @@ body.ag-resizing iframe,body.ag-resizing canvas{pointer-events:none}
 .ticket-risk-panel details label,.ticket-plan-note textarea{display:block;margin-block:10px}
 .ticket-risk-panel select,.ticket-risk-panel input,.ticket-plan-note textarea{width:100%;min-height:40px;box-sizing:border-box;background:var(--input,#0c1117);color:inherit;border:1px solid var(--border,#303944);border-radius:9px;padding:9px 10px;font:inherit;font-size:14px}
 .ticket-sizing-result{padding-block:8px}.ticket-sizing-result p{font-size:14px}.ticket-risk-panel button{max-width:100%;white-space:normal}
+.trade-advice{border:1px solid var(--line);border-inline-start:3px solid var(--primary);border-radius:12px;padding:14px;margin-block:10px 16px;overflow-wrap:anywhere}
+.trade-advice h3,.trade-advice h4{margin:0 0 5px}
+.trade-advice p{margin:4px 0 8px}
+.trade-advice-evidence{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:12px;margin-block:12px}
+.trade-advice-evidence section{border-top:1px solid var(--line);padding-top:9px}
+.trade-advice-evidence dl,.trade-advice-evidence dd{margin:0}
+.trade-advice-evidence dl>div+div{margin-top:7px}
+.trade-advice-evidence dt{color:var(--muted);font-size:.88em}
+.trade-advice-evidence dd{font-variant-numeric:tabular-nums}
+.trade-advice-draft{border-top:1px solid var(--line);padding-top:9px}
 .ag-head-tools{flex-wrap:wrap}.ag-head-tools>.ag-ghost{white-space:nowrap}
 .trading-tools-panel{font-size:14px;line-height:1.65}.trading-tools-panel .tabs{display:flex;gap:4px;position:sticky;top:0;background:var(--bg,#10151c);z-index:2}
 .trading-tools-panel .tabs button{flex:1;padding:9px 5px;white-space:normal;font-size:13px}

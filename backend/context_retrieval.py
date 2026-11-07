@@ -64,18 +64,19 @@ class ContextIndex(DualPathIndex):
                 self.invalid_profiles += 1
         self.cases = [case for case in self.cases if case['id'] in self.features]
 
-    def retrieve(self,query,side,*,exclude_group=None,top_k=5):
-        if type(top_k) is not int or not 1 <= top_k <= 20:
-            raise ValueError('invalid top_k')
-        try:
-            q = market_features(query)
+    def _screen(self, query, side, exclude_group):
+        q = market_features(query)
+        if side is None:
+            buys, buy_counts = self.eligible(query, 'BUY', exclude_group)
+            sells, sell_counts = self.eligible(query, 'SELL', exclude_group)
+            pool = buys + sells
+            counts = Counter(buy_counts) + Counter(sell_counts)
+        else:
             pool,counts = self.eligible(query,side,exclude_group)
-        except (KeyError,TypeError,ValueError,ArithmeticError) as exc:
-            return unavailable(str(exc) or 'CONTEXT_QUERY_UNAVAILABLE',tick_enabled=self.tick_volume_store is not None)
         measured = [dict(case_id=case['id'],group=case['group'],
                          **pair_metrics(q,self.features[case['id']])) for case in pool]
         evaluated = evaluate_rows(measured,self.descriptions,THRESHOLDS,top_k=len(pool) or 1)
-        ranked = evaluated['rows']
+        retained = evaluated['_passed_rows']
         tick=dict(enabled=self.tick_volume_store is not None)
         volume_rejections=Counter()
         if self.tick_volume_store is not None:
@@ -94,8 +95,23 @@ class ContextIndex(DualPathIndex):
                     else:
                         key='tick_volume_ratio' if check['reason']=='TICK_RATIO_EXCEEDS_LIMIT' else 'tick_volume_source' if check['reason']=='SOURCE_MISMATCH' else 'tick_volume_unavailable'
                         volume_rejections[key]+=1
-            ranked=distinct_rows(retained,self.descriptions,top_k=None)
             tick.update(retained_rows=len(retained))
+        return q, pool, counts, evaluated, retained, tick, volume_rejections
+
+    def rank_for_advice(self, query, exclude_group=None):
+        """Return admitted observations before deduplication for all three statistics."""
+        if self.tick_volume_store is None:
+            return []
+        return self._screen(query, None, exclude_group)[4]
+
+    def retrieve(self,query,side,*,exclude_group=None,top_k=5):
+        if type(top_k) is not int or not 1 <= top_k <= 20:
+            raise ValueError('invalid top_k')
+        try:
+            q, pool, counts, evaluated, retained, tick, volume_rejections = self._screen(query, side, exclude_group)
+        except (KeyError,TypeError,ValueError,ArithmeticError) as exc:
+            return unavailable(str(exc) or 'CONTEXT_QUERY_UNAVAILABLE',tick_enabled=self.tick_volume_store is not None)
+        ranked = distinct_rows(retained, self.descriptions, top_k=None)
         summary = summarize_candidate_tier(ranked,self.lookup)
         counts_out = summary['counts']; known = summary['total']-counts_out['unknown']
         status = ('UNCERTAIN_EVENT' if q['event']=='BOUNDARY_UNKNOWN' else
@@ -143,7 +159,7 @@ class ContextIndex(DualPathIndex):
                 thresholds=dict(THRESHOLDS),tick_volume=tick,ruleset=RULESET if tick['enabled'] else 'context_price_v1',query_market_text=description(q),query_event_stage=q['event'],
                 query_event_label=EVENT_LABELS[q['event']],query_tail_direction=TAIL_LABELS[q['tail_direction']],
                 full_pool=len(pool),eligible_rows=len(pool),context_passed_rows=evaluated['passed_rows'],passed_rows=tick.get('retained_rows',evaluated['passed_rows']),passed_unique=len(ranked),
-                excluded_overlap_rows=counts['excluded_overlap_rows'],excluded_invalid_profiles=self.invalid_profiles,
+                excluded_overlap_rows=counts.get('excluded_overlap_rows',0),excluded_invalid_profiles=self.invalid_profiles,
                 rejections=dict(Counter(evaluated['rejections'])+volume_rejections),first_rejection=dict(Counter(evaluated['first_rejection'])+volume_rejections),
                 rejection_labels=REJECTION_LABELS,reason=reason),
             sufficiency=dict(status='limited' if passed else 'insufficient',label='符合試驗情境條件' if passed else '本次無符合案例',

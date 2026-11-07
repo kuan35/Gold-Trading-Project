@@ -1,5 +1,7 @@
 # 直接貼給本機Codex或Claude Code
 
+2026-11-07 版已加入 Agent 綜合建議與歷史多空試算，安裝時讀 TEAM_HANDOFF.md 最上方。本人啟用模型後，可在介面點更新盤面或檢查委託使用；成本假設依 .env.local.example 的六個 GOLD_ADVICE 欄位設定。
+
 本輪新增的ROI語意與完整同學prompt見docs/TEAM_START_20261104.md。
 
 你是在使用者本機協助安裝Gold Desk的coding agent。先讀本repo的README、

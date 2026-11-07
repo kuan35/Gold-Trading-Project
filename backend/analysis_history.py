@@ -9,6 +9,7 @@ from .engine import DomainError
 MAX_BYTES=32*1024*1024
 REPLY_FIELDS={'message','provider','model','requested_effort','llm_status','source','market_status','as_of_utc','quote_time_utc','snapshot_id','query_as_of_utc','analysis_mode','case_comparison','outcome_analysis','sections','followups','evidence','macro_context','gold_relation','knowledge_sources'}
 FORBIDDEN={'draft_id','idempotency_key','confirmation_key','confirm_key','access_token','refresh_token','api_key','client_secret','proposal'}
+REPLY_FIELDS.add('trade_advice')
 def clean(value):
     if isinstance(value,dict):return {k:clean(v) for k,v in value.items() if k not in FORBIDDEN}
     if isinstance(value,list):return [clean(v) for v in value]

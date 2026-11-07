@@ -132,6 +132,13 @@ def build_case_context(retrieval,query=None,*,snapshot_id=None):
             result['cases'].append(dict(ref=ref,case_id=case.get('id'),metrics=metrics,event=event,tail_direction=tail,
                 similarities=similarities,differences=differences,tick_activity=activity,representative=representative(case)))
             if n<=2:
+                comparable = [m for m in metrics if m['actual'] is not None and m['tolerance'] is not None
+                              and Decimal(str(m['tolerance'])) > 0]
+                if comparable:
+                    furthest = max(comparable, key=lambda m: Decimal(str(m['actual'])) / Decimal(str(m['tolerance'])))
+                    key = f'hist{n}_difference_state'
+                    values[key] = furthest['label']+'最接近該項容忍上限'
+                    pieces.insert(0, '{{'+key+'}}。')
                 values.update({f'hist{n}_event_state':event,f'hist{n}_tail_state':tail,f'hist{n}_query_tail_state':qtail})
                 fact('history.case'+str(n),ref+'符合目前情境條件，事件為{{hist'+str(n)+'_event_state}}；案例末段{{hist'+str(n)+'_tail_state}}、目前末段{{hist'+str(n)+'_query_tail_state}}。'+''.join(pieces)+'仍有差距，不是完全重疊；容忍尚未人工校準。',values)
         result['counts']['displayed']=len(result['cases'])

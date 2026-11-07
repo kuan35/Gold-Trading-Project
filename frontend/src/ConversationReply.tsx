@@ -9,6 +9,8 @@ import type {MarketReply} from './LiveAssistant';import CaseComparison from './C
 import CaseOperations,{operationLabel} from './CaseOperations';
 import {trendSignals} from './discussionPanels';
 import CaseOutcomePanel from './CaseOutcomePanel';import DraftScenarioRisk from './DraftScenarioRisk';
+import TradeAdviceCard from './TradeAdviceCard';
+import {oldRevision} from './caseOutcomes';
 export function compactSections(sections:MarketReply['sections']){
  const first=sections[0],hour=sections.find(s=>s!==first&&s.fact_ids.some(id=>id.startsWith('f1.')));
  return first?[first,...(hour?[hour]:sections.slice(1,2))]:[];
@@ -42,12 +44,13 @@ export function AnswerSection({section:s,onChart}:{section:MarketReply['sections
  const [expanded,setExpanded]=useState(false),id=useId(),long=s.text.length>170;
  return <section className="cw-answer-section"><h3>{s.title}</h3><p id={id} className={long&&!expanded?'cw-answer-preview':undefined}>{s.text}</p><div className="cw-answer-actions">{long&&<button type="button" aria-expanded={expanded} aria-controls={id} onClick={()=>setExpanded(!expanded)}>{expanded?'收合這段':'展開這段'}</button>}{onChart&&<button type="button" className="cw-point-link" onClick={onChart}>看圖</button>}</div></section>;
 }
-export default function ConversationReply({reply:r,onChart,question='',light=false,currentRevision}:{reply:MarketReply;onChart:(mode:'analysis'|'cases',period?:'5m'|'15m'|'1h',selection?:ComparisonSelection)=>void;question?:string;light?:boolean;currentRevision?:number}){
- const c=r.case_comparison,first=c?.cases[0],p=first?.representative,displayed=r.analysis_mode==='macro_events'&&r.macro_context&&!isModelAnalysis(r.provider)?[]:asksVolume(question)&&!/趨勢|走勢|RSI|MACD|支撐|壓力|波動|ATR/i.test(question)&&!isModelAnalysis(r.provider)?[]:compactReplySections(r,question);
+export default function ConversationReply({reply:r,onChart,question='',light=false,currentRevision,showTradeAdvice=true,showSummary=true}:{reply:MarketReply;onChart:(mode:'analysis'|'cases',period?:'5m'|'15m'|'1h',selection?:ComparisonSelection)=>void;question?:string;light?:boolean;currentRevision?:number;showTradeAdvice?:boolean;showSummary?:boolean}){
+ const c=r.case_comparison,first=c?.cases[0],p=first?.representative,displayed=!showSummary||r.analysis_mode==='macro_events'&&r.macro_context&&!isModelAnalysis(r.provider)?[]:asksVolume(question)&&!/趨勢|走勢|RSI|MACD|支撐|壓力|波動|ATR/i.test(question)&&!isModelAnalysis(r.provider)?[]:compactReplySections(r,question);
  const provider=analysisLabel(r.provider)+(isModelAnalysis(r.provider)&&r.llm_status==='partial_grounding'?'＋程式':'');
  const signals=trendSignals(r,c?.side==='BUY'||c?.side==='SELL'?c.side:null);
  const signalPanel=(title:string,items:typeof signals.support,kind:string)=><section className={`pd-signal pd-signal-${kind}`}><h3>{title}</h3>{items.length?<ul>{items.map(s=><li key={s.factId}><span>{s.period}</span><div>{s.text}<small>已收棒</small>{r.snapshot_id&&<button type="button" onClick={()=>onChart('analysis',s.period)}>看圖</button>}</div></li>)}</ul>:<p>{kind==='support'?'目前沒有明確的同向趨勢訊號。':'目前沒有明確的反向趨勢訊號。'}</p>}</section>;
  return <article className="cw-reply"><header><strong>{r.market_status==='INFORMATION'?'黃金知識與事件':'盤面重點'}</strong><small>{new Date(r.as_of_utc).toLocaleTimeString('zh-TW',{hour12:false})} · {provider}{r.model?` · ${selectionLabel(r.model,r.requested_effort)}`:''}</small></header>
+  {showTradeAdvice&&r.trade_advice&&<TradeAdviceCard advice={r.trade_advice} staleDraft={Boolean(r.outcome_analysis&&oldRevision(r.outcome_analysis,currentRevision))} onChart={r.snapshot_id?()=>onChart('analysis','5m'):undefined}/>}
   {r.analysis_history_error&&<p role="status">{r.analysis_history_error}</p>}
   {r.market_status!=='CURRENT'&&r.market_status!=='FROZEN'&&r.market_status!=='INFORMATION'&&<p role="status">{r.message||'行情尚未就緒，此次無法判讀完整盤面。'}</p>}
   {(displayed.length>0||Boolean(c))&&<div className="pd-answer-grid"><div className="pd-summary">{displayed.map((s,i)=><AnswerSection key={i} section={s} onChart={r.snapshot_id&&s.fact_ids.some(id=>/^f(5|15|1)\./.test(id))?()=>onChart('analysis',s.fact_ids.some(id=>id.startsWith('f1.'))?'1h':s.fact_ids.some(id=>id.startsWith('f15.'))?'15m':'5m'):undefined}/>)}</div>
@@ -62,7 +65,7 @@ export default function ConversationReply({reply:r,onChart,question='',light=fal
   <details className="cw-answer-evidence"><summary>詳細依據{first?' · 案例差異與歷史分布':''}</summary>
    <p className="fine">分析時間：{new Date(r.as_of_utc).toLocaleString('zh-TW',{hour12:false})}。本次回答與案例保留原快照。</p>
    {r.llm_status!=='ok'&&r.llm_status!=='disabled'&&<p>{isModelAnalysis(r.provider)?'部分內容由程式補充。':r.message.split('\n\n')[0]||'目前使用程式摘要；模型暫未提供完整解讀。'}</p>}
-   {r.sections.map((s,i)=><section key={i}><h3>{s.title}</h3><p>{s.text}</p></section>)}
+   {r.sections.filter(s=>showSummary||s.source==='program').map((s,i)=><section key={i}><h3>{s.title}</h3><p>{s.text}</p></section>)}
    {!!r.evidence.length&&<details><summary>逐項數據</summary>{r.evidence.map(f=><p key={f.id}>{factText(f)}</p>)}</details>}
    {c&&<>{c.distribution&&<p>{c.distribution.basis}：{c.distribution.total??'未知'} 群；獲利 {c.distribution.wins??'未知'}／虧損 {c.distribution.losses??'未知'}／持平 {c.distribution.flat??'未知'}／未知 {c.distribution.unknown??'未知'}。</p>}<CaseComparison comparison={c} snapshotId={r.snapshot_id??null} hideCharts/></>}
   </details>

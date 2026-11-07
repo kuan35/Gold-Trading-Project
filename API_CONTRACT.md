@@ -389,7 +389,7 @@ The new method requires 60 closed 5m candles (plus one for ATR metadata) and 20 
 
 Results retain the standard case response, add `retrieval_method`, `hour_path_rank`, `hour_path_distance_pct`, structure keys/labels/match, `volatility_ratio` (metadata only), and query/case descriptions. `path_distance_pct` and `hour_path_distance_pct` are percentage-point RMSE, not match probabilities. `comparison.method` preserves the requested method even for insufficient data. Missing private history does not fall back to synthetic ranking. `UNCALIBRATED` means nearest ranked references, not a calibrated similarity threshold. Replay/chat/Pages retain their prior method.
 
-本機live-chat對已收到、同一5分鐘區間且來源僅領先100..250ms的快照，最多等255ms再用真實本機時間執行原100ms／5秒檢查；不重讀報價、不向前設定時間，跨棒／更大偏差直接拒絕。券商草稿／確認不使用此等待。來源領先造成資料不足時回覆明示時鐘原因。
+本機 live-chat 對已收到、同一五分鐘區間且來源領先超過 100 毫秒、最多 750 毫秒的即時快照，最多等 755 毫秒，再用真實本機時間執行原有 100 毫秒／5 秒檢查。跨棒或更大偏差直接拒絕。等待期間沿用同一份快照，券商草稿與確認規則維持原樣。來源領先造成資料不足時，回覆明示時鐘原因。
 # 2026-10-30：本機案例解讀與 LIVE 唯讀
 
 - `GET /api/live-readonly`：loopback Host/Origin/client守衛，no-store，獨立LIVE程序與設定，回 `{source:ctrader_live_xauusd,environment:live,read_only:true,order_connection:false,quote,account,bars}`。bars為原生5m/15m/1h已收棒；帳戶與損益保留新鮮度。無POST送單／平倉／撤單路由。SDK輸出只允許讀取訊息，TRADE token也不啟用交易。`.env.ctrader.live`須明確指定LIVE帳戶，不繼承DEMO設定。
@@ -402,3 +402,17 @@ Results retain the standard case response, add `retrieval_method`, `hour_path_ra
 # 2026-10-31 additive contract
 
 圖表、部位管理與對話上下文的新增契約見 [workspace_expansion_20261031.md](docs/workspace_expansion_20261031.md)。原確認／防重送流程及LIVE唯讀不變。新增PROTECT/CANCEL意圖與APPLIED保護結果；不能當成成交。
+
+## 下單前建議
+
+本機 `POST /api/assistant/live-chat` 可傳 `advice_mode`。`COMPARE` 比較做多與做空，`SIDE` 檢查指定 `side`。一般盤面問題仍用原欄位。`draft` 可傳 `risk_usd` 或 `equity_pct` 其中一種，DEMO `POST /api/broker/drafts` 則在最外層接收同名欄位。
+
+回覆 `trade_advice` 連同分析快照保存。它包含程式決定的 `action`（BUY、SELL、WAIT、ADJUST）、方向、理由代碼、訊號、試算成本、同盤面 30 分鐘配對統計、交易員原單統計及草稿風險。數值採十進位字串，缺值用 null。報酬分母為進場價格。原單標示未扣成本，同盤面試算則依兩組來回成本扣費。模型只接收去識別化的結論代碼及既有證據模板。
+
+下單前建議與固定草稿分析會提供模型一份訪談原則摘要，以及同一分析快照的支壓、相似處與差異、首例三十分鐘後續觀察、多空歷史試算和草稿風險。市場原值由本機依引用標記填入。新版聊天預設呈現首段模型綜合建議，其餘段落、試算及案例可展開。樣本不足時仍可依當前盤面說明條件式方向，維持程式的進場狀態與人工確認流程。
+
+`trade_advice.protection` 提供建議停損、停利、進場基準、預估報酬／風險與價位依據。突破用區間邊界加緩衝判定失效，目標延伸一個區間高度。收回用最近六根已收棒的極值加緩衝判定失效，目標為區間另一側。等待或調整手數時標為條件式參考。缺有效方向、行情或價格級距時回 `UNAVAILABLE`，附原因。
+
+本機 `.env.local` 提供兩組交易成本假設。依 `.env.local.example` 分別填入點差、佣金與滑價的來回 USD/oz。較高成本總額須大於基準總額，缺設定時建議卡顯示等待。這些欄位為試算假設。
+
+離線重跑在產品根目錄執行 `python -m backend.trade_advice_replay --start 2026-10-01 --end 2026-11-01 --baseline 0.50 --stress 1.00 --output advice_replay/report.json`。日期以 UTC 計，結束日不含在內。輸出留在 private，資料需有已授權的原生行情歸檔及案例側檔。

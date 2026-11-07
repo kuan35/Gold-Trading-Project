@@ -1,4 +1,7 @@
 from types import SimpleNamespace
+import json
+import pytest
+from backend import live_assistant
 from backend.tests.test_case_analysis_api import app,setup
 from fastapi.testclient import TestClient
 
@@ -28,17 +31,28 @@ def test_no_direction_analysis_does_not_retrieve(monkeypatch):
     assert r.status_code==200 and calls==['market']
     assert not (r.json().get('case_comparison') or {}).get('cases')
 
-def test_readonly_analysis_waits_for_small_source_lead_without_refresh_or_relaxed_checks(monkeypatch):
+@pytest.mark.parametrize('lead', [.165, .42, .75])
+def test_readonly_analysis_waits_for_small_source_lead_without_refresh_or_relaxed_checks(monkeypatch, lead):
     from datetime import datetime,timezone
     s,calls,c=setup(monkeypatch)
     start=datetime.fromisoformat(s['quote']['source_time_utc']).timestamp()
-    monkeypatch.setattr(app,'_analysis_now',lambda:start-.165 if not waits else start+.005,raising=False)
+    start=int(start)//300*300+10
+    s['quote']['source_time_utc']=datetime.fromtimestamp(start,timezone.utc).isoformat()
+    monkeypatch.setattr(app,'_analysis_now',lambda:start-lead if not waits else start+.005,raising=False)
     waits=[]
     monkeypatch.setattr(app,'_analysis_clock_wait',lambda value:waits.append(value),raising=False)
-    r=c.post('/api/assistant/live-chat',json={'message':'目前盤面','include_cases':False})
+    def model(*args, **kwargs):
+        assert waits
+        return dict(status='ok',provider='claude_code',text=json.dumps({'sections':[
+            dict(title='綜合建議',text='報價為{{bid}}。',fact_ids=['quote'])]}))
+    monkeypatch.setattr(live_assistant,'explain_context',model)
+    r=c.post('/api/assistant/live-chat',json={'message':'目前盤面','include_cases':False,
+                                          'llm_enabled':True,'provider':'claude_code'})
     assert r.status_code==200 and calls==['market']
     assert r.json()['market_status']=='CURRENT'
-    assert len(waits)==1 and .16<waits[0]<.26
+    assert r.json()['provider']=='claude_market_analysis'
+    assert waits==pytest.approx([lead+.005])
+    assert datetime.fromisoformat(r.json()['as_of_utc']).timestamp()>=start
 
 def test_readonly_analysis_never_waits_across_bar_boundary_or_large_clock_lead(monkeypatch):
     from datetime import datetime,timezone
@@ -48,4 +62,7 @@ def test_readonly_analysis_never_waits_across_bar_boundary_or_large_clock_lead(m
         monkeypatch.setattr(app,'_analysis_now',lambda:now,raising=False)
         r=c.post('/api/assistant/live-chat',json={'message':'目前盤面','include_cases':False})
         assert r.json()['market_status']!='CURRENT'
+    s['quote']['source_time_utc']=datetime.fromtimestamp(1800003610,timezone.utc).isoformat()
+    monkeypatch.setattr(app,'_analysis_now',lambda:1800003609.24,raising=False)
+    assert c.post('/api/assistant/live-chat',json={'message':'目前盤面','include_cases':False}).json()['market_status']!='CURRENT'
     assert not waits

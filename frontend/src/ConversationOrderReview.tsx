@@ -21,6 +21,7 @@ export default function ConversationOrderReview({draft,checkedRevision,currentRe
   finally{working.current=false;setBusy(false);}
  };
  return <section className="cw-review" aria-label="最新 DEMO 委託核對"><h3>{result?'委託回報':'確認前核對'}</h3>
+  {!result&&draft.analysis_reply.trade_advice&&<p><strong>{draft.analysis_reply.trade_advice.headline}</strong> · {draft.analysis_reply.trade_advice.reason}</p>}
   {draft.plan_id&&<p className="fine">交易計畫已保存，可從上方「計畫」回顧當時依據。</p>}
   <p><strong>{draft.side==='BUY'?'做多':'做空'} {draft.lot} 手 · {draft.order_type==='LIMIT'?'限價':'市價'}</strong></p><p>參考價 {draft.price} · SL {draft.sl??'未設定'} · TP {draft.tp??'未設定'}</p>
   <p>總曝險手數 {draft.risk.before_lot} → {draft.risk.after_lot}</p><p>停損情境損失 {draft.risk.stop_loss_usd===null?'未設定':draft.risk.stop_loss_usd+' USD'}</p>

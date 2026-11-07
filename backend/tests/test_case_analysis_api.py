@@ -1,4 +1,5 @@
 import importlib
+import pytest
 from datetime import datetime,timezone
 from types import SimpleNamespace
 from fastapi.testclient import TestClient
@@ -63,6 +64,33 @@ def test_stale_market_never_retrieves_or_calls_external_model(monkeypatch):
     monkeypatch.setattr(app,'_live_retrieval',lambda *a:(_ for _ in ()).throw(AssertionError('stale')))
     r=c.post('/api/assistant/live-chat',json={'message':'相似案例','llm_enabled':True}).json()
     assert r['llm_status']=='market_unavailable' and r['case_comparison']['status']=='INSUFFICIENT_DATA'
+
+
+def test_compare_advice_without_draft_round_trips_the_frozen_result(monkeypatch, tmp_path):
+    from backend.analysis_history import AnalysisHistory
+
+    snapshot, calls, client = setup(monkeypatch)
+    snapshot['symbol']={'digits': 2}
+    monkeypatch.setattr(app, 'signal_for_query', lambda _: dict(kind='ABOVE', side='BUY', high='4120', low='4100', buffer='1'))
+    monkeypatch.setattr(app, 'analysis_history', AnalysisHistory(tmp_path))
+    monkeypatch.setattr(app.broker_orders, 'create', lambda *a, **k: pytest.fail('must stay read only'))
+    body = {'message': '現在該做多還是做空', 'advice_mode': 'COMPARE', 'include_cases': False,
+            'draft': {'risk_usd': '20'}}
+    response = client.post('/api/assistant/live-chat', json=body)
+    assert response.status_code == 200, response.text
+    value = response.json()
+    assert calls == ['market', 'retrieve']
+    assert value['trade_advice']['action'] == 'WAIT'
+    assert value['trade_advice']['direction']['side'] == 'BUY'
+    assert value['trade_advice']['direction']['basis'] == '5m'
+    assert value['trade_advice']['protection']['stop'] == '4119.00'
+    assert value['trade_advice']['protection']['target'] == '4140.00'
+    assert value['trade_advice']['protection']['conditional'] is True
+    assert client.get('/api/assistant/analyses/' + value['analysis_ref']).json()['trade_advice'] == value['trade_advice']
+    charts=client.get('/api/assistant/snapshots/' + value['snapshot_id'] + '/charts').json()
+    levels={layer['id']:layer['price'] for layer in charts['analysis']['frames']['5m']['layers']
+            if layer['id'].startswith('advice.')}
+    assert levels == {'advice.stop': '4119.00', 'advice.target': '4140.00'}
 
 
 def test_acceptance_gallery_exposes_only_local_html_and_named_charts(monkeypatch,tmp_path):

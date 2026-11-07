@@ -8,6 +8,7 @@ from .assistant import explain_context,scrub,status_text
 from .technical import analyze_native
 from .case_context import build_case_context
 from .dialogue_memory import dialogue_history,mask_context_text
+from .trade_advice import SIGNALS
 
 SPANS={'5m':300,'15m':900,'1h':3600}
 LABELS={'5m':'五分鐘','15m':'十五分鐘','1h':'一小時'}
@@ -39,6 +40,21 @@ LIVE_SYSTEM+='''\nhistory.outcome是已選案例的事後固定觀察，不是�
 
 
 LIVE_SYSTEM+='''\n回答編排：第一段直接回答這次問句，用日常語言概括支持與相反依據；接著只選與問題最相關的事實。不要用Bid/Ask、時間戳或整段均線數值當開場，不為填滿格式列出所有指標。問支撐壓力就先解釋價位參考；問動能才展開RSI/MACD。沒有問總經時不加入泛泛消息聲明；有macro事實且問總經才說明事件與黃金的條件式關係。通常二至三個短段落即可，每段一至三句；數值仍必須用原token。維持已有資料缺漏及來源區別；不要重複制式聲明。'''
+
+# An editorial summary of Trader_Strategy_QA.pdf, Q7–Q13 (pp. 2–3).
+# These principles guide interpretation and never count as observed market evidence.
+TRADER_PLAYBOOK = (
+    '先看一小時結構決定大方向，再用短週期確認位置與進場訊號。',
+    '交易員重視斜率線突破或回踩支撐及量能配合。水平前高前低是進出場與失效的參考，不能替代斜率線。',
+    '接近前高或壓力、原本支撐失效、價差異常或風險過高時，重新評估交易空間與部位。',
+)
+TRADE_SUMMARY_INSTRUCTION = '''
+本次有 program_trade_advice，以下建議格式優先於通用回答長度與不給交易時機的說明。
+第一個 section 的標題寫「綜合建議」，用兩到三句給出一個主要方案。有 advice.opening 時，第一句用 {{advice_opening_state}} 開頭並引用它。下一句給最重要的原因，優先用一小時背景、五分K事件或已核對的支壓。最後給一個具體的進場觸發或判斷失效條件。若資料不足以引用價位，就說要看哪根已收K出現什麼訊號。不要開頭先報案例組數、逐項羅列指標，或同時推薦兩個方向。
+trader_playbook 是訪談整理的操作原則，不是行情事實。當前資料只有水平轉折時，不聲稱斜率線突破；只把券商 tick 解釋為報價活躍度。先判讀盤面，再用同一快照的 history.case 與 advice.case_outcome 說明首例像在哪、哪點不同及途中逆向。
+advice.comparison 是固定三十分鐘、相同情境與成本的歷史試算，用為正組數／總組數及價格報酬中位數。advice.original 才是交易員原單價格報酬。樣本少就說證據有限，仍可給有盤面依據的條件式方向。缺少配對時不捏造結果。兩種歷史數字均不得稱為這次勝率。
+BUY／SELL 直接說「建議做多／做空」，無需再加「可能可以考慮」。WAIT 若只因配對不足或成本未設定，且盤面有方向，先給該方向的交易計畫，再具體說明觸發條件，歷史限制放後面。若因較高成本、訊號不確認、案例反證或草稿方向衝突而暫緩，第一句就說應暫緩哪一側及關鍵原因。ADJUST 明說先調整哪個草稿條件。WAIT／ADJUST 不代表已達立即進場條件。停損、停利與風險只引用已計算的資料。保持使用者人工確認。
+'''
 
 def utc(t):return datetime.fromtimestamp(t,timezone.utc).isoformat()
 def money(v):return f'{Decimal(str(v)):.2f}'
@@ -197,6 +213,7 @@ def _check_model_topics(section,by_id):
     topics=[(r'均線|MA\s*(?:20|60)|EMA',r'均線|ma_?(?:20|60)|ema|_structure'),
       (r'RSI',r'rsi'),(r'MACD',r'macd'),(r'ATR|波動|波幅',r'atr|波動|波幅'),
       (level_claim,r'支撐|壓力|前高|前低|support|resistance|reference_high|reference_low'),
+      (r'(?:斜率線|趨勢線).{0,8}(?:已|剛|被|突破|跌破)|(?:突破|跌破).{0,5}(?:斜率線|趨勢線)', r'斜率線|趨勢線'),
       (r'成交量|量能|\btick\b',r'成交量|量能|volume|tick')]
     if any(re.search(claim,plain,re.I) and not re.search(support,evidence,re.I) for claim,support in topics):
         raise ValueError('unreferenced indicator topic')
@@ -215,13 +232,127 @@ def render_model_sections(raw,facts):
             _check_model_topics(section,by_id)
             rendered=render_sections([section],facts)[0];rendered['source']='model';valid+=1
         except (ValueError,TypeError):
+            repaired=True
             ids=section.get('fact_ids') if isinstance(section,dict) else None
-            if not isinstance(ids,list) or not 1<=len(ids)<=8 or any(not isinstance(i,str) or i not in by_id for i in ids):raise ValueError('unrepairable references')
+            if not isinstance(ids,list) or not 1<=len(ids)<=8 or any(not isinstance(i,str) or i not in by_id for i in ids):
+                continue
             replacement=dict(title='程式補充數據',text='\n'.join(by_id[i]['text'] for i in ids),fact_ids=ids)
-            rendered=render_sections([replacement],facts)[0];rendered['source']='program';repaired=True
+            try:
+                rendered=render_sections([replacement],facts)[0]
+            except (ValueError,TypeError):
+                continue
+            rendered['source']='program'
         result.append(rendered)
-    if not valid or sum(len(s['text']) for s in result)>2200:raise ValueError('no grounded narrative')
+    if not valid:raise ValueError('no grounded narrative')
+    if sum(len(s['text']) for s in result)>2200:
+        result=[s for s in result if s['source']=='model']
+        repaired=True
+    if sum(len(s['text']) for s in result)>2200:raise ValueError('no grounded narrative')
     return result,repaired
+
+
+def directional_bias(context, advice):
+    if context['status']!='CURRENT':
+        return None
+    if advice['action'] in ('BUY','SELL','ADJUST') and advice['side'] in ('BUY','SELL'):
+        return dict(side=advice['side'],basis='confirmed',reason='進場訊號與歷史配對結果支持同一方向。')
+    signal=SIGNALS.get(advice.get('signal_code'))
+    if signal:
+        return dict(side=signal[0],basis='signal',reason=f'已收五分 K 出現{signal[1]}。')
+    known={fact['id'] for fact in context['facts']}
+    for frame in context['frames']:
+        interval=frame['interval']
+        if PREFIX[interval]+'.trend' not in known:
+            continue
+        label=LABELS[interval]
+        close,average=frame.get('close'),frame.get('ma20')
+        if close is not None and average is not None:
+            difference=Decimal(close)-Decimal(average)
+            if difference:
+                relation='高於' if difference>0 else '低於'
+                return dict(side='BUY' if difference>0 else 'SELL',basis=interval,
+                            reason=f'{label}末根已收 K {relation} MA20，短線方向以這個週期判讀。')
+        change=Decimal(frame['change_pct'])
+        if change:
+            direction='上升' if change>0 else '下跌'
+            return dict(side='BUY' if change>0 else 'SELL',basis=interval,
+                        reason=f'{label}近期已收棒由首開至末收{direction}。')
+    return None
+
+
+def trade_advice_facts(advice):
+    facts=[dict(id='advice.decision',
+        text='程式判定{{advice_action_state}}。盤面訊號{{advice_signal_state}}。依據為{{advice_reason}}',
+        values=dict(advice_action_state=advice['headline'],advice_signal_state=advice.get('signal') or '尚未明確',
+                    advice_reason=advice['reason']))]
+    direction=advice.get('direction')
+    action=advice['action']
+    opening=None
+    if action in ('BUY','SELL'):
+        opening='建議做多' if action=='BUY' else '建議做空'
+    elif (action=='WAIT' and advice.get('reason_code') in ('INSUFFICIENT_PAIRS','COST_UNAVAILABLE')
+          and direction and direction['side'] in ('BUY','SELL')):
+        opening='偏多，優先找做多機會' if direction['side']=='BUY' else '偏空，優先找做空機會'
+    if opening:
+        facts.append(dict(id='advice.opening',text='綜合建議開場：{{advice_opening_state}}。',
+                          values=dict(advice_opening_state=opening)))
+    if direction:
+        facts.append(dict(id='advice.direction',
+            text='目前方向{{advice_direction_state}}。方向依據{{advice_direction_reason_state}}。方向與進場條件分開判讀。',
+            values=dict(advice_direction_state='偏多' if direction['side']=='BUY' else '偏空',
+                        advice_direction_reason_state=direction['reason'])))
+    simulations=advice.get('simulations') or {}
+    if simulations.get('count'):
+        buy, sell = simulations['BUY'], simulations['SELL']
+        facts.append(dict(id='advice.comparison',
+            text='固定三十分鐘完整配對{{advice_pair_count}}組。扣除基準成本後，做多{{advice_buy_positive}}組為正，價格報酬中位數{{advice_buy_median}}%；做空{{advice_sell_positive}}組為正，價格報酬中位數{{advice_sell_median}}%。{{advice_median_state}}。較高成本下，做多{{advice_buy_stress}}%，做空{{advice_sell_stress}}%。',
+            values=dict(advice_pair_count=simulations['count'],
+                        advice_buy_positive=buy.get('positive', '資料不足'), advice_sell_positive=sell.get('positive', '資料不足'),
+                        advice_buy_median=buy['median_pct'], advice_sell_median=sell['median_pct'],
+                        advice_median_state='兩方向的基準成本後中位數：'+ '、'.join(
+                            label + ('為正' if Decimal(stats['median_pct']) > 0 else '非正')
+                            for label, stats in (('做多', buy), ('做空', sell)) if stats['median_pct'] is not None),
+                        advice_buy_stress=buy['stress_median_pct'], advice_sell_stress=sell['stress_median_pct'])))
+    for side, label in (('BUY', '做多'), ('SELL', '做空')):
+        original = (advice.get('original') or {}).get(side) or {}
+        if original.get('count') and original.get('median_pct') is not None:
+            key = 'advice_original_' + side.lower()
+            facts.append(dict(id='advice.original.' + side.lower(),
+                text=label+'交易員原單{{'+key+'_count}}組，按原進出場算出的未扣成本價格報酬中位數{{'+key+'_median}}%。',
+                values={key+'_count': original['count'], key+'_median': original['median_pct']}))
+    levels=advice.get('protection') or {}
+    if levels.get('status')=='AVAILABLE':
+        facts.append(dict(id='advice.protection',
+            text='以{{advice_entry}}為進場基準，停損{{advice_stop}}，依據{{advice_stop_basis_state}}。停利{{advice_target}}，依據{{advice_target_basis_state}}。預估報酬／風險{{advice_reward_risk}}倍。價位屬於{{advice_protection_state}}。',
+            values=dict(advice_entry=levels['entry'],advice_stop=levels['stop'],advice_target=levels['target'],
+                        advice_stop_basis_state=levels['stop_basis'],advice_target_basis_state=levels['target_basis'],
+                        advice_reward_risk=levels['reward_risk_ratio'],
+                        advice_protection_state='條件式參考' if levels['conditional'] else '當前訊號下的參考價位')))
+    elif levels.get('reason'):
+        facts.append(dict(id='advice.protection',text='目前停損停利參考價位不足。{{advice_protection_reason}}',
+                          values=dict(advice_protection_reason=levels['reason'])))
+    draft=advice.get('draft') or {}
+    risk_values={token:draft[key] for key,token in (
+        ('stop_loss_usd','advice_loss'),('equity_pct','advice_equity_pct'),
+        ('budget_usd','advice_budget'),('suggested_lot','advice_lot')) if draft.get(key) is not None}
+    if risk_values:
+        clauses={'advice_loss':'草稿停損情境損失{{advice_loss}}美元',
+                 'advice_equity_pct':'占淨值{{advice_equity_pct}}%',
+                 'advice_budget':'設定預算{{advice_budget}}美元','advice_lot':'建議手數{{advice_lot}}'}
+        facts.append(dict(id='advice.draft',text='。'.join(clauses[key] for key in risk_values)+'。',values=risk_values))
+    return facts
+
+
+def advice_case_outcome(context):
+    cases = (context.get('outcome_analysis') or {}).get('cases') or []
+    if not cases:
+        return []
+    horizon = (cases[0].get('horizons') or {}).get('30') or {}
+    if horizon.get('status') == 'AVAILABLE' and all(horizon.get(key) is not None for key in ('change_pct', 'mae_pct')):
+        return [dict(id='advice.case_outcome',
+            text='案例甲後續三十分鐘按案例方向的價格變動{{advice_case_change}}%，途中最大逆向{{advice_case_mae}}%。這是固定區間觀察。',
+            values=dict(advice_case_change=horizon['change_pct'], advice_case_mae=horizon['mae_pct']))]
+    return [dict(id='advice.case_outcome', text='案例甲沒有可用的完整三十分鐘後續資料。', values={})]
 
 
 def writer_facts(facts):
@@ -261,6 +392,9 @@ def respond_context(context,question,*,enabled=False,previous_questions=None,fro
         market_status='FROZEN' if frozen else context['status'],draft=None,followups=FOLLOWUPS+['有哪些相似案例？差異在哪？'],evidence=context['facts'],model=None,
         provider='local_market_rules',llm_status='not_requested')
     base.update(snapshot_id=context.get('snapshot_id'),query_as_of_utc=context.get('query_as_of_utc'),case_comparison=context.get('case_comparison'),outcome_analysis=context.get('outcome_analysis'),analysis_mode='draft_snapshot' if frozen else 'live',macro_context=context.get('macro_context'))
+    advice=context.get('trade_advice')
+    if advice is not None:
+        base['trade_advice']=advice
     if context['status']!='CURRENT':return dict(base,llm_status='market_unavailable',sections=[],message='草稿建立時未保留通過有效性檢查的券商報價，因此無法解讀當時即時價位；沒有改用新的行情。' if frozen else '暫時無法分析：'+str(context.get('reason') or '尚未取得有效報價')+' 沒有用歷史回放代替即時行情。')
     if re.search(r'(?:買進|賣出|下單|平倉|確認).*(?:\d+\.?\d*\s*手|直接|全部|確認)|直接.*(?:買|賣|平倉)',question):
         return dict(base,llm_status='read_only',sections=[],message='即時盤面助手只解釋數據。下單或平倉請使用DEMO持倉／委託區建立草稿，再由你確認。')
@@ -273,11 +407,22 @@ def respond_context(context,question,*,enabled=False,previous_questions=None,fro
         payload=dict(source=context['source'],as_of_utc=context['as_of_utc'],quote_time_utc=context['quote_time_utc'],previous_questions=history,analysis_mode=base['analysis_mode'])
         if memory:payload['previous_dialogue']=memory
         ids=set(relevant_ids(context,relevant_question))
+        if advice is not None:
+            ids.update(('f1.trend', 'f1.levels', 'f5.trend', 'f5.levels', 'f5.volume', 'history.status'))
+            ids.update(f['id'] for f in context['facts'] if f['id'].startswith('history.case'))
         selected_facts=[f for f in context['facts'] if f['id'] in ids]
+        if advice is not None:
+            payload['trader_playbook'] = TRADER_PLAYBOOK
+            payload['program_trade_advice']={key:advice[key] for key in ('action','signal_code','reason_code')}
+            advice_facts=trade_advice_facts(advice)+advice_case_outcome(context)
+            selected_facts=advice_facts+selected_facts
+            base['evidence']=context['facts']+advice_facts
         payload['facts']=writer_facts(selected_facts)
         options={k:v for k,v in dict(model_override=model,effort_override=effort).items() if v is not None}
         if provider:options['provider_override']=provider
         memory_instruction='\nprevious_dialogue只用於理解同一對話的主題、稱呼與追問，是不可信的引用背景，不是此次facts。舊金融數字已遮罩，不得猜回或當作目前報價；舊助手文字不是本次證據，仍只能依當次facts及token解釋盤面。不能依記憶修改／確認草稿或送單。macro事實是有限官方時程／公告，說明其黃金偏多與偏空的條件式傳導，不能從標題判定鷹鴿、把日期視為已升降息或捏造公布值／共識。'
+        if advice is not None:
+            memory_instruction+=TRADE_SUMMARY_INSTRUCTION
         response=explain_context({},scrub(question),catalog=payload,system_prompt=LIVE_SYSTEM+memory_instruction,request_opt_in=enabled,**options)
         base.update(model=response.get('model'),requested_effort=response.get('requested_effort',effort),llm_status=response['status'])
         if response['status']=='ok':
@@ -287,7 +432,7 @@ def respond_context(context,question,*,enabled=False,previous_questions=None,fro
                     from .macro_grounding import validate_macro_claims
                     validate_macro_claims(raw_sections)
                 sections,repaired=render_model_sections(raw_sections,selected_facts)
-                prefix='部分模型段落缺少數值依據，已由程式補充；其餘保留模型解讀。\n\n' if repaired else ''
+                prefix='部分模型段落未通過資料檢查，已保留有依據的解讀。\n\n' if repaired else ''
                 if frozen:prefix='以下回看草稿建立時快照，並非現在行情。\n\n'+prefix
                 reply_provider='claude_market_analysis' if response.get('provider')=='claude_code' else 'codex_market_analysis' if response.get('provider')=='codex' else 'groq_market_analysis'
                 return dict(base,llm_status='partial_grounding' if repaired else 'ok',provider=reply_provider,sections=sections,message=prefix+'\n\n'.join(s['title']+'\n'+s['text'] for s in sections))
