@@ -8,8 +8,12 @@ import type {MarketReply} from './LiveAssistant';
 import {analysisLabel,isModelAnalysis} from './assistantProvider';
 
 type ToolsTab='plans'|'alerts'|'broker';
-type Props={market:DemoMarket|null;conversationId?:string;light?:boolean;active?:boolean;initialTab?:ToolsTab;onOpenThread?:(id:string)=>void};
+export type TradingEnvironment='demo'|'live';
+type Props={market:DemoMarket|null;conversationId?:string;light?:boolean;active?:boolean;initialTab?:ToolsTab;onOpenThread?:(id:string)=>void;environment?:TradingEnvironment};
 const PanelActivity=createContext(true);
+// DEMO and LIVE keep separate plan journals and reminders behind separate routes.
+const PanelEnvironment=createContext<TradingEnvironment>('demo');
+export const tradingBase=(environment:TradingEnvironment='demo')=>environment==='live'?'/api/live/trading':'/api/trading';
 type Adherence='UNKNOWN'|'YES'|'NO'|'PARTIAL';
 type SavedPlan={id:string;draft_id:string;created_at_utc:string;updated_at_utc?:string;revision:number;note:string;
  review_note:string;adherence:Adherence;lesson:string;conversation_id?:string|null;side?:string;lot?:string;price?:string;sl?:string|null;tp?:string|null;
@@ -29,14 +33,14 @@ const description=(error:unknown)=>error instanceof Error?error.message:'資料�
 export class TradingRequestError extends Error{
  constructor(message:string,public status:number){super(message);}
 }
-export async function tradingRequest<T>(path:string,options:{method?:string;body?:unknown;signal?:AbortSignal}={},fetcher:typeof fetch=fetch):Promise<T>{
- const response=await fetcher('/api/trading'+path,{method:options.method??'GET',signal:options.signal,cache:'no-store',
+export async function tradingRequest<T>(path:string,options:{method?:string;body?:unknown;signal?:AbortSignal;environment?:TradingEnvironment}={},fetcher:typeof fetch=fetch):Promise<T>{
+ const response=await fetcher(tradingBase(options.environment)+path,{method:options.method??'GET',signal:options.signal,cache:'no-store',
   ...(options.body!==undefined?{headers:{'Content-Type':'application/json'},body:JSON.stringify(options.body)}:{})});
  const content=await response.json().catch(()=>({detail:'服務回應格式錯誤。'}));
  if(!response.ok)throw new TradingRequestError(typeof content.detail==='string'?content.detail:'操作失敗，請重新載入。',response.status);
  return content as T;
 }
-export const refreshTradingCalendar=(signal?:AbortSignal,fetcher:typeof fetch=fetch)=>tradingRequest<Calendar>('/calendar?refresh=true',{signal},fetcher);
+export const refreshTradingCalendar=(signal?:AbortSignal,fetcher:typeof fetch=fetch,environment:TradingEnvironment='demo')=>tradingRequest<Calendar>('/calendar?refresh=true',{signal,environment},fetcher);
 export const planDiscussionLabel=(reply:Pick<MarketReply,'provider'|'model'>)=>isModelAnalysis(reply.provider)?`${analysisLabel(reply.provider)} 回顧${reply.model?` · ${reply.model}`:''}`:'程式回顧';
 
 /** Cancel transport and ignore late replies even when a transport ignores abort. */
@@ -66,15 +70,15 @@ export function startTradingPolling<T>(read:(signal:AbortSignal)=>Promise<T>,acc
 }
 
 function useTradingCollection<T>(path:string){
- const active=useContext(PanelActivity);
+ const active=useContext(PanelActivity),environment=useContext(PanelEnvironment);
  const [data,setData]=useState<T|null>(null),[error,setError]=useState(''),[cycle,setCycle]=useState(0);
  const refresh=useCallback(()=>setCycle(value=>value+1),[]);
- useEffect(()=>{if(!active)return;return startTradingPolling(signal=>tradingRequest<T>(path,{signal}),value=>{setData(value);setError('');},error=>setError(description(error)));},[path,cycle,active]);
+ useEffect(()=>{if(!active)return;return startTradingPolling(signal=>tradingRequest<T>(path,{signal,environment}),value=>{setData(value);setError('');},error=>setError(description(error)));},[path,cycle,active,environment]);
  return {data,error,refresh,setData};
 }
 
-export function alertAvailability(market:DemoMarket|null):string{
- if(!market||market.source!=='ctrader_demo_xauusd'||market.environment!=='demo')return '需要 cTrader DEMO 行情，不能使用回放資料建立提醒。';
+export function alertAvailability(market:DemoMarket|null,environment:TradingEnvironment='demo'):string{
+ if(!market||market.source!==`ctrader_${environment}_xauusd`||market.environment!==environment)return `需要 cTrader ${environment.toUpperCase()} 行情，不能使用回放或另一個環境的資料建立提醒。`;
  if(market.connection_status!=='CONNECTED'||market.account?.status!=='CURRENT')return '券商未連線或帳戶未同步，暫不能建立提醒。';
  if(market.quote.status!=='CURRENT'||market.quote.age_seconds==null||market.quote.age_seconds<0||market.quote.age_seconds>5)return '行情已過期或未就緒，暫不能建立提醒。';
  return '';
@@ -119,11 +123,11 @@ function PlanReview({plan,onReload,onSaved}:{plan:SavedPlan;onReload:()=>void;on
  const [note,setNote]=useState(plan.review_note??''),[adherence,setAdherence]=useState<Adherence>(plan.adherence??'UNKNOWN'),[lesson,setLesson]=useState(plan.lesson??'');
  const [revision,setRevision]=useState(plan.revision);
  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[conflict,setConflict]=useState(false),[saved,setSaved]=useState(false);
- const request=useRef(new LatestTradingRequest()),lock=useRef(false);
+ const request=useRef(new LatestTradingRequest()),lock=useRef(false),environment=useContext(PanelEnvironment);
  useEffect(()=>()=>request.current.cancel(),[]);
  const save=(event:FormEvent)=>{
   event.preventDefault();if(lock.current||conflict)return;lock.current=true;setBusy(true);setSaved(false);setError('');
-  void request.current.run(signal=>tradingRequest<SavedPlan>(`/plans/${encodeURIComponent(plan.id)}/review`,{method:'PATCH',body:{revision,note,adherence,lesson},signal}),
+  void request.current.run(signal=>tradingRequest<SavedPlan>(`/plans/${encodeURIComponent(plan.id)}/review`,{method:'PATCH',body:{revision,note,adherence,lesson},signal,environment}),
    value=>{lock.current=false;setBusy(false);setRevision(value.revision);setSaved(true);onSaved(value);},error=>{lock.current=false;setBusy(false);setError(description(error));setConflict(error instanceof TradingRequestError&&error.status===409);});
  };
  return <form onSubmit={save} className="trading-plan-review"><h4>事後復盤</h4><p className="fine">此處不改寫當時理由或分析。</p>
@@ -136,7 +140,7 @@ function PlanReview({plan,onReload,onSaved}:{plan:SavedPlan;onReload:()=>void;on
 }
 
 function PlanDiscussion({plan}:{plan:SavedPlan}){
- const active=useContext(PanelActivity);
+ const active=useContext(PanelActivity),environment=useContext(PanelEnvironment);
  const settings=useAssistantSettings(),[message,setMessage]=useState(''),[reply,setReply]=useState<MarketReply|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState('');
  const request=useRef(new LatestTradingRequest()),lock=useRef(false);
  useEffect(()=>{const cancel=()=>{if(document.hidden){request.current.cancel();lock.current=false;setBusy(false);}};document.addEventListener('visibilitychange',cancel);return()=>{request.current.cancel();document.removeEventListener('visibilitychange',cancel);};},[]);
@@ -145,7 +149,7 @@ function PlanDiscussion({plan}:{plan:SavedPlan}){
  const send=(event:FormEvent)=>{
   event.preventDefault();if(!active||lock.current||!message.trim())return;lock.current=true;setBusy(true);setError('');setReply(null);
   const options=modelReady?settings.requestOptions:{provider:'program'};
-  void request.current.run(signal=>tradingRequest<MarketReply>(`/plans/${encodeURIComponent(plan.id)}/discuss`,{method:'POST',body:{...options,message:message.trim(),llm_enabled:true},signal}),
+  void request.current.run(signal=>tradingRequest<MarketReply>(`/plans/${encodeURIComponent(plan.id)}/discuss`,{method:'POST',body:{...options,message:message.trim(),llm_enabled:true},signal,environment}),
    value=>{lock.current=false;setBusy(false);setReply(value);},error=>{lock.current=false;setBusy(false);setError(description(error));});
  };
  return <details><summary>根據原始計畫繼續討論</summary><p className="fine">{modelReady?'按下回顧時使用目前選定的模型。':'目前使用程式回顧；模型未就緒或已選程式模式。'}只使用當時固定依據。</p>
@@ -155,9 +159,9 @@ function PlanDiscussion({plan}:{plan:SavedPlan}){
 }
 
 function PlanDetail({id,light,onChanged,onOpenThread}:{id:string;light:boolean;onChanged:()=>void;onOpenThread?:Props['onOpenThread']}){
- const active=useContext(PanelActivity);
+ const active=useContext(PanelActivity),environment=useContext(PanelEnvironment);
  const [plan,setPlan]=useState<SavedPlan|null>(null),[error,setError]=useState(''),[cycle,setCycle]=useState(0);
- useEffect(()=>{if(!active)return;setError('');const request=new LatestTradingRequest();void request.run(signal=>tradingRequest<SavedPlan>(`/plans/${encodeURIComponent(id)}`,{signal}),setPlan,error=>setError(description(error)));return()=>request.cancel();},[id,cycle,active]);
+ useEffect(()=>{if(!active)return;setError('');const request=new LatestTradingRequest();void request.run(signal=>tradingRequest<SavedPlan>(`/plans/${encodeURIComponent(id)}`,{signal,environment}),setPlan,error=>setError(description(error)));return()=>request.cancel();},[id,cycle,active,environment]);
  if(error)return <p role="alert">{error} <button onClick={()=>setCycle(value=>value+1)}>重新載入</button></p>;
  if(!plan)return <p role="status">讀取原始計畫…</p>;
  return <div className="trading-plan-detail"><PlanEvidence plan={plan} light={light}/>
@@ -183,11 +187,11 @@ function PlansPanel({light,onOpenThread}:{light:boolean;onOpenThread?:Props['onO
 
 export function AlertEditor({reason,events,conversationId,onCreated}:{reason:string;events:CalendarEvent[];conversationId?:string;onCreated:()=>void}){
  const [name,setName]=useState(''),[kind,setKind]=useState<Alert['kind']>('PRICE'),[field,setField]=useState<'bid'|'ask'>('bid'),[comparator,setComparator]=useState<'GTE'|'LTE'>('GTE'),[threshold,setThreshold]=useState(''),[eventId,setEventId]=useState(''),[lead,setLead]=useState('15');
- const [busy,setBusy]=useState(false),[error,setError]=useState(''),[saved,setSaved]=useState(false),request=useRef(new LatestTradingRequest()),lock=useRef(false);
+ const [busy,setBusy]=useState(false),[error,setError]=useState(''),[saved,setSaved]=useState(false),request=useRef(new LatestTradingRequest()),lock=useRef(false),environment=useContext(PanelEnvironment);
  useEffect(()=>()=>request.current.cancel(),[]);
  const create=(event:FormEvent)=>{event.preventDefault();if(lock.current||reason)return;lock.current=true;setBusy(true);setSaved(false);setError('');
   const body=alertRequest({name,kind,field,comparator,threshold,event_id:eventId,lead_minutes:lead},conversationId);
-  void request.current.run(signal=>tradingRequest('/alerts',{method:'POST',body,signal}),()=>{lock.current=false;setBusy(false);setSaved(true);onCreated();},error=>{lock.current=false;setBusy(false);setError(description(error));});};
+  void request.current.run(signal=>tradingRequest('/alerts',{method:'POST',body,signal,environment}),()=>{lock.current=false;setBusy(false);setSaved(true);onCreated();},error=>{lock.current=false;setBusy(false);setError(description(error));});};
  return <details><summary>建立條件提醒</summary><p className="fine">服務運行且資料有效時才監控，觸發一次；斷線不回補過去觸價。提醒不送單、不自動呼叫模型。</p>
   {reason&&<p role="status">{reason}</p>}<form onSubmit={create}><fieldset disabled={Boolean(reason)||busy} style={{minWidth:0}}>
    <label>名稱<input aria-label="提醒名稱" value={name} maxLength={120} required onChange={e=>setName(e.target.value)}/></label>
@@ -199,11 +203,11 @@ export function AlertEditor({reason,events,conversationId,onCreated}:{reason:str
 }
 
 function AlertItem({alert,onChanged,onOpenThread}:{alert:Alert;onChanged:()=>void;onOpenThread?:Props['onOpenThread']}){
- const [busy,setBusy]=useState(false),[error,setError]=useState(''),[deleting,setDeleting]=useState(false),request=useRef(new LatestTradingRequest()),lock=useRef(false);
+ const [busy,setBusy]=useState(false),[error,setError]=useState(''),[deleting,setDeleting]=useState(false),request=useRef(new LatestTradingRequest()),lock=useRef(false),environment=useContext(PanelEnvironment);
  useEffect(()=>()=>request.current.cancel(),[]);
  const change=(remove=false)=>{if(lock.current)return;lock.current=true;setBusy(true);setError('');
   const path=`/alerts/${encodeURIComponent(alert.id)}`+(remove?`?revision=${alert.revision}`:'');
-  void request.current.run(signal=>tradingRequest(path,{method:remove?'DELETE':'PATCH',...(remove?{}:{body:{revision:alert.revision,enabled:!(alert.enabled&&alert.state==='ACTIVE')}}),signal}),()=>{lock.current=false;setBusy(false);setDeleting(false);onChanged();},error=>{lock.current=false;setBusy(false);setError(description(error));onChanged();});};
+  void request.current.run(signal=>tradingRequest(path,{method:remove?'DELETE':'PATCH',...(remove?{}:{body:{revision:alert.revision,enabled:!(alert.enabled&&alert.state==='ACTIVE')}}),signal,environment}),()=>{lock.current=false;setBusy(false);setDeleting(false);onChanged();},error=>{lock.current=false;setBusy(false);setError(description(error));onChanged();});};
  const label=alert.state==='TRIGGERED'?'已觸發一次':alert.state==='PAUSED'?'已暫停':'已啟用';
  return <article><h4>{alert.name} · {label}</h4><p className="fine">{alert.kind==='EVENT'?`官方事件 · 提前 ${alert.lead_minutes??'—'} 分鐘`:`${alert.kind==='CLOSE_5M'?'已收五分棒 Bid':alert.field==='ask'?'Ask':'Bid'} ${alert.comparator==='LTE'?'≤':'≥'} ${alert.threshold??'—'}`}</p>
   {alert.message&&<p>{alert.message}</p>}{alert.triggered_at_utc&&<p className="fine">觸發 {stamp(alert.triggered_at_utc)}</p>}
@@ -214,12 +218,12 @@ function AlertItem({alert,onChanged,onOpenThread}:{alert:Alert;onChanged:()=>voi
 }
 
 function AlertsPanel({market,conversationId,onOpenThread}:Omit<Props,'light'>){
- const active=useContext(PanelActivity);
+ const active=useContext(PanelActivity),environment=useContext(PanelEnvironment);
  const {data,error,refresh}=useTradingCollection<Alerts>('/alerts'),calendar=useTradingCollection<Calendar>('/calendar');
  const [calendarBusy,setCalendarBusy]=useState(false),[calendarError,setCalendarError]=useState(''),calendarRequest=useRef(new LatestTradingRequest()),calendarLock=useRef(false);
  useEffect(()=>{if(!active){calendarRequest.current.cancel();calendarLock.current=false;setCalendarBusy(false);}return()=>calendarRequest.current.cancel();},[active]);
- const updateCalendar=()=>{if(!active||calendarLock.current)return;calendarLock.current=true;setCalendarBusy(true);setCalendarError('');void calendarRequest.current.run(signal=>refreshTradingCalendar(signal),value=>{calendar.setData(value);calendar.refresh();calendarLock.current=false;setCalendarBusy(false);},error=>{setCalendarError(description(error));calendarLock.current=false;setCalendarBusy(false);});};
- const reason=alertAvailability(market)||(data?.status!=='AVAILABLE'?(data?.reason??'提醒服務尚未就緒。'):'');
+ const updateCalendar=()=>{if(!active||calendarLock.current)return;calendarLock.current=true;setCalendarBusy(true);setCalendarError('');void calendarRequest.current.run(signal=>refreshTradingCalendar(signal,fetch,environment),value=>{calendar.setData(value);calendar.refresh();calendarLock.current=false;setCalendarBusy(false);},error=>{setCalendarError(description(error));calendarLock.current=false;setCalendarBusy(false);});};
+ const reason=alertAvailability(market,environment)||(data?.status!=='AVAILABLE'?(data?.reason??'提醒服務尚未就緒。'):'');
  const events=calendar.data&&['AVAILABLE','CURRENT','READY'].includes(calendar.data.status)?calendar.data.events.filter(event=>Date.parse(event.time_utc)>Date.now()):[];
  return <div><p className="fine">{data?.monitoring_note??'只有本機服務運行且行情連線時才會通知；提醒不會下單。'}</p>
   {data?.monitor_running===false&&<p role="status">監控服務未運行；不代表持續監控中。</p>}{data?.monitor_error&&<p role="alert">{data.monitor_error}</p>}
@@ -231,17 +235,17 @@ function AlertsPanel({market,conversationId,onOpenThread}:Omit<Props,'light'>){
  </div>;
 }
 
-export default function TradingToolsPanel({market,conversationId,light=false,active=true,initialTab='plans',onOpenThread}:Props){
+export default function TradingToolsPanel({market,conversationId,light=false,active=true,initialTab='plans',onOpenThread,environment='demo'}:Props){
  const [tab,setTab]=useState<ToolsTab>(initialTab),[visited,setVisited]=useState<ToolsTab[]>([initialTab]),id=useId();
  const open=useCallback((value:ToolsTab)=>{setVisited(previous=>previous.includes(value)?previous:[...previous,value]);setTab(value);},[]);
  useEffect(()=>open(initialTab),[initialTab,open]);
- return <section className="trading-tools-panel" aria-label="交易計畫與提醒" style={{minWidth:0,overflowWrap:'anywhere'}}>
+ return <PanelEnvironment.Provider value={environment}><section className="trading-tools-panel" aria-label={environment==='live'?'LIVE 交易計畫與提醒':'交易計畫與提醒'} style={{minWidth:0,overflowWrap:'anywhere'}}>
   <div className="tabs" role="tablist" aria-label="交易工具">{([['plans','交易計畫'],['alerts','條件提醒'],['broker','券商紀錄']] as const).map(([value,label])=><button key={value} id={`${id}-${value}`} type="button" role="tab" aria-selected={tab===value} aria-controls={`${id}-content`} className={tab===value?'active':''} onClick={()=>open(value)}>{label}</button>)}</div>
   <div id={`${id}-content`} role="tabpanel" aria-labelledby={`${id}-${tab}`}>
    {visited.includes('plans')&&<div hidden={tab!=='plans'}><PanelActivity.Provider value={active&&tab==='plans'}><PlansPanel light={light} onOpenThread={onOpenThread}/></PanelActivity.Provider></div>}
    {visited.includes('alerts')&&<div hidden={tab!=='alerts'}><PanelActivity.Provider value={active&&tab==='alerts'}><AlertsPanel market={market} conversationId={conversationId} onOpenThread={onOpenThread}/></PanelActivity.Provider></div>}
-   {active&&tab==='broker'&&<BrokerAccountPanel market={market} environment="demo" initialTab="history" idPrefix="tools-history-"/>}
+   {active&&tab==='broker'&&<BrokerAccountPanel market={market} environment={environment} initialTab="history" idPrefix={environment==='live'?'live-records-':'tools-history-'}/>}
   </div>
- </section>;
+ </section></PanelEnvironment.Provider>;
 }
 

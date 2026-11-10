@@ -105,8 +105,11 @@ class LocalAlerts:
     beyond its local database.
     """
 
-    def __init__(self, path):
+    def __init__(self, path, *, environment='demo'):
+        if environment not in ('demo', 'live'):
+            raise ValueError('Reminder environment must be demo or live')
         self.path = Path(path)
+        self.environment = environment
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = RLock()
         self._observations = {}
@@ -241,7 +244,7 @@ class LocalAlerts:
         clock = _clock(now)
         account = snapshot.get('account') or {}
         key = account.get('account_key')
-        if (snapshot.get('environment')!='demo' or account.get('status') != 'CURRENT' or not _text(key, 300)
+        if (snapshot.get('environment')!=self.environment or account.get('status') != 'CURRENT' or not _text(key, 300)
                 or snapshot.get('connection_status') not in (None, 'CONNECTED')):
             self.reset_baseline()
             return []

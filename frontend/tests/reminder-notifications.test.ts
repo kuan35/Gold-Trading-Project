@@ -5,3 +5,9 @@ test('notifications only show recent new durable events and reject duplicate, fu
  const result=freshReminderEvents([row('seen',-1000),row('old',-700000),row('new',-500),row('new',-500),row('future',6000)],new Set(['seen']),now);
  assert.deepEqual(result.map(r=>r.id),['new']);
 });
+import {reminderSources} from '../src/ReminderNotifications';
+test('LIVE reminders poll only while LIVE is selected and keep a separate seen list',()=>{
+ assert.deepEqual(reminderSources('demo').map(s=>s.enabled),[true,false]);
+ const live=reminderSources('live');assert.deepEqual(live.map(s=>s.enabled),[true,true]);
+ assert.equal(live[1].path,'/api/live/trading/alerts');assert.equal(live[1].label,'LIVE · ');assert.notEqual(live[0].key,live[1].key);
+});

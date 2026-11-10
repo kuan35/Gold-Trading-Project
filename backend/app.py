@@ -53,9 +53,9 @@ import atexit
 
 @asynccontextmanager
 async def _local_lifespan(_app):
-    alert_monitor.start()
+    alert_monitor.start();live_alert_monitor.start()
     try:yield
-    finally:alert_monitor.stop()
+    finally:alert_monitor.stop();live_alert_monitor.stop()
 
 
 app=FastAPI(title='Gold Trading Project',version='0.1.0',lifespan=_local_lifespan)
@@ -71,6 +71,11 @@ trade_plans=TradePlanStore(ROOT/'private'/'trade_plans.sqlite')
 trade_alerts=LocalAlerts(ROOT/'private'/'trade_alerts.sqlite')
 alert_monitor=AlertMonitor(trade_alerts,lambda:demo_market_stream.query_snapshot() if trade_alerts.has_active() else {})
 atexit.register(alert_monitor.stop)
+# LIVE keeps its own plan journal and reminders; DEMO rows never appear here.
+live_trade_plans=TradePlanStore(ROOT/'private'/'live_trade_plans.sqlite')
+live_trade_alerts=LocalAlerts(ROOT/'private'/'live_trade_alerts.sqlite',environment='live')
+live_alert_monitor=AlertMonitor(live_trade_alerts,lambda:_live_read_snapshot(query=True) if live_trade_alerts.has_active() else {})
+atexit.register(live_alert_monitor.stop)
 history_library=HistoryLibrary(ROOT/'private')
 
 def _save_analysis_reply(reply,bundle=None):
@@ -685,7 +690,14 @@ def trading_alert_list(request:Request):
 
 @app.post('/api/trading/alerts')
 def trading_alert_create(request:Request,body:AlertInput):
-    snapshot,key=_trade_account(request,write=True);value=body.model_dump(exclude_none=True)
+    snapshot,key=_trade_account(request,write=True)
+    result=trade_alerts.create(key,_alert_value(snapshot,body))
+    return JSONResponse(content=result,headers={'Cache-Control':'no-store'})
+
+
+def _alert_value(snapshot,body:AlertInput):
+    """Shared DEMO/LIVE reminder validation against that environment's own quote."""
+    value=body.model_dump(exclude_none=True)
     if body.kind=='EVENT':
         event=next((e for e in _trading_calendar()['events'] if e['id']==body.event_id),None)
         if not event or not body.lead_minutes or datetime.fromisoformat(event['time_utc']).timestamp()-body.lead_minutes*60<=datetime.now(timezone.utc).timestamp():raise HTTPException(409,'請選擇來源仍有效、提醒時間尚未到的官方事件。')
@@ -698,8 +710,7 @@ def trading_alert_create(request:Request,body:AlertInput):
             threshold=amount(body.threshold,'提醒價位');digits=(snapshot.get('symbol') or {})['digits']
             if threshold%Decimal(1).scaleb(-digits):raise ValueError()
         except (KeyError,TypeError,ValueError):raise HTTPException(409,'請等待有效新報價，並核對提醒價位的小數級距。')
-    result=trade_alerts.create(key,value)
-    return JSONResponse(content=result,headers={'Cache-Control':'no-store'})
+    return value
 
 
 @app.patch('/api/trading/alerts/{alert_id}')
@@ -711,6 +722,97 @@ def trading_alert_update(request:Request,alert_id:str,body:AlertUpdateInput):
 @app.delete('/api/trading/alerts/{alert_id}')
 def trading_alert_delete(request:Request,alert_id:str,revision:int=Query(ge=1)):
     _snapshot,key=_trade_account(request,write=True);trade_alerts.delete(key,alert_id,revision)
+    return JSONResponse(content=dict(status='DELETED'),headers={'Cache-Control':'no-store'})
+
+
+def _live_trade_account(request:Request,*,write=False):
+    """LIVE tools read the LIVE account only; they never need trading scope."""
+    if not _local_broker_access(request):raise HTTPException(403,'LIVE交易工具僅供本機使用')
+    snapshot=_live_read_snapshot();account=snapshot.get('account') or {}
+    key=account.get('account_key') if snapshot.get('environment')=='live' else None
+    if write:
+        try:
+            age=datetime.now(timezone.utc).timestamp()-datetime.fromisoformat(account['updated_at_utc']).timestamp()
+            if not key or account.get('status')!='CURRENT' or not 0<=age<=10:raise ValueError()
+        except (KeyError,TypeError,ValueError):raise HTTPException(409,'請先連線並同步自己的LIVE帳戶。')
+    return snapshot,key
+
+
+def _live_plan_refresh(account_key,plan):
+    try:
+        ident=(plan.get('receipt') or {}).get('client_order_id')
+        getter=getattr(live_trade_stream,'order_status',None)
+        if ident and callable(getter):
+            receipt=getter(ident)
+            if receipt:live_trade_plans.attach_receipt(account_key,plan['draft_id'],receipt)
+            plan=live_trade_plans.get(account_key,plan['id'])
+    except DomainError:pass
+    return plan
+
+
+@app.post('/api/live/trading/risk-size')
+def live_trading_risk_size(request:Request,body:RiskSizeInput):
+    snapshot,_key=_live_trade_account(request,write=True)
+    return JSONResponse(content=size_for_risk(snapshot,body.draft.model_dump(),risk_usd=body.risk_usd,equity_pct=body.equity_pct),headers={'Cache-Control':'no-store'})
+
+
+@app.get('/api/live/trading/plans')
+def live_trading_plan_list(request:Request,limit:int=Query(default=50,ge=1,le=100),offset:int=Query(default=0,ge=0,le=100000)):
+    _snapshot,key=_live_trade_account(request)
+    if not key:return JSONResponse(content=dict(status='UNAVAILABLE',reason='連線LIVE帳戶後可查看這個帳戶的交易計畫。',items=[],total=None),headers={'Cache-Control':'no-store'})
+    value=live_trade_plans.list(key,limit=limit,offset=offset)
+    for row in value['items']:_live_plan_refresh(key,row)
+    return JSONResponse(content=dict(live_trade_plans.list(key,limit=limit,offset=offset),status='AVAILABLE'),headers={'Cache-Control':'no-store'})
+
+
+@app.get('/api/live/trading/plans/{plan_id}')
+def live_trading_plan_detail(request:Request,plan_id:str):
+    _snapshot,key=_live_trade_account(request)
+    if not key:raise HTTPException(409,'LIVE帳戶識別尚未就緒。')
+    plan=_live_plan_refresh(key,live_trade_plans.get(key,plan_id))
+    activity=live_trade_stream.activity_snapshot()
+    if activity.get('connection_status')!='CONNECTED':activity=live_readonly_stream.activity_snapshot()
+    if (activity.get('account') or {}).get('account_key')==key:plan=enrich_trade_plan(plan,activity)
+    bundle=plan.pop('snapshot_bundle',None) or {};plan['charts']=bundle.get('charts',{})
+    return JSONResponse(content=plan,headers={'Cache-Control':'no-store'})
+
+
+@app.patch('/api/live/trading/plans/{plan_id}/review')
+def live_trading_plan_review(request:Request,plan_id:str,body:PlanReviewInput):
+    _snapshot,key=_live_trade_account(request,write=True)
+    value=live_trade_plans.update_review(key,plan_id,body.revision,note=body.note,adherence=body.adherence,lesson=body.lesson)
+    value.pop('snapshot_bundle',None)
+    return JSONResponse(content=value,headers={'Cache-Control':'no-store'})
+
+
+@app.get('/api/live/trading/calendar')
+def live_trading_calendar(request:Request,refresh:bool=False):
+    if not _local_broker_access(request):raise HTTPException(403,'LIVE交易工具僅供本機使用')
+    return JSONResponse(content=_trading_calendar(refresh=refresh),headers={'Cache-Control':'no-store'})
+
+
+@app.get('/api/live/trading/alerts')
+def live_trading_alert_list(request:Request):
+    _snapshot,key=_live_trade_account(request)
+    if not key:return JSONResponse(content=dict(status='UNAVAILABLE',reason='請先連線自己的LIVE帳戶。',items=[],events=[],monitor_running=False),headers={'Cache-Control':'no-store'})
+    return JSONResponse(content=dict(live_trade_alerts.list(key),status='AVAILABLE',monitor_running=live_alert_monitor.running,monitor_error=live_alert_monitor.last_error),headers={'Cache-Control':'no-store'})
+
+
+@app.post('/api/live/trading/alerts')
+def live_trading_alert_create(request:Request,body:AlertInput):
+    snapshot,key=_live_trade_account(request,write=True)
+    return JSONResponse(content=live_trade_alerts.create(key,_alert_value(snapshot,body)),headers={'Cache-Control':'no-store'})
+
+
+@app.patch('/api/live/trading/alerts/{alert_id}')
+def live_trading_alert_update(request:Request,alert_id:str,body:AlertUpdateInput):
+    _snapshot,key=_live_trade_account(request,write=True)
+    return JSONResponse(content=live_trade_alerts.update(key,alert_id,body.revision,enabled=body.enabled),headers={'Cache-Control':'no-store'})
+
+
+@app.delete('/api/live/trading/alerts/{alert_id}')
+def live_trading_alert_delete(request:Request,alert_id:str,revision:int=Query(ge=1)):
+    _snapshot,key=_live_trade_account(request,write=True);live_trade_alerts.delete(key,alert_id,revision)
     return JSONResponse(content=dict(status='DELETED'),headers={'Cache-Control':'no-store'})
 
 @app.post('/api/broker/drafts')
@@ -758,22 +860,40 @@ def broker_live_draft(request:Request,body:BrokerDraftInput):
     saved=analysis_snapshots.put(bundle,draft_id=draft['id'])
     reply=respond_context(saved['context'],'說明LIVE草稿建立時的盤面、歷史案例與相反依據',enabled=False,frozen=True)
     reply=_save_analysis_reply(reply,saved)
+    recording={}
+    try:
+        key=snapshot['account']['account_key']
+        preview=ticket_preview(snapshot,body.model_dump(),leverage=(snapshot.get('account') or {}).get('account_leverage'))
+        draft['risk']['account_zero']=equity_zero_scenario(snapshot,body.model_dump(),preview)
+        plan=live_trade_plans.capture(key,draft,reply,note=body.plan_note,conversation_id=body.conversation_id,risk=risk_summary(snapshot,body.model_dump(),preview),snapshot_bundle=saved)
+        recording['plan_id']=plan['id']
+    except (OSError,sqlite3.Error,ValueError,TypeError,KeyError,DomainError):recording['plan_record_error']='本次LIVE交易計畫未能保存，請確認本機儲存空間。'
     return JSONResponse(content=dict(draft,analysis_snapshot_id=saved['snapshot_id'],
-        analysis_as_of_utc=saved['context']['as_of_utc'],analysis_reply=reply),
+        analysis_as_of_utc=saved['context']['as_of_utc'],analysis_reply=reply,**recording),
         headers={'Cache-Control':'no-store'})
+
+
+def _live_plan_receipt(draft_id,result):
+    try:
+        key=(live_broker_orders.drafts.get(draft_id) or {}).get('account_key') or (live_trade_stream.snapshot().get('account') or {}).get('account_key')
+        if key:live_trade_plans.attach_receipt(key,draft_id,result)
+    except (OSError,sqlite3.Error,ValueError,DomainError):pass
 
 
 @app.post('/api/live/drafts/{draft_id}/confirm')
 def broker_live_confirm(request:Request,draft_id:str,body:BrokerConfirmInput):
     if not _local_broker_access(request):raise HTTPException(403,'LIVE委託僅供本機確認')
-    return JSONResponse(content=live_broker_orders.confirm(draft_id,body.revision,body.idempotency_key),
-        headers={'Cache-Control':'no-store'})
+    result=live_broker_orders.confirm(draft_id,body.revision,body.idempotency_key)
+    _live_plan_receipt(draft_id,result)
+    return JSONResponse(content=result,headers={'Cache-Control':'no-store'})
 
 
 @app.get('/api/live/drafts/{draft_id}/status')
 def broker_live_status(request:Request,draft_id:str):
     if not _local_broker_access(request):raise HTTPException(403,'LIVE委託僅供本機查看')
-    return JSONResponse(content=live_broker_orders.status(draft_id),headers={'Cache-Control':'no-store'})
+    result=live_broker_orders.status(draft_id)
+    _live_plan_receipt(draft_id,result)
+    return JSONResponse(content=result,headers={'Cache-Control':'no-store'})
 
 
 @app.post('/api/live/drafts/{draft_id}/cancel')
@@ -1041,7 +1161,19 @@ def draft_chat(request:Request,body:DraftChatInput):
 def trading_plan_discuss(request:Request,plan_id:str,body:PlanDiscussInput):
     _snapshot,key=_trade_account(request)
     if not key:raise HTTPException(409,'帳戶識別尚未就緒。')
-    plan=trade_plans.get(key,plan_id);bundle=plan.get('snapshot_bundle') or {}
+    return _discuss_saved_plan(trade_plans.get(key,plan_id),body)
+
+
+@app.post('/api/live/trading/plans/{plan_id}/discuss')
+def live_trading_plan_discuss(request:Request,plan_id:str,body:PlanDiscussInput):
+    _snapshot,key=_live_trade_account(request)
+    if not key:raise HTTPException(409,'LIVE帳戶識別尚未就緒。')
+    return _discuss_saved_plan(live_trade_plans.get(key,plan_id),body)
+
+
+def _discuss_saved_plan(plan,body:PlanDiscussInput):
+    """Discuss only the frozen evidence saved with that environment's plan."""
+    bundle=plan.get('snapshot_bundle') or {}
     if not bundle.get('context'):raise HTTPException(409,'這筆舊計畫沒有可解讀的固定盤面。')
     memory=[dict(thread_id=plan['id'],question=mask_context_text(plan.get('note','')),answer=mask_context_text('本人復盤：'+plan.get('review_note','')+'；心得：'+plan.get('lesson','')))]
     reply=respond_context(bundle['context'],body.message,enabled=body.llm_enabled,frozen=True,conversation_id=plan['id'],conversation=memory,**_model_options(body))

@@ -7,7 +7,9 @@ type Sizing={status:string;reason:string|null;lot:string|null;actual_risk_usd:st
 export function RiskNumbers({risk:r}:{risk:RiskSummary}){
  return <section className="ticket-risk-summary" aria-label="帳戶與本筆風險"><dl><div><dt>本筆停損占淨值</dt><dd>{r.stop_equity_pct===null?'資料不足':r.stop_equity_pct+'%'}</dd></div><div><dt>風險：預期獲利</dt><dd>{r.reward_risk_ratio===null?'待填有效停損／停利':'1：'+r.reward_risk_ratio}</dd></div></dl><details><summary>黃金合計情境風險</summary><p>{r.gold_total_risk_usd===null?'無法完整估算':`${r.gold_total_risk_usd} USD${r.gold_total_equity_pct!==null?' · 淨值 '+r.gold_total_equity_pct+'%':''}`}</p>{r.reason&&<p>{r.reason}</p>}<p className="fine">{r.scope}</p><p className="fine">按各停損估計額外不利變動；未扣成本、未互抵多空，不保證損失上限。</p></details></section>;
 }
-export default function TicketRiskPanel({value,onPatch,preview,disabled=false,id,riskBudget,onRiskBudgetChange}:{value:DraftInputState;onPatch:(p:InputPatch)=>void;preview:PreviewState;disabled?:boolean;id:string;riskBudget?:RiskBudget;onRiskBudgetChange?:(budget:RiskBudget)=>void}){
+// Size against the selected account only; LIVE must never use DEMO equity.
+export const riskSizePath=(environment:'demo'|'live'='demo')=>environment==='live'?'/api/live/trading/risk-size':'/api/trading/risk-size';
+export default function TicketRiskPanel({value,onPatch,preview,disabled=false,id,riskBudget,onRiskBudgetChange,environment='demo'}:{value:DraftInputState;onPatch:(p:InputPatch)=>void;preview:PreviewState;disabled?:boolean;id:string;riskBudget?:RiskBudget;onRiskBudgetChange?:(budget:RiskBudget)=>void;environment?:'demo'|'live'}){
  const [localBudget,setLocalBudget]=useState<RiskBudget>({mode:'usd',value:''});
  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[sized,setSized]=useState<{input:string;result:Sizing}|null>(null);
  const budget=riskBudget??localBudget;
@@ -22,7 +24,7 @@ export default function TicketRiskPanel({value,onPatch,preview,disabled=false,id
   if(disabled||!hasBudget||!value.sl||busy)return;
   const token=++generation.current;request.current?.abort();const controller=new AbortController();request.current=controller;setBusy(true);setError('');
   try{
-   const response=await fetch('/api/trading/risk-size',{method:'POST',headers:{'Content-Type':'application/json'},signal:controller.signal,body:JSON.stringify({draft:current.current.value,...fields})});
+   const response=await fetch(riskSizePath(environment),{method:'POST',headers:{'Content-Type':'application/json'},signal:controller.signal,body:JSON.stringify({draft:current.current.value,...fields})});
    const result=await response.json();if(!response.ok)throw Error(result.detail||'無法計算手數');
    if(token!==generation.current||JSON.stringify(current.current)!==input)return;
    setSized({input,result});

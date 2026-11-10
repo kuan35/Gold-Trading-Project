@@ -112,3 +112,24 @@ test('SSR renders three concise tools tabs and no eager model or transaction act
  assert.match(source,/visibilitychange/);assert.match(source,/5000/);
  assert.match(source,/initialTab="history"/);
 });
+
+test('LIVE tools use only LIVE trading routes, LIVE readiness and LIVE risk sizing',async()=>{
+ const {tradingRequest,refreshTradingCalendar,alertAvailability,tradingBase,default:TradingToolsPanel}=await load();
+ const {riskSizePath}=await import('../src/TicketRiskPanel.tsx');
+ const calls:string[]=[];const fetcher=async(url:string)=>{calls.push(url);return new Response(JSON.stringify({status:'AVAILABLE',events:[]}));};
+ await tradingRequest('/plans?limit=20&offset=0',{environment:'live'},fetcher);
+ await refreshTradingCalendar(undefined,fetcher,'live');
+ assert.deepEqual(calls,['/api/live/trading/plans?limit=20&offset=0','/api/live/trading/calendar?refresh=true']);
+ assert.equal(tradingBase(),'/api/trading');
+ assert.equal(riskSizePath('live'),'/api/live/trading/risk-size');assert.equal(riskSizePath(),'/api/trading/risk-size');
+ const live={...market,source:'ctrader_live_xauusd',environment:'live'};
+ assert.equal(alertAvailability(live,'live'),'');
+ assert.notEqual(alertAvailability(market,'live'),'');assert.notEqual(alertAvailability(live),'');
+ const html=renderToStaticMarkup(createElement(TradingToolsPanel,{market:null,environment:'live'}));
+ assert.match(html,/LIVE 交易計畫與提醒/);for(const label of ['交易計畫','條件提醒','券商紀錄'])assert.match(html,new RegExp(label));
+ const workspace=readFileSync(new URL('../src/ConversationWorkspace.tsx',import.meta.url),'utf8');
+ assert.match(workspace,/<TradingToolsPanel environment=\{environment\}/);
+ assert.doesNotMatch(workspace,/environment==='demo'&&<details className="ticket-plan-note"/);
+ const ticket=readFileSync(new URL('../src/SharedTicket.tsx',import.meta.url),'utf8');
+ assert.match(ticket,/<TicketRiskPanel[^>]*environment=\{environment\}/);
+});

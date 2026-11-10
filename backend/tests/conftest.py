@@ -17,3 +17,10 @@ def isolated_analysis_history(tmp_path,monkeypatch):
         monkeypatch.setattr(monitor,'start',lambda:None)
         monkeypatch.setattr(module,'trade_alerts',alerts)
         monkeypatch.setattr(module,'alert_monitor',monitor)
+    if module is not None and hasattr(module,'live_trade_plans'):
+        monkeypatch.setattr(module,'live_trade_plans',TradePlanStore(tmp_path/'live-trade-plans.sqlite'))
+        live_alerts=LocalAlerts(tmp_path/'live-trade-alerts.sqlite',environment='live')
+        live_monitor=AlertMonitor(live_alerts,lambda:{})
+        monkeypatch.setattr(live_monitor,'start',lambda:None)
+        monkeypatch.setattr(module,'live_trade_alerts',live_alerts)
+        monkeypatch.setattr(module,'live_alert_monitor',live_monitor)

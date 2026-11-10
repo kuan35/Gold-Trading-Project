@@ -12,6 +12,6 @@ export default function SharedTicket({value:v,onPatch,disabled=false,id,preview,
   {v.order_type==='LIMIT'&&<><label htmlFor={id+'-limit'}>指定限價</label><input id={id+'-limit'} type="number" min="0.01" step="0.01" value={v.limit_price} onChange={e=>onPatch({limit_price:e.target.value})} placeholder="請輸入黃金價格"/></>}
   <div className="cw-two"><label htmlFor={id+'-sl'}>停損 <small>{environment==='live'?'LIVE 必填':'選填'}</small><input id={id+'-sl'} type="number" min="0.01" step="0.01" value={v.sl} onChange={e=>onPatch({sl:e.target.value})} placeholder={environment==='live'?'請填停損價':'未設定'}/><TicketLevel level={preview?.data?.sl}/></label><label htmlFor={id+'-tp'}>停利 <small>選填</small><input id={id+'-tp'} type="number" min="0.01" step="0.01" value={v.tp} onChange={e=>onPatch({tp:e.target.value})} placeholder="未設定"/><TicketLevel level={preview?.data?.tp}/></label></div>
   {preview&&<TicketPreviewNote preview={preview}/>}
-  {preview&&<TicketRiskPanel id={id} value={v} onPatch={onPatch} preview={preview} disabled={disabled} riskBudget={riskBudget} onRiskBudgetChange={onRiskBudgetChange}/>}
+  {preview&&<TicketRiskPanel id={id} value={v} onPatch={onPatch} preview={preview} disabled={disabled} riskBudget={riskBudget} onRiskBudgetChange={onRiskBudgetChange} environment={environment}/>}
  </fieldset>;
 }

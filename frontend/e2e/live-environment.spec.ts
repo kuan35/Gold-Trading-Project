@@ -23,6 +23,7 @@ test('LIVE zero balance stays read only and never reads DEMO chart or activity w
       connection_status:'CONNECTED',account_scope:'CURRENT',updated_at_utc:at,
       submissions:{items:[],total:0,has_more:false,offset:0,limit:50},
       broker_orders:{status:'CURRENT',items:[],has_more:false},broker_deals:{status:'CURRENT',items:[],has_more:false}});
+    if(path==='/api/live/trading/plans')return json({status:'AVAILABLE',items:[],total:0,limit:20,offset:0});
     if(path==='/api/live/bars')return json({environment:'live',source:'ctrader_live_xauusd',
       status:'UNAVAILABLE',interval:new URL(route.request().url()).searchParams.get('interval'),closed_only:true,bars:[]});
     if(path.endsWith('/chart-stream'))return route.abort();
@@ -39,7 +40,10 @@ test('LIVE zero balance stays read only and never reads DEMO chart or activity w
   await page.getByRole('tab',{name:'即時圖'}).click();
   await expect.poll(()=>paths.slice(before).some(p=>p.includes('/api/live/bars'))).toBe(true);
   expect(paths.slice(before).some(p=>p.includes('/api/broker/bars')||p.includes('/api/broker/chart-stream'))).toBe(false);
-  await page.getByRole('tab',{name:'紀錄'}).click();
+  await page.getByRole('tab',{name:'紀錄',exact:true}).click();
+  await expect.poll(()=>paths.some(p=>p==='GET /api/live/trading/plans')).toBe(true);
+  expect(paths.some(p=>p.includes('/api/trading/plans'))).toBe(false);
+  await page.getByRole('tab',{name:'券商紀錄',exact:true}).click();
   await expect.poll(()=>paths.some(p=>p.includes('/api/live/activity'))).toBe(true);
   expect(paths.some(p=>p.startsWith('POST /api/live/drafts'))).toBe(false);
   await environment.selectOption('demo');

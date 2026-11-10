@@ -23,8 +23,8 @@ mature/nonoverlap/closed5m60+1h20, event/tail/paths/volatility and source-compat
 relative tick activity; stable group dedupe, at most5 and allow0. Do not remove
 the source check to make another account appear ready. Outcomes do not rank.
 
-For broker changes, keep DEMO and LIVE processes, drafts, journals and account
-keys separate. LIVE defaults to read-only; local YES plus positive loss/lot caps
+For broker changes, keep DEMO and LIVE processes, drafts, journals, trade plans,
+reminders, risk sizing and account keys separate. LIVE defaults to read-only; local YES plus positive loss/lot caps
 enable manually confirmed orders with a required stop. Revalidate account,
 version, quote and risk at confirmation; preserve idempotency and durable UNKNOWN
 protection. LIVE limit close stays disabled. Read docs/PEPPERSTONE_LIVE.md for

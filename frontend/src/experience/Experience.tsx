@@ -45,7 +45,7 @@ function Palette({open,onOpenChange,run}:{open:boolean;onOpenChange:(v:boolean)=
 
 const typing=(t:EventTarget|null)=>t instanceof HTMLElement&&(t.isContentEditable||['INPUT','TEXTAREA','SELECT'].includes(t.tagName));
 
-export default function Experience({view,light,error,notice,run,children}:{view:ExperienceView;light:boolean;error:string;notice:string;run:(c:ExperienceCommand)=>void;children:ReactNode}){
+export default function Experience({view,light,error,notice,run,children,environment='demo'}:{view:ExperienceView;light:boolean;error:string;notice:string;run:(c:ExperienceCommand)=>void;children:ReactNode;environment?:'demo'|'live'}){
  const [open,setOpen]=useState(false),stage=useRef<HTMLDivElement>(null);
  const showReminder=useCallback((conversationId?:string)=>{run({type:'navigate',view:'assistant'});requestAnimationFrame(()=>window.dispatchEvent(new CustomEvent('gd:trading-tools',{detail:{tab:'alerts',conversationId}})));},[run]);
  // Keep the golden ambience static. Pointer-driven root CSS writes force every
@@ -72,6 +72,6 @@ export default function Experience({view,light,error,notice,run,children}:{view:
   <div ref={stage} className="gx-stage">{children}</div>
   <Palette open={open} onOpenChange={setOpen} run={run}/>
   <Toaster theme={light?'light':'dark'} position="top-right" richColors closeButton toastOptions={{className:'gx-toast'}}/>
-  <ReminderNotifications onView={showReminder}/>
+  <ReminderNotifications onView={showReminder} environment={environment}/>
  </>;
 }

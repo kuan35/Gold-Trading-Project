@@ -1,3 +1,9 @@
+## 2026-11-10 — LIVE 交易計畫、條件提醒與風險反算
+
+- LIVE 補上與 DEMO 相同的交易計畫、復盤、計畫回顧、條件提醒與「依風險反算手數」。新增 `/api/live/trading/*`，LIVE 計畫與提醒存在獨立的 `private/live_trade_plans.sqlite`、`private/live_trade_alerts.sqlite`；檢查 LIVE 委託時保存草稿、分析與交易理由，確認／狀態回報只附加到 LIVE 計畫。修正 LIVE 委託欄的風險反算原本呼叫 DEMO 端點、用 DEMO 淨值計算的問題。LIVE 提醒只在 LIVE 環境被選取時輪詢通知，監控只評估 LIVE 快照，觸發不送單、不呼叫模型。
+- 修改檔案：`backend/app.py`、`backend/trade_alerts.py`、`backend/tests/conftest.py`、新增 `backend/tests/test_live_trading_tools.py`；`frontend/src` 的 TradingToolsPanel、TicketRiskPanel、SharedTicket、ConversationWorkspace、ReminderNotifications、App、experience/Experience；`frontend/tests/trading-tools.test.ts`、`reminder-notifications.test.ts`、`frontend/e2e/live-environment.spec.ts`；`API_CONTRACT.md`、`AGENTS.md`、`docs/PEPPERSTONE_LIVE.md`、`PUBLICATION_MANIFEST.json`。
+- 驗證：後端完整 1009 passed、1 skipped；前端 `npm test` 237 passed，`npm run build`、`build:pages` 成功；Playwright 54 項中 52 passed，`trader-workflow` 的圖上拖曳停損測試在修改前即失敗，`peer-ui` 的保存分析測試僅全套執行時逾時、單獨通過。全部使用合成資料，未送出 LIVE 委託。branch `main`；記錄時 commit N/A。
+
 ## 2026-11-10 — Windows CI 診斷與 UTF-8 輸出
 
 - 前次 `190308d` 的 GitHub Windows 工作在「Backend without credentials」步驟失敗，但 macOS、Pages 與產品檢查成功；公開註解只有 exit 1，未取得工作日誌，因此原因未證實。公開 checkout 的全新 Python venv 跑 1005 項全通過；乾淨 git archive 重跑亦 1005 項通過，`doctor` 回 exit 0。為縮小故障範圍，`.github/workflows/local-ci.yml` 將 pytest 與 doctor 拆成獨立步驟，並固定 Python UTF-8 輸出。下一次遠端執行需觀察結果。修改檔案：該 workflow、`HANDOFF.md`、`PUBLICATION_MANIFEST.json`；本次未改交易邏輯。branch `main`；記錄時 commit N/A。

@@ -11,8 +11,9 @@
 - `POST /api/live/drafts`：只建立 `REVIEW`，新單必有有效停損；要求 `CTRADER_LIVE_TRADING_ENABLED=YES`、交易權限、正數 `GOLD_LIVE_MAX_ORDER_STOP_USD`／`GOLD_LIVE_MAX_GROSS_LOTS`、USD 帳戶、完整持倉與掛單、當前報價和券商預估保證金。回應含本單情境停損、合計手數、預估保證金，不含帳戶全號。
 - `POST /api/live/drafts/{id}/confirm`：由使用者再次按確認，帶 revision 與防重送 key；後端重新核對 LIVE 帳戶、持倉、商品、報價及上限，先持久記錄後只送一次。`GET .../status` 查回報；未知回報禁止盲重送；`POST .../cancel` 只取消未送出的 REVIEW 草稿。
 - `POST /api/live/positions/{id}/close-draft`、`.../protection-draft`、`POST /api/live/pending/{id}/cancel-draft`：LIVE 市價平倉、修改保護與取消已送掛單皆走相同人工確認流程。LIVE 限價平倉拒絕，因 Open API 原生平倉不提供限價；不得用反向新單冒充。
+- `/api/live/trading/*`：與下方 `/api/trading/*` 同格式的 LIVE 交易工具，只讀 LIVE 帳戶（交易連線未啟用時用唯讀連線），不需 trading 權限、不送單。`POST /api/live/drafts` 建立草稿時另存 LIVE 交易計畫（回 `plan_id` 或 `plan_record_error`），confirm／status 回報只附加到 LIVE 計畫。計畫存 `private/live_trade_plans.sqlite`、提醒存 `private/live_trade_alerts.sqlite`，DEMO 的列不會出現在 LIVE，反之亦然。`POST /api/live/trading/risk-size` 只用 LIVE 帳戶淨值反算手數。LIVE 提醒監控只在有啟用中的 LIVE 提醒時讀取 LIVE 行情，只評估 `environment=live` 快照。
 
-本輪自動測試僅用合成資料，未提交 LIVE 真實委託。帳戶餘額為零或缺本機上限時只能讀取。LIVE 交易計畫與條件提醒尚未接入，畫面不得宣稱已保存或監控；詳見 `docs/PEPPERSTONE_LIVE.md`。
+本輪自動測試僅用合成資料，未提交 LIVE 真實委託。帳戶餘額為零或缺本機上限時只能讀取；條件提醒仍可在唯讀連線下建立，交易計畫則只在 LIVE 草稿成功建立時保存。詳見 `docs/PEPPERSTONE_LIVE.md`。
 
 ## 2026-11-04 獨立歷史看盤
 
