@@ -5,6 +5,7 @@ Nothing here participates in retrieval or supplies order execution authority.
 from decimal import Decimal
 from .scenario_risk import draft_risk,project_scenario
 from .forward_outcomes import HORIZONS
+from .case_operations import decimal_text
 
 TOUCH_LABELS={'STOP_FIRST':'先觸及停損範圍','TARGET_FIRST':'先觸及停利範圍',
     'BOTH_SAME_BAR':'同根五分棒碰到停損與停利，先後未知','NEITHER':'觀察期內未觸及已設定價位',
@@ -22,6 +23,15 @@ def build_scenarios(snapshot,context,query,side,*,draft=None,input_revision=None
         displayed_cases=len(comparison.get('cases',[])),cases=[],
         basis='DISPLAYED_CASES_ONLY',note='只呈現本次展示案例，不代表完整匹配池的後續統計。')
     bundles={};facts=[]
+    if draft:
+        def entered(key):
+            raw=draft.get(key)
+            return '未設定' if raw in ('',None) else decimal_text(raw,True) or '已填但數值無效'
+        facts.append(dict(id='draft.terms',text='這份固定草稿的已填欄位：方向{{draft_side_state}}，單型{{draft_order_type_state}}，手數{{draft_entered_lot}}，限價{{draft_entered_limit}}，停損{{draft_stop}}，停利{{draft_target}}。這是使用者輸入，不代表欄位合法、可成交或已送出；盤面偏向另看盤面事實。',
+            values=dict(draft_side_state={'BUY':'做多','SELL':'做空'}.get(draft.get('side'),'未指定'),
+                draft_order_type_state={'MARKET':'市價單','LIMIT':'限價單（假設成交）'}.get(draft.get('order_type'),'未指定'),
+                draft_entered_lot=entered('lot'),draft_entered_limit=entered('limit_price'),
+                draft_stop=entered('sl'),draft_target=entered('tp'))))
     for item in comparison.get('cases',[]):
         ref=item['ref'];raw={}
         if forward_store is not None and type(query.get('as_of')) in (int,float):
@@ -55,8 +65,12 @@ def build_scenarios(snapshot,context,query,side,*,draft=None,input_revision=None
             facts.append(dict(id='history.outcome',text=phrase,values=values))
         else:facts.append(dict(id='history.outcome',text='案例甲的固定後續觀察資料未能使用：{{future_unavailable_state}}。沒有補零或改挑其他結果。',values=dict(future_unavailable_state=h.get('reason') or '資料不足')))
     if risk['status']=='AVAILABLE':
-        phrase='這筆新增草稿的擬進場價{{draft_entry}}、手數{{draft_lot}}，合約單位{{draft_units}}盎司。'
-        values=dict(draft_entry=risk['entry_price'],draft_lot=risk['lot'],draft_units=risk['quantity_oz'])
+        phrase='這筆新增草稿方向{{draft_side_state}}、單型{{draft_order_type_state}}，擬進場價{{draft_entry}}、手數{{draft_lot}}，合約單位{{draft_units}}盎司。草稿已填停損{{draft_stop}}、停利{{draft_target}}。'
+        values=dict(draft_entry=risk['entry_price'],draft_lot=risk['lot'],draft_units=risk['quantity_oz'],
+            draft_side_state='做多' if risk['side']=='BUY' else '做空',
+            draft_order_type_state='限價單（假設成交）' if risk['order_type']=='LIMIT' else '市價單（尚未確認送出）',
+            draft_stop=risk['stop_price'] if risk['stop_price'] is not None else '未設定',
+            draft_target=risk['target_price'] if risk['target_price'] is not None else '未設定')
         if risk['stop_loss_usd'] is not None:
             phrase+='停損距離對應的本筆名目損失{{draft_stop_loss}} USD。'
             values['draft_stop_loss']=risk['stop_loss_usd']

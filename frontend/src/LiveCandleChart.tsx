@@ -11,7 +11,7 @@ const point=(b:Bar)=>({...b,time:b.time as UTCTimestamp});
 const vol=(b:Bar)=>({time:b.time as UTCTimestamp,value:b.volume,color:b.close>=b.open?'#6ab5a359':'#d6848559'});
 const average=(bars:Bar[],period:number)=>bars.flatMap((b,i)=>i<period-1?[]:[{time:b.time as UTCTimestamp,value:bars.slice(i-period+1,i+1).reduce((sum,p)=>sum+p.close,0)/period}]);
 
-export default function LiveCandleChart({bars,light,interval,draft}:{bars:Bar[];light:boolean;interval:string;draft?:DraftChartState}){
+export default function LiveCandleChart({bars,light,interval,draft,environment='demo'}:{bars:Bar[];light:boolean;interval:string;draft?:DraftChartState;environment?:'demo'|'live'}){
  const [toolsRuntime,setToolsRuntime]=useState<ChartRuntime|null>(null);
  const host=useRef<HTMLDivElement>(null),controller=useRef<Controller|null>(null),previous=useRef<Bar[]>([]),drawn=useRef<Bar|null>(null),raf=useRef<number|undefined>(undefined);
  useEffect(()=>{
@@ -54,5 +54,5 @@ export default function LiveCandleChart({bars,light,interval,draft}:{bars:Bar[];
   }
   previous.current=bars;
  },[bars,light,interval]);
- return <div className="gd-chart-workspace" style={{height:"100%",minHeight:360}}><ChartWorkspaceTools runtime={toolsRuntime} bars={bars} scope={`ctrader-demo-${interval}`} /><div className="gd-chart-plot"><div ref={host} className="chart-canvas live-candle-canvas" role="img" aria-label={`cTrader DEMO ${interval} Bid K線與tick量，最後一根形成中`}/>{draft&&<DraftChartOverlay runtime={toolsRuntime} draft={draft}/>}</div></div>;
+ return <div className="gd-chart-workspace" style={{height:"100%",minHeight:360}}><ChartWorkspaceTools runtime={toolsRuntime} bars={bars} scope={`ctrader-${environment}-${interval}`} /><div className="gd-chart-plot"><div ref={host} className="chart-canvas live-candle-canvas" role="img" aria-label={`cTrader ${environment.toUpperCase()} ${interval} Bid K線與tick量，最後一根形成中`}/>{draft&&<DraftChartOverlay runtime={toolsRuntime} draft={draft}/>}</div></div>;
 }

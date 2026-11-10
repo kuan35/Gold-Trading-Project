@@ -38,6 +38,19 @@ def test_private_default_uses_context_rules_and_deduplicates():
     assert r['comparison']['parameters_validated'] is False
 
 
+def test_original_performance_uses_all_matches_beyond_the_display_limit():
+    s=store();s.items=[dict(id=str(i),group=str(i),side='BUY',available_at=CLOCK-100,
+        entry='100',exit=str(100+p),profit=str(p),currency='USD') for i,p in enumerate((10,-10,20,0,-20,100))]
+    s.candidate_profiles={c['id']:profile(CLOCK-(72+24*i)*3600) for i,c in enumerate(s.items)}
+    r=retrieve(s)
+    assert len(r['cases'])==5 and r['total']==6
+    assert r['original_performance']['total']==6 and r['original_performance']['mean_price_return_pct']=='16.6667'
+    from backend.case_context import build_case_context
+    context=build_case_context(r)
+    assert context['performance']['known_results']==6
+    assert any(f['id']=='history.aggregate' for f in context['facts'])
+
+
 def test_no_rule_match_is_distinct_from_missing_data_and_never_falls_back():
     s=store()
     for p in s.candidate_profiles.values():p['indicators']['5m_atr_pct']='50'

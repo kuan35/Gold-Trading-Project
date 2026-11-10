@@ -1,7 +1,7 @@
 import type {Bar} from './types';
 
 export type FormingCandle={bar:Bar;pending_bars:Bar[];updated_at_ms:number;partial:boolean;price_basis:string;volume_basis:string};
-export type LiveChartFrame={source:string;environment:'demo';status:string;interval:string;closed_only:false;bars:Bar[];forming:FormingCandle|null;forming_status:string};
+export type LiveChartFrame={source:string;environment:'demo'|'live';status:string;interval:string;closed_only:false;bars:Bar[];forming:FormingCandle|null;forming_status:string};
 
 export function mergeLiveBars(closed:Bar[],pending:Bar[],forming:Bar|null):Bar[]{
  const byTime=new Map<number,Bar>();

@@ -34,6 +34,17 @@ def quantity(volume,lot_size):
     return format(Decimal(volume)/lot_size,'f')
 
 
+def position_margin(position):
+    """Current used margin is denominated in the account deposit currency."""
+    try:
+        raw=optional(position,'usedMargin')
+        digits=optional(position,'moneyDigits')
+        if raw is None or type(digits) is not int:return None
+        value=Decimal(money(raw,digits))
+        return format(value,'f') if value.is_finite() else None
+    except (TypeError,ValueError,ArithmeticError):return None
+
+
 def decode_positions(positions,symbol_id,lot_size):
     return [dict(id=str(p.positionId),side={1:'BUY',2:'SELL'}[p.tradeData.tradeSide],
         volume_units=money(p.tradeData.volume,2),lot=quantity(p.tradeData.volume,lot_size),
@@ -43,6 +54,8 @@ def decode_positions(positions,symbol_id,lot_size):
         trailing_stop_loss=bool(p.trailingStopLoss) if p.HasField('trailingStopLoss') else False,
         guaranteed_stop_loss=bool(p.guaranteedStopLoss) if p.HasField('guaranteedStopLoss') else False,
         opened_at_utc=stamp(optional(p.tradeData,'openTimestamp')),
+        used_margin=(used_margin:=position_margin(p)),
+        used_margin_source='BROKER_POSITION' if used_margin is not None else 'UNAVAILABLE',
         gross_pnl=None,net_pnl=None) for p in positions
         if p.tradeData.symbolId==symbol_id and p.tradeData.tradeSide in (1,2)]
 
@@ -62,6 +75,7 @@ def decode_order(order,symbol_id,lot_size):
         volume_units=money(td.volume,2),filled_lot=quantity(executed,lot_size) if executed is not None else None,
         order_type={1:'MARKET',2:'LIMIT',3:'STOP',4:'PROTECTION',5:'MARKET_RANGE',6:'STOP_LIMIT'}.get(order.orderType,'OTHER'),
         status=status,limit_price=str(order.limitPrice) if order.HasField('limitPrice') else None,
+        stop_price=str(order.stopPrice) if order.HasField('stopPrice') else None,
         execution_price=str(order.executionPrice) if order.HasField('executionPrice') else None,
         sl=str(order.stopLoss) if order.HasField('stopLoss') else None,
         tp=str(order.takeProfit) if order.HasField('takeProfit') else None,
@@ -74,9 +88,23 @@ def decode_deal(deal,symbol_id,lot_size):
     if deal.symbolId!=symbol_id or deal.tradeSide not in (1,2):return None
     close=optional(deal,'closePositionDetail')
     digits=int(close.moneyDigits) if close and close.HasField('moneyDigits') else int(deal.moneyDigits) if deal.HasField('moneyDigits') else 2
+    entry=original_side=price_return=None
+    if close:
+        original_side={1:'SELL',2:'BUY'}[deal.tradeSide]
+        try:
+            value=Decimal(str(optional(close,'entryPrice')))
+            if value.is_finite() and value>0:entry=format(value,'f')
+            exit_price=Decimal(str(optional(deal,'executionPrice')))
+            filled=Decimal(str(deal.filledVolume))
+            if (entry is not None and exit_price.is_finite() and exit_price>0
+                    and filled.is_finite() and filled>0 and deal.dealStatus in (2,3)):
+                sign=Decimal(1) if original_side=='BUY' else Decimal(-1)
+                price_return=format((exit_price-value)*sign/value*100,'f')
+        except (TypeError,ValueError,ArithmeticError):pass
     return dict(id=str(deal.dealId),order_id=str(deal.orderId),position_id=str(deal.positionId),
         side={1:'BUY',2:'SELL'}[deal.tradeSide],lot=quantity(deal.filledVolume,lot_size),
         execution_price=str(deal.executionPrice) if deal.HasField('executionPrice') else None,
+        position_entry_price=entry,original_side=original_side,price_return_pct=price_return,
         executed_at_utc=stamp(optional(deal,'executionTimestamp')),
         status={2:'FILLED',3:'PARTIALLY_FILLED',4:'REJECTED',5:'REJECTED',6:'ERROR',7:'MISSED'}.get(deal.dealStatus,'UNKNOWN'),
         role='CLOSE' if close else 'OPEN',

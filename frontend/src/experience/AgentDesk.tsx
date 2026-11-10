@@ -1,7 +1,7 @@
 import {useEffect,useMemo,useRef,useState,type ReactNode,type CSSProperties} from 'react';
 import {motion,AnimatePresence} from 'motion/react';
 import {SHORTCUT} from './platform';
-import type {DemoMarket} from '../demoMarket';
+import {brokerConnectionIssue,type DemoMarket,type BrokerEnvironment} from '../demoMarket';
 import {useLiveCandles} from '../useLiveCandles';import {mergeLiveBars,type LiveChartFrame} from '../liveCandles';
 import LiveCandleChart from '../LiveCandleChart';import {DeskIcon} from '../DeskChrome';import AnimatedPrice from './AnimatedPrice';
 import type {DraftChartState} from '../DraftChartOverlay';
@@ -10,14 +10,14 @@ export function AgentOrb({busy,size=44}:{busy:boolean;size?:number}){
 }
 
 
-export function MiniChart({light,draft}:{light:boolean;draft?:DraftChartState}){
+export function MiniChart({light,draft,environment='demo'}:{light:boolean;draft?:DraftChartState;environment?:BrokerEnvironment}){
  const [interval,setInterval]=useState<'5m'|'15m'|'1h'>('5m');
- const {frame,pending}=useLiveCandles(interval);
+ const {frame,pending}=useLiveCandles(interval,environment);
  const bars=useMemo(()=>mergeLiveBars(frame?.bars??[],frame?.status==='CURRENT'?frame.forming?.pending_bars??[]:[],frame?.status==='CURRENT'?frame.forming?.bar??null:null),[frame]);
  return <div className="ag-mini-chart"><div className="ag-seg">{(['5m','15m','1h'] as const).map(k=><button key={k} type="button" aria-pressed={interval===k} onClick={()=>setInterval(k)}>{k==='5m'?'5 分':k==='15m'?'15 分':'1 小時'}</button>)}</div>
   <LiveFrameStatus frame={frame} pending={pending}/>
   {draft?.side&&<p className="fine">圖上價位屬於目前草稿；拖曳只改欄位，仍需重新檢查。市價進場隨報價。</p>}
-  {bars.length?<LiveCandleChart key={interval} bars={bars} light={light} interval={interval} draft={draft?{...draft,disabled:draft.disabled||frame?.status!=='CURRENT'}:undefined}/>:<p className="ag-empty">{pending?'載入即時 K 線…':'即時 K 線未就緒'}</p>}</div>;
+  {bars.length?<LiveCandleChart key={environment+interval} bars={bars} light={light} interval={interval} environment={environment} draft={draft?{...draft,disabled:draft.disabled||frame?.status!=='CURRENT'}:undefined}/>:<p className="ag-empty">{pending?'載入即時 K 線…':'即時 K 線未就緒'}</p>}</div>;
 }
 
 export function LiveFrameStatus({frame,pending}:{frame:LiveChartFrame|null;pending:boolean}){
@@ -29,12 +29,12 @@ export function LiveFrameStatus({frame,pending}:{frame:LiveChartFrame|null;pendi
 }
 
 export type ReplayBar={bid:string;ask:string;equity:string;balance:string;positions:number;clock:string};
-export function AgentTopbar({market,light,onTheme,drawerOpen=false,onDrawer,title,replay}:{market:DemoMarket|null;light:boolean;onTheme:()=>void;drawerOpen?:boolean;onDrawer?:()=>void;title?:string;replay?:ReplayBar|null}){
+export function AgentTopbar({market,light,onTheme,drawerOpen=false,onDrawer,title,replay,environment='demo',onEnvironment}:{market:DemoMarket|null;light:boolean;onTheme:()=>void;drawerOpen?:boolean;onDrawer?:()=>void;title?:string;replay?:ReplayBar|null;environment?:BrokerEnvironment;onEnvironment?:(value:BrokerEnvironment)=>void}){
  if(replay)return <header className="ag-topbar ag-topbar-replay">
   {title&&<h1 className="ag-page-title">{title}</h1>}
   <div className="ag-sym"><strong>XAUUSD</strong><small>回放行情</small></div>
-  <div className="ag-quote"><small>BID</small><AnimatedPrice className="ag-bid" value={replay.bid}/></div>
-  <div className="ag-quote"><small>ASK</small><AnimatedPrice className="ag-ask" value={replay.ask}/></div>
+  <div className="ag-quote" title="賣出或平掉多單時參考的價格"><small>可賣出價</small><AnimatedPrice className="ag-bid" value={replay.bid}/></div>
+  <div className="ag-quote" title="買進或平掉空單時參考的價格"><small>可買進價</small><AnimatedPrice className="ag-ask" value={replay.ask}/></div>
   <span className="ag-live ag-replay" data-tip="目前回放到的歷史時間；按 → 推進一根 K 棒"><i/><span className="ag-replay-full">回放 {replay.clock.replace(' UTC','')}</span><span className="ag-replay-short">{replay.clock.slice(5,16)}</span></span>
   <div className="ag-spacer"/>
   <div className="ag-acct"><small>模擬淨值</small><strong><AnimatedPrice value={replay.equity}/></strong></div>
@@ -44,17 +44,19 @@ export function AgentTopbar({market,light,onTheme,drawerOpen=false,onDrawer,titl
   <button type="button" className="ag-icon-btn" aria-label={light?'切換深色':'切換淺色'} data-tip={light?'切換成深色主題':'切換成淺色主題'} onClick={onTheme}><DeskIcon name="sun"/></button>
  </header>;
  const q=market?.quote,a=market?.account,live=market?.connection_status==='CONNECTED'&&q?.status==='CURRENT'&&typeof q.age_seconds==='number'&&q.age_seconds>=0&&q.age_seconds<=5&&Number(q.bid)>0&&Number(q.ask)>=Number(q.bid);
+ const connectionIssue=brokerConnectionIssue(market);
  const acct=a?.status==='CURRENT'&&a.pnl_status==='CURRENT',pnl=Number(a?.xau_net_unrealized_pnl);
  return <header className="ag-topbar">
   {title&&<h1 className="ag-page-title">{title}</h1>}
   <div className="ag-sym"><strong>XAUUSD</strong><small>現貨黃金</small></div>
-  <div className="ag-quote"><small>BID</small><AnimatedPrice className="ag-bid" value={live?q?.bid:null}/></div>
-  <div className="ag-quote"><small>ASK</small><AnimatedPrice className="ag-ask" value={live?q?.ask:null}/></div>
-  <span className={`ag-live ${live?'':'ag-off'}`} data-tip={live?'cTrader DEMO 即時報價，延遲 '+(q?.age_seconds??0).toFixed(1)+' 秒':'正在連線券商'}><i/>{live?'即時':'等待即時報價'}</span>
+  <div className="ag-quote" title="賣出或平掉多單時參考的價格"><small>可賣出價</small><AnimatedPrice className="ag-bid" value={live?q?.bid:null}/></div>
+  <div className="ag-quote" title="買進或平掉空單時參考的價格"><small>可買進價</small><AnimatedPrice className="ag-ask" value={live?q?.ask:null}/></div>
+  <span className={`ag-live ${live?'':'ag-off'}`} data-tip={connectionIssue??(live?`cTrader ${environment.toUpperCase()} 即時報價，延遲 `+(q?.age_seconds??0).toFixed(1)+' 秒':'正在連線券商')}><i/>{live?'即時':connectionIssue?'LIVE 設定待完成':'等待即時報價'}</span>
   <div className="ag-spacer"/>
-  <div className="ag-acct"><small>DEMO 淨值</small><strong><AnimatedPrice value={acct?a?.equity:null}/></strong></div>
+  <div className="ag-acct"><small>{environment.toUpperCase()} 淨值</small><strong><AnimatedPrice value={acct?a?.equity:null}/></strong></div>
   <div className="ag-acct"><small>黃金浮動</small><strong className={Number.isFinite(pnl)?(pnl>=0?'ag-up':'ag-down'):''}><AnimatedPrice value={acct?a?.xau_net_unrealized_pnl:null}/></strong></div>
   <div className="ag-acct"><small>持倉</small><strong>{acct?a?.positions.length:'—'}</strong></div>
+  <label className="ag-environment">交易環境 <select aria-label="交易環境" value={environment} disabled={!onEnvironment} onChange={e=>onEnvironment?.(e.target.value as BrokerEnvironment)}><option value="demo">DEMO 模擬</option><option value="live">LIVE 真實資金</option></select></label>
   <button type="button" className="ag-icon-btn ag-kbd-btn" aria-label="開啟指令面板" data-tip={`指令面板：快速切頁與推進 K 棒（${SHORTCUT}）`} onClick={()=>window.dispatchEvent(new Event('gd:palette'))}><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><span>指令</span><kbd>{SHORTCUT}</kbd></button>
   <button type="button" className="ag-icon-btn" aria-label={light?'切換深色':'切換淺色'} data-tip={light?'切換成深色主題':'切換成淺色主題'} onClick={onTheme}><DeskIcon name="sun"/></button>
   {onDrawer&&<button type="button" className={`ag-icon-btn ${drawerOpen?'ag-on':''}`} aria-label={drawerOpen?'收合側欄':'展開側欄'} data-tip={drawerOpen?'收合右側工作區':'展開右側下單、即時圖與帳戶'} onClick={onDrawer}><DeskIcon name="chart"/></button>}

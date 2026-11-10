@@ -6,9 +6,10 @@ from .analysis_snapshots import snapshot_fingerprint
 from .live_assistant import build_live_context,directional_bias
 from .case_context import build_case_context
 from .analysis_visuals import build_analysis_visuals
-from .case_operations import build_case_operations
+from .case_operations import build_case_operations,historical_trade_fact
 from .case_scenarios import build_scenarios
 from .holding_observation import summarize as summarize_holding
+from .market_case_brief import describe_pre_entry,shape_fact,comparison_fact
 
 
 def chart_bars(rows,span,cutoff,count):
@@ -58,13 +59,32 @@ def prepare_analysis(snapshot,side,retrieval=None,query=None,*,profiles=None,now
     for interval,span,n in [('5m',300,60),('1h',3600,20)]:
         charts['query'][interval]=chart_bars(frames.get(interval,[]),span,cutoff,n)
     operations={}
-    for item in (context.get('case_comparison') or {}).get('cases',[]):
+    comparison=context.get('case_comparison') or {}
+    query_state=comparison.get('query_state') or {}
+    query_shape=describe_pre_entry(frames,cutoff,event=query_state.get('event'),tail=query_state.get('tail_direction'))
+    # Descriptions enrich only the already-selected bundle, never retrieval.
+    context['facts'].append(shape_fact(query_shape))
+    for number,item in enumerate((context.get('case_comparison') or {}).get('cases',[]),1):
         source=(operation_sources or {}).get(item['case_id'])
         if source is None:source=next((row for row in (retrieval or {}).get('cases',[]) if row.get('id')==item['case_id']),{})
         operations[item['ref']]=build_case_operations(source)
+        if source.get('id')==item['case_id']:
+            trade_fact=historical_trade_fact(source,item['ref'],number,cutoff)
+            if trade_fact is not None:context['facts'].append(trade_fact)
         profile=(profiles or {}).get(item['case_id']) or {};bars=profile.get('pre_entry_bars') or {}
+        reference_time=profile.get('as_of')
+        if type(cutoff) not in (int,float) or not isfinite(cutoff) or type(reference_time) not in (int,float) or not isfinite(reference_time) or reference_time>cutoff:
+            reference_time=None
+        case_shape=describe_pre_entry(bars,reference_time,event=item.get('event'),tail=item.get('tail_direction'))
+        context['facts'].extend([shape_fact(case_shape,number),comparison_fact(query_shape,case_shape,number)])
+        if number>2:
+            p=f'hist{number}_'
+            context['facts'].append(dict(id=f'history.case{number}',
+                text=item['ref']+'通過既定情境條件，事件{{'+p+'event_state}}，末段{{'+p+'tail_state}}；通過條件不等於完全相同或下次獲利機率。',
+                values={p+'event_state':item.get('event','未知'),p+'tail_state':item.get('tail_direction','未知')}))
         execution=execution_store.get(item['case_id'],profile,source,cutoff) if execution_store else None
         charts['cases'].append(dict(ref=item['ref'],as_of_utc=profile.get('as_of'),clock_status='UNKNOWN',alignment='PROJECT_REFERENCE',
+            original_times={key:operations[item['ref']]['representative'][key] for key in ('opened_at','closed_at')},
             execution=execution,holding_observation=summarize_holding(execution,source.get('side'),cutoff=cutoff),
             **{interval:chart_bars(bars.get(interval,[]),span,profile.get('as_of'),n) for interval,span,n in [('5m',300,60),('1h',3600,20)]}))
     summary,outcomes,facts=build_scenarios(snapshot,context,query,side,draft=draft,input_revision=input_revision,forward_store=forward_store)

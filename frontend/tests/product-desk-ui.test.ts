@@ -23,7 +23,7 @@ test('bottom account tray distinguishes an unknown account from a verified empty
  assert.match(html,/持倉/);assert.match(html,/等待.*帳戶|帳戶.*未連線/);assert.doesNotMatch(html,/目前沒有.*持倉|0\.00 USD/);
 });
 test('stale account profit is not presented as current profit',()=>{
- const market={connection_status:'CONNECTED',quote:{status:'CURRENT',bid:'4000',ask:'4001',age_seconds:0},account:{status:'CURRENT',pnl_status:'STALE',currency:'USD',positions:[{id:'p1',side:'BUY',lot:'0.10',entry:'3900',net_pnl:'999.99'}],pending_orders:[]}} as unknown as DemoMarket;
+ const market={environment:'demo',connection_status:'CONNECTED',quote:{status:'CURRENT',bid:'4000',ask:'4001',age_seconds:0},account:{status:'CURRENT',pnl_status:'STALE',currency:'USD',positions:[{id:'p1',side:'BUY',lot:'0.10',entry:'3900',net_pnl:'999.99'}],pending_orders:[]}} as unknown as DemoMarket;
  const html=renderToStaticMarkup(createElement(DeskAccountTray,{market}));
  assert.match(html,/p1|3900/);assert.doesNotMatch(html,/999\.99/);
 });

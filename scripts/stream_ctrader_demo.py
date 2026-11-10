@@ -18,7 +18,7 @@ from threading import Thread
 from scripts.check_ctrader_demo import decode_spot_quote, load_local_config
 from scripts.ctrader_account_payloads import money, decode_positions, decode_order, decode_deal, apply_unrealized, close_request_args
 from scripts.live_candles import LiveCandles
-from scripts.position_command_payloads import close_limit_args,protection_args,protection_ack,verify_close_ack
+from scripts.position_command_payloads import close_limit_args,protection_args,protection_ack,verify_close_ack,cancel_order_args,cancel_ack
 from backend.order_binding import history_result
 from scripts.expected_margin import decode_margin
 
@@ -32,6 +32,15 @@ def emit(kind: str, data: dict) -> None:
 
 def price(value: int, digits: int) -> str:
     return format((Decimal(value) / 100000).quantize(Decimal(1).scaleb(-digits)), 'f')
+
+
+def decode_trader_leverage(trader) -> str | None:
+    """Account ceiling from cTrader; the symbol's dynamic leverage may differ."""
+    try:
+        cents = int(trader.leverageInCents)
+        return format(Decimal(cents) / 100, 'f') if cents > 0 else None
+    except (AttributeError, TypeError, ValueError):
+        return None
 
 
 def decode_bar(bar, digits: int, minutes: int, now_ms: int, *,closed_only:bool=True) -> dict | None:
@@ -57,7 +66,12 @@ def decode_symbol_schedule(symbol) -> dict:
                           for start, end in intervals]}
 
 
-def run(config: dict[str, str], *, readonly_live: bool=False) -> None:
+def run(config: dict[str, str], *, readonly_live: bool=False, trade_live: bool=False) -> None:
+    if readonly_live and trade_live:
+        raise ValueError('LIVE_MODE_CONFLICT')
+    if trade_live and config.get('CTRADER_LIVE_TRADING_ENABLED') != 'YES':
+        raise ValueError('LIVE_TRADING_DISABLED')
+    is_live = readonly_live or trade_live
     from ctrader_open_api import Client, EndPoints, Protobuf, TcpProtocol
     from ctrader_open_api.messages.OpenApiCommonMessages_pb2 import ProtoHeartbeatEvent
     from ctrader_open_api.messages.OpenApiMessages_pb2 import (
@@ -78,7 +92,7 @@ def run(config: dict[str, str], *, readonly_live: bool=False) -> None:
     )
     from twisted.internet import reactor
 
-    client = Client(EndPoints.PROTOBUF_LIVE_HOST if readonly_live else EndPoints.PROTOBUF_DEMO_HOST, EndPoints.PROTOBUF_PORT, TcpProtocol)
+    client = Client(EndPoints.PROTOBUF_LIVE_HOST if is_live else EndPoints.PROTOBUF_DEMO_HOST, EndPoints.PROTOBUF_PORT, TcpProtocol)
     if readonly_live:
         from scripts.live_readonly_policy import ReadOnlyClient
         client=ReadOnlyClient(client)
@@ -150,6 +164,9 @@ def run(config: dict[str, str], *, readonly_live: bool=False) -> None:
         precision=int(trader.moneyDigits) if trader.HasField('moneyDigits') else 2
         account['balance']=money(trader.balance,precision)
         account['currency']=asset_names.get(int(trader.depositAssetId))
+        account['account_leverage']=decode_trader_leverage(trader)
+        display_login=int(getattr(trader,'traderLogin',0) or 0)
+        account['account_last4']=str(display_login if display_login>0 else account_id)[-4:]
         send(ProtoOAReconcileReq(ctidTraderAccountId=account_id), 'reconcile', reconciled)
 
     def reconciled(message) -> None:
@@ -166,7 +183,7 @@ def run(config: dict[str, str], *, readonly_live: bool=False) -> None:
         account['all_pending_orders_count']=len(response.order)
         account['status']='CURRENT'
         account['updated_at_utc']=datetime.now(timezone.utc).isoformat()
-        account['account_key']=sha256(f'ctrader-{"live" if readonly_live else "demo"}:{account_id}'.encode()).hexdigest()[:24]
+        account['account_key']=sha256(f'ctrader-{"live" if is_live else "demo"}:{account_id}'.encode()).hexdigest()[:24]
         account['pnl_status']='LOADING'
         account['equity']=account['net_unrealized_pnl']=account['xau_net_unrealized_pnl']=None
         if not position_ids:
@@ -305,9 +322,9 @@ def run(config: dict[str, str], *, readonly_live: bool=False) -> None:
                                         step_volume_cents=int(symbol.stepVolume), digits=digits)
                     symbol_rules['trading_schedule'] = decode_symbol_schedule(symbol)
                     emit('symbol', dict(symbol_rules))
-                    emit('tick_volume_source',{'source_key':sha256(f'ctrader-{"live" if readonly_live else "demo"}:{account_id}:{symbol_id}'.encode()).hexdigest()})
+                    emit('tick_volume_source',{'source_key':sha256(f'ctrader-{"live" if is_live else "demo"}:{account_id}:{symbol_id}'.encode()).hexdigest()})
                     emit('status', {'status': 'CONNECTED', 'scope': scope,
-                                    'orders_enabled': selected_demo and scope == 'TRADE'})
+                                    'orders_enabled': (selected_demo and not is_live or trade_live and not selected_demo) and scope == 'TRADE'})
         send(ProtoOAAssetListReq(ctidTraderAccountId=account_id), 'assets', asset_listed)
 
     def spots_subscribed(message) -> None:
@@ -353,7 +370,7 @@ def run(config: dict[str, str], *, readonly_live: bool=False) -> None:
                       key=lambda item: item.ctidTraderAccountId)
         requested = config.get('CTRADER_ACCOUNT_ID', '')
         selected = next((item for item in demo if str(item.ctidTraderAccountId) == requested), None) if requested else (demo[0] if demo else None)
-        if readonly_live:
+        if is_live:
             from scripts.live_readonly_policy import select_live
             try:selected=select_live(response.ctidTraderAccount,requested)
             except ValueError:
@@ -399,8 +416,7 @@ def run(config: dict[str, str], *, readonly_live: bool=False) -> None:
             if original and original!=request_ident and event_type in (3,11):
                 prior=execution_result(event,original)
                 if prior:emit('order_event',prior)
-            status={5:'CANCELLED',7:'REJECTED',8:'REJECTED'}.get(event_type,'UNKNOWN')
-            return dict(client_order_id=request_ident,status=status,order_id=str(order.orderId),position_id=position_id)
+            return dict(cancel_ack(event,command,account_id),client_order_id=request_ident,position_id=position_id)
         order_ids[int(order.orderId)] = client_order_id
         status = {2: 'ACCEPTED', 3: 'FILLED', 5: 'CANCELLED', 6: 'EXPIRED',
                   7: 'REJECTED', 8:'REJECTED',11: 'PARTIALLY_FILLED'}.get(event_type, 'UNKNOWN')
@@ -418,23 +434,24 @@ def run(config: dict[str, str], *, readonly_live: bool=False) -> None:
         ident = str(command.get('client_order_id', ''))
         if not ident.startswith('gd-') or len(ident) > 50:
             return
-        if not selected_demo or scope != 'TRADE' or account_id is None or symbol_id is None or not symbol_rules:
+        if not ((selected_demo and not is_live) or (trade_live and not selected_demo)) or scope != 'TRADE' or account_id is None or symbol_id is None or not symbol_rules:
             emit('order_result', {'client_order_id': ident, 'status': 'REJECTED',
-                                  'error_code': 'DEMO_TRADE_UNAVAILABLE'})
+                                  'error_code': 'LIVE_TRADE_UNAVAILABLE' if is_live else 'DEMO_TRADE_UNAVAILABLE'})
             return
         try:
             volume = int(command['volume_cents'])
             closing=command.get('intent')=='CLOSE'
             protection=command.get('intent')=='PROTECT';cancelling=command.get('intent')=='CANCEL'
             limit_close=closing and command.get('order_type')=='LIMIT'
+            if trade_live and limit_close:
+                raise ValueError('LIVE_LIMIT_CLOSE_DISABLED')
             cancelled_original=None
             if protection:
                 request=ProtoOAAmendPositionSLTPReq(**protection_args(command,account_id,account['positions'],digits))
             elif cancelling:
-                pending=next((o for o in account.get('pending_orders',[]) if o.get('id')==command.get('order_id') and o.get('position_id')==command.get('position_id') and o.get('intent')=='CLOSE' and o.get('order_type')=='LIMIT'),None)
-                if pending is None:raise ValueError('pending order changed')
+                args=cancel_order_args(command,account_id,account.get('pending_orders',[]))
                 cancelled_original=order_ids.get(int(command['order_id']))
-                request=ProtoOACancelOrderReq(ctidTraderAccountId=account_id,orderId=int(command['order_id']))
+                request=ProtoOACancelOrderReq(**args)
             elif limit_close:
                 request=ProtoOANewOrderReq(**close_limit_args(command,account_id,symbol_id,account['positions'],digits),clientOrderId=ident,label='Gold Desk DEMO close')
             elif closing:
@@ -472,7 +489,7 @@ def run(config: dict[str, str], *, readonly_live: bool=False) -> None:
                     {'client_order_id': ident, 'status': 'UNKNOWN'}))
         except (KeyError, TypeError, ValueError, OverflowError):
             emit('order_result', {'client_order_id': ident, 'status': 'REJECTED',
-                                  'error_code': 'INVALID_DEMO_ORDER'})
+                                  'error_code': 'INVALID_LIVE_ORDER' if is_live else 'INVALID_DEMO_ORDER'})
         except Exception:
             emit('order_result', {'client_order_id': ident, 'status': 'UNKNOWN'})
 
@@ -485,7 +502,7 @@ def run(config: dict[str, str], *, readonly_live: bool=False) -> None:
         order_type = {'MARKET': 1, 'LIMIT': 2}[command['order_type']]
         args = dict(ctidTraderAccountId=account_id, symbolId=symbol_id,
                     orderType=order_type, tradeSide=side, volume=volume,
-                    clientOrderId=ident, label='GoldDesk-DEMO')
+                    clientOrderId=ident, label='GoldDesk-LIVE' if is_live else 'GoldDesk-DEMO')
         if order_type == 2:
             args['limitPrice'] = float(command['limit_price'])
             if command.get('sl') is not None:
@@ -504,7 +521,7 @@ def run(config: dict[str, str], *, readonly_live: bool=False) -> None:
         ident=command.get('request_id');volume=command.get('volume_cents')
         if not isinstance(ident,str) or not ident.startswith('gm-') or len(ident)>50:return
         def unavailable():emit('expected_margin',dict(request_id=ident,status='UNAVAILABLE'))
-        if (readonly_live or not selected_demo or account_id is None or symbol_id is None
+        if (readonly_live or (not selected_demo and not trade_live) or account_id is None or symbol_id is None
             or not isinstance(volume,int) or not 0<volume<=2**63-1 or account.get('currency')!='USD'):
             unavailable();return
         generation=account_generation

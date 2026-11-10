@@ -1,5 +1,6 @@
 """Allowlisted LIVE read requests. No order type is allowed, regardless of scope."""
 from pathlib import Path
+from decimal import Decimal, InvalidOperation
 
 READ_REQUESTS=frozenset(('ProtoOAApplicationAuthReq','ProtoOAGetAccountListByAccessTokenReq',
  'ProtoOAAccountAuthReq','ProtoOAAssetListReq','ProtoOASymbolsListReq','ProtoOASymbolByIdReq',
@@ -28,7 +29,8 @@ def select_live(accounts,requested):
 
 def load_live_config(path=None):
     path=Path(path) if path else Path(__file__).resolve().parents[1]/'.env.ctrader.live'
-    keys={'CTRADER_ENVIRONMENT','CTRADER_CLIENT_ID','CTRADER_CLIENT_SECRET','CTRADER_ACCESS_TOKEN','CTRADER_ACCOUNT_ID'}
+    keys={'CTRADER_ENVIRONMENT','CTRADER_CLIENT_ID','CTRADER_CLIENT_SECRET','CTRADER_ACCESS_TOKEN','CTRADER_ACCOUNT_ID',
+          'CTRADER_LIVE_TRADING_ENABLED','GOLD_LIVE_MAX_ORDER_STOP_USD','GOLD_LIVE_MAX_GROSS_LOTS'}
     if not path.is_file():raise ValueError('NOT_CONFIGURED')
     values={}
     for raw in path.read_text(encoding='utf-8-sig').splitlines():
@@ -42,4 +44,21 @@ def load_live_config(path=None):
     account=values.get('CTRADER_ACCOUNT_ID','')
     if not account.isdecimal() or int(account)<=0:raise ValueError('ACCOUNT_ID_REQUIRED')
     if any(not values.get(k) for k in ('CTRADER_CLIENT_ID','CTRADER_CLIENT_SECRET','CTRADER_ACCESS_TOKEN')):raise ValueError('CREDENTIALS_MISSING')
+    return values
+
+
+def load_live_trade_config(path=None):
+    """Explicit local opt-in; the separate read-only transport never uses this."""
+    values=load_live_config(path)
+    if values.get('CTRADER_LIVE_TRADING_ENABLED')!='YES':
+        raise ValueError('LIVE_TRADING_DISABLED')
+    names=('GOLD_LIVE_MAX_ORDER_STOP_USD','GOLD_LIVE_MAX_GROSS_LOTS')
+    if any(not values.get(name) for name in names):
+        raise ValueError('LIVE_LIMITS_MISSING')
+    try:
+        for name in names:
+            value=Decimal(values[name])
+            if not value.is_finite() or value<=0:raise ValueError()
+    except (InvalidOperation,ValueError):
+        raise ValueError('LIVE_LIMITS_INVALID') from None
     return values

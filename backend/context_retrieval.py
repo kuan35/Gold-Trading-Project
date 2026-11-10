@@ -3,6 +3,7 @@
 No fallback neighbors, learned weights, external model, or execution authority.
 """
 from decimal import Decimal
+from .case_statistics import summarize_original_trades
 
 from .context_rules import market_features, pair_metrics, evaluate_rows, LIMITS
 from .dual_path_retrieval import DualPathIndex, _profit_sign, unavailable as dual_unavailable
@@ -148,7 +149,8 @@ class ContextIndex(DualPathIndex):
                 safe['match_reasons'].append('五分鐘相對tick報價活躍度差距不超過2倍')
             displayed.append(safe)
         passed = status=='PASSED'
-        return dict(total=len(ranked),wins=counts_out['win'],losses=counts_out['loss'],flat=counts_out['flat'],
+        return dict(original_performance=summarize_original_trades([self.lookup[row['case_id']] for row in ranked]),
+            total=len(ranked),wins=counts_out['win'],losses=counts_out['loss'],flat=counts_out['flat'],
             unknown=counts_out['unknown'],win_rate=str((Decimal(counts_out['win'])*100/known).quantize(Decimal('.1'))) if known else None,
             cases=displayed,full_cases=displayed,five_minute_only_cases=[],five_minute_only_total=0,
             profit_cases=[c for c in displayed if _profit_sign(c)>0],loss_cases=[c for c in displayed if _profit_sign(c)<0],

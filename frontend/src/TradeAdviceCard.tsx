@@ -24,7 +24,7 @@ export default function TradeAdviceCard({advice,onChart,staleDraft=false}:{advic
     </dl>
    </section>)}
   </div>
-  <details className="fine"><summary>什麼是一組完整配對？</summary><p>一組是一個去重後的歷史相似盤面。它要有完整的後續 30 分鐘，才能用同一進出時間和成本假設各試算一次做多、做空。門檻用來決定歷史樣本是否足以支持進場，不代表目前盤面沒有方向。</p></details>
+  <details className="fine"><summary>什麼是一組完整配對？</summary><p>一組是一段去重後的歷史相似盤面，不是現在要下幾筆單。它要有完整的後續 30 分鐘，才能用同一進出時間和成本假設各試算一次做多、做空。</p><p>目前有1組完整資料即可納入建議，摘要後方標示實際案例數。盤面、成本與風險條件仍會檢查。相似案例數與有完整後續資料的多空試算數可能不同，會分別標示；少數歷史結果不當成這次勝率。完整統計與程式檢查仍在本區保留。</p></details>
   {advice.costs&&<p className="fine">同盤面試算往返成本假設 · 基準 {advice.costs.baseline_usd_per_oz} USD/oz · 較高 {advice.costs.stress_usd_per_oz} USD/oz</p>}
   {advice.draft&&<section className="trade-advice-draft">
    <h4>{staleDraft?'原分析草稿':'分析時草稿'}</h4>

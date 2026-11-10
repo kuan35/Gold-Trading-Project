@@ -240,7 +240,7 @@ export default function TradingToolsPanel({market,conversationId,light=false,act
   <div id={`${id}-content`} role="tabpanel" aria-labelledby={`${id}-${tab}`}>
    {visited.includes('plans')&&<div hidden={tab!=='plans'}><PanelActivity.Provider value={active&&tab==='plans'}><PlansPanel light={light} onOpenThread={onOpenThread}/></PanelActivity.Provider></div>}
    {visited.includes('alerts')&&<div hidden={tab!=='alerts'}><PanelActivity.Provider value={active&&tab==='alerts'}><AlertsPanel market={market} conversationId={conversationId} onOpenThread={onOpenThread}/></PanelActivity.Provider></div>}
-   {active&&tab==='broker'&&<BrokerAccountPanel market={market} initialTab="history" idPrefix="tools-history-"/>}
+   {active&&tab==='broker'&&<BrokerAccountPanel market={market} environment="demo" initialTab="history" idPrefix="tools-history-"/>}
   </div>
  </section>;
 }

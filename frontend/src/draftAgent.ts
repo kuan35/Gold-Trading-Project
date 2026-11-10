@@ -10,7 +10,7 @@ export class DraftAgentSession{
   this.cancel();const generation=this.generation,controller=new AbortController();this.controller=controller;
   const timer=setTimeout(()=>controller.abort(),180000);
   try{
-   const reply=await post('/assistant/draft-chat',{draft_id:draft.id,message:'先用一句白話說明這筆委託的方向、進場條件與主要風險，再解釋支持和相反訊號、相似案例及差異，以及已計算的停損停利風險。歷史配對不足時，請說明不足的是可同時試算多空的歷史情境，不要把它當成盤面沒有方向。只依這份固定草稿快照回答，不要修改草稿或指示送單。',llm_enabled:true,...options},controller.signal);
+   const reply=await post('/assistant/draft-chat',{draft_id:draft.id,message:'請評估這筆已填的方向、單型、手數、進場價與停損停利。首段標題「這筆委託評估」，簡短說明主要優點或問題、已算出的風險、建議保留或調整的欄位；不要只重複一般多空盤面分析。有相似案例就結合整體歷史結果與這筆草稿的差異，沒有則依盤面與已算風險回答。只依這份固定草稿快照及提供的數值，不代替程式判定委託是否合法，不修改草稿、不確認或送單。',llm_enabled:true,...options},controller.signal);
    if(generation!==this.generation)return;
    if(reply.snapshot_id!==draft.analysis_snapshot_id||reply.as_of_utc!==draft.analysis_as_of_utc||reply.analysis_mode!=='draft_snapshot'||reply.market_status!=='FROZEN')throw Error('助手回覆與原委託快照不一致。');
    receive({status:'done',reply});

@@ -11,9 +11,9 @@ const pending=(status:string)=>['UNKNOWN','ACCEPTED','PARTIALLY_FILLED'].include
 export class CloseConfirmError extends Error{
   constructor(message:string,public readonly safeRejected:boolean){super(message);this.name='CloseConfirmError';}
 }
-export async function confirmBrokerClose(id:string,revision:number,idempotencyKey:string):Promise<CloseResult>{
+export async function confirmBrokerClose(id:string,revision:number,idempotencyKey:string,environment:'demo'|'live'='demo'):Promise<CloseResult>{
   // Preserve explicit server rejection status; api() exposes only a plain Error.
-  const response=await fetch(`/api/broker/drafts/${encodeURIComponent(id)}/confirm`,{
+  const response=await fetch(`/api/${environment==='live'?'live':'broker'}/drafts/${encodeURIComponent(id)}/confirm`,{
     method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision,idempotency_key:idempotencyKey})});
   const content:unknown=await response.json().catch(()=>null);
   if(!response.ok){
@@ -37,7 +37,7 @@ const resultLabel=(status:string)=>({ACCEPTED:'券商已接受平倉，等待成
   EXPIRED:'平倉委託已過期',UNKNOWN:'平倉回報待核對，請至 cTrader 帳戶確認，勿重送'}[status]??`券商狀態：${status}`);
 
 export function brokerCloseReady(market:DemoMarket|null,positionId:string):boolean{
-  if(!market||market.environment!=='demo'||!market.order_connection||market.token_scope!=='TRADE'||!market.symbol||
+  if(!market||!['demo','live'].includes(market.environment)||!market.order_connection||market.token_scope!=='TRADE'||!market.symbol||
     market.quote.status!=='CURRENT'||market.account?.status!=='CURRENT'||market.quote.age_seconds===null||
     market.quote.age_seconds===undefined||!Number.isFinite(market.quote.age_seconds)||market.quote.age_seconds>5||market.quote.age_seconds<0)return false;
   const position=market.account.positions.find(item=>item.id===positionId);
@@ -56,6 +56,7 @@ export default function BrokerClosePanel({market,positionId,onUpdated}:{market:D
   const [limit,setLimit]=useState(''),[choosing,setChoosing]=useState(false),[orderType,setOrderType]=useState<'MARKET'|'LIMIT'>('MARKET');
   const dialog=useRef<HTMLDialogElement>(null),working=useRef(false),confirmKey=useRef('');
   const updated=useRef(onUpdated),heading=useId();
+  const environment=market?.environment??'demo',brokerPath=environment==='live'?'/live':'/broker';
   const ready=brokerCloseReady(market,positionId);
   const locked=Boolean(submission&&brokerCloseLocked(submission.result.status,submission.result.status_observed_at_utc,market?.account?.updated_at_utc));
   useEffect(()=>{updated.current=onUpdated;},[onUpdated]);
@@ -68,7 +69,7 @@ export default function BrokerClosePanel({market,positionId,onUpdated}:{market:D
     let active=true;let timer:number|undefined;
     const refresh=async()=>{
       try{
-        const result=await api<CloseResult>(`/broker/drafts/${submission.draftId}/status`);
+        const result=await api<CloseResult>(`${brokerPath}/drafts/${submission.draftId}/status`);
         if(!active)return;
         setSubmission({draftId:submission.draftId,result});updated.current?.();
         if(!pending(result.status))return;
@@ -79,10 +80,10 @@ export default function BrokerClosePanel({market,positionId,onUpdated}:{market:D
     return()=>{active=false;if(timer)window.clearTimeout(timer);};
   },[submission?.draftId,submission?.result.status]);
   const review=async(orderType:'MARKET'|'LIMIT'='MARKET')=>{
-    if(working.current||locked||!ready)return;
+    if(working.current||locked||!ready||environment==='live'&&orderType==='LIMIT')return;
     working.current=true;setBusy(true);setError('');
     try{
-      const next=await api<CloseDraft>(`/broker/positions/${encodeURIComponent(positionId)}/close-draft`,{order_type:orderType,limit_price:orderType==='LIMIT'?limit:null});
+      const next=await api<CloseDraft>(`${brokerPath}/positions/${encodeURIComponent(positionId)}/close-draft`,{order_type:orderType,limit_price:orderType==='LIMIT'?limit:null});
       confirmKey.current=key();setDraft(next);setChoosing(false);setSubmission(null);
     }catch(e){setError(e instanceof Error?e.message:'無法建立 DEMO 平倉草稿');}
     finally{working.current=false;setBusy(false);}
@@ -91,7 +92,7 @@ export default function BrokerClosePanel({market,positionId,onUpdated}:{market:D
     if(working.current)return;
     if(!draft){setChoosing(false);setError('');return;}
     working.current=true;setBusy(true);setError('');
-    try{await api(`/broker/drafts/${draft.id}/cancel`,{});setDraft(null);setChoosing(false);}
+    try{await api(`${brokerPath}/drafts/${draft.id}/cancel`,{});setDraft(null);setChoosing(false);}
     catch(e){setError(e instanceof Error?e.message:'無法取消平倉草稿');}
     finally{working.current=false;setBusy(false);}
   };
@@ -102,7 +103,7 @@ export default function BrokerClosePanel({market,positionId,onUpdated}:{market:D
     // Lock immediately: even a lost HTTP response may follow a broker submission.
     setSubmission({draftId,result:{status:'UNKNOWN'}});
     try{
-      const result=await confirmBrokerClose(draftId,draft.revision,confirmKey.current);
+      const result=await confirmBrokerClose(draftId,draft.revision,confirmKey.current,environment);
       setSubmission({draftId,result});
     }catch(e){
       if(e instanceof CloseConfirmError&&e.safeRejected)setSubmission({draftId,result:{status:'REJECTED',local_rejection:true}});
@@ -111,27 +112,28 @@ export default function BrokerClosePanel({market,positionId,onUpdated}:{market:D
       setDraft(null);working.current=false;setBusy(false);updated.current?.();
     }
   };
-  return <span className="broker-close-control" aria-label={`cTrader DEMO 部位 ${positionId} 平倉`}>
-    <button type="button" aria-haspopup="dialog" disabled={busy||!ready||locked} onClick={()=>{setError('');setOrderType('MARKET');setLimit('');setChoosing(true);}} title="cTrader DEMO：選擇立即或指定價平倉此部位全部剩餘數量">平倉</button>
+  return <span className="broker-close-control" aria-label={`cTrader ${environment.toUpperCase()} 部位 ${positionId} 平倉`}>
+    <button type="button" aria-haspopup="dialog" disabled={busy||!ready||locked} onClick={()=>{setError('');setOrderType('MARKET');setLimit('');setChoosing(true);}} title={environment==='live'?'cTrader LIVE：僅開放市價平倉':'cTrader DEMO：選擇立即或指定價平倉此部位全部剩餘數量'}>平倉</button>
     {submission&&<span role="status" className="fine">{submission.result.local_rejection?'平倉確認未通過，請重新檢查草稿':resultLabel(submission.result.status)}
       {submission.result.execution_price?` · 成交價 ${submission.result.execution_price}`:''}
       {submission.result.error_code?` · ${submission.result.error_code}`:''}</span>}
     {error&&<span className="modal-error" role="alert">{error}</span>}
     <dialog ref={dialog} className="review-dialog" aria-labelledby={heading} onCancel={event=>{event.preventDefault();void cancel();}}>
-      {choosing&&!draft&&<><div className="dialog-heading"><h2 id={heading}>選擇 cTrader DEMO 平倉方式</h2></div>
+      {choosing&&!draft&&<><div className="dialog-heading"><h2 id={heading}>選擇 cTrader {environment.toUpperCase()} 平倉方式</h2></div>
         <div className="dialog-body"><p>原部位 {positionId} · 平倉全部剩餘數量</p>
-          <label>平倉方式<select aria-label="平倉方式" value={orderType} disabled={busy} onChange={e=>setOrderType(e.target.value as 'MARKET'|'LIMIT')}><option value="MARKET">市價：立即平倉</option><option value="LIMIT">限價：指定價格等待平倉</option></select></label>
+          <label>平倉方式<select aria-label="平倉方式" value={orderType} disabled={busy} onChange={e=>setOrderType(e.target.value as 'MARKET'|'LIMIT')}><option value="MARKET">市價：立即平倉</option><option value="LIMIT" disabled={environment==='live'}>限價：指定價格等待平倉</option></select></label>
           {orderType==='LIMIT'&&<label>指定平倉價<input type="text" inputMode="decimal" value={limit} disabled={busy} onChange={e=>setLimit(e.target.value)}/></label>}
+          {environment==='live'&&<p className="fine">LIVE 限價平倉尚未開放；cTrader 原生平倉採市價。</p>}
           <p className="fine">下一步先檢查草稿，確認前不會送出平倉。</p>{error&&<p role="alert" className="modal-error">{error}</p>}</div>
         <div className="dialog-actions"><button type="button" disabled={busy} onClick={()=>void cancel()}>取消</button><button type="button" className="primary" disabled={busy||!ready||locked||(orderType==='LIMIT'&&!limit.trim())} onClick={()=>void review(orderType)}>檢查平倉</button></div></>}
-      {draft&&<><div className="dialog-heading"><h2 id={heading}>核對 cTrader DEMO 平倉</h2>
-        <button type="button" disabled={busy} aria-label="關閉 DEMO 平倉草稿" onClick={()=>void cancel()}>×</button></div>
+      {draft&&<><div className="dialog-heading"><h2 id={heading}>核對 cTrader {environment.toUpperCase()} 平倉</h2>
+        <button type="button" disabled={busy} aria-label={`關閉 ${environment.toUpperCase()} 平倉草稿`} onClick={()=>void cancel()}>×</button></div>
         <div className="dialog-body"><p>部位 {draft.position_id} · 原方向 {draft.side} · 全部剩餘 {draft.lot} 手</p>
           <p>{draft.order_type==='LIMIT'?`掛單指定價 ${draft.limit_price}，等待原部位平倉`:`市價平倉參考價 ${draft.price}（${draft.side==='BUY'?'BID':'ASK'}）`}</p><p>{draft.explanation}</p>
           <p className="fine">草稿有效 30 秒。確認時重新核對帳戶與剩餘數量，實際成交以券商回報為準。</p>
           {error&&<p className="modal-error" role="alert">{error}</p>}</div>
         <div className="dialog-actions"><button type="button" disabled={busy} onClick={()=>void cancel()}>取消草稿</button>
-          <button type="button" className="primary" disabled={busy||!ready||locked} onClick={()=>void confirm()}>{busy?'等待券商回報…':'確認平倉 DEMO 部位'}</button></div></>}
+          <button type="button" className="primary" disabled={busy||!ready||locked} onClick={()=>void confirm()}>{busy?'等待券商回報…':`確認平倉 ${environment.toUpperCase()} 部位`}</button></div></>}
     </dialog>
   </span>;
 }

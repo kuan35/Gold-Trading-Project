@@ -6,6 +6,84 @@ from backend import live_assistant as live
 
 NOW=1800003600
 
+def test_frozen_draft_writer_assesses_this_order_instead_of_a_generic_direction_plan(monkeypatch):
+    context=live.build_live_context(snapshot(),now=NOW)
+    def provider(*a,**kw):
+        prompt=kw['system_prompt']
+        assert '這筆委託評估' in prompt
+        assert '已填的方向、單型、手數' in prompt
+        assert '不代替程式判定委託是否合法' in prompt
+        return dict(status='ok',text=json.dumps({'sections':[
+            dict(title='這筆委託評估',text='先核對這筆委託的風險。',fact_ids=['f5.trend'])]}))
+    monkeypatch.setattr(live,'explain_context',provider)
+    reply=live.respond_context(context,'檢查這筆委託',enabled=True,frozen=True)
+    assert reply['analysis_mode']=='draft_snapshot'
+    assert reply['llm_status']=='ok'
+    assert reply['sections'][0]['title']=='這筆委託評估'
+
+def test_presented_moving_average_names_are_plain_language_after_local_substitution():
+    facts=[dict(id='f5.trend',text='{{f5_structure}}',values={'f5_structure':'高於 MA20、低於 MA60'})]
+    result=live.render_sections([dict(title='均線位置',text='{{f5_structure}}。',fact_ids=['f5.trend'])],facts)
+    assert result[0]['text']=='高於 最近100分鐘均價、低於 最近5小時均價。'
+    assert facts[0]['values']['f5_structure']=='高於 MA20、低於 MA60'
+
+
+def test_plain_quotes_and_averages_keep_their_actual_timeframes():
+    facts=[dict(id='f1.trend',text='',values={'f1_structure':'Bid 4000；MA20 3990；MA60 3980'}),
+           dict(id='f5.trend',text='',values={'f5_structure':'MA20 4010'})]
+    result=live.render_sections([dict(title='均價',text='{{f1_structure}}。五分鐘{{f5_structure}}。Ask。',
+                                    fact_ids=['f1.trend','f5.trend'])],facts)[0]['text']
+    assert '目前可賣出價 4000' in result and '目前可買進價' in result
+    assert '最近20小時均價 3990' in result and '最近60小時均價 3980' in result
+    assert '最近100分鐘均價 4010' in result
+    assert 'Bid' not in result and 'MA20' not in result
+
+
+def test_five_minute_direction_reason_is_not_relabelled_with_an_hourly_section():
+    context=live.build_live_context(snapshot(),now=NOW)
+    facts=live.trade_advice_facts(dict(action='WAIT',headline='等待',reason='原因',
+        direction=dict(side='BUY',basis='5m',reason='五分鐘末根高於 MA20。')))+context['facts']
+    text=live.render_sections([dict(title='方向',text='{{advice_direction_reason_state}}',fact_ids=['advice.direction','f1.trend'])],facts)[0]['text']
+    assert '最近100分鐘均價' in text and '最近20小時' not in text
+
+
+def test_fixed_average_names_do_not_allow_fabricated_market_numbers():
+    facts=live.build_live_context(snapshot(),now=NOW)['facts']
+    rendered=live.render_model_sections([dict(title='綜合建議',text='現價高於最近100分鐘均價。',fact_ids=['f5.trend'])],facts)
+    assert rendered[0][0]['source']=='model'
+    with pytest.raises(ValueError):
+        live.render_sections([dict(title='盤面',text='支撐為4000。',fact_ids=['f5.levels'])],facts)
+
+
+def test_plan_keeps_risk_budget_constraints_and_direction_specific_protection():
+    facts=live.trade_advice_facts(dict(action='ADJUST',headline='先調整',reason_code='RISK_BUDGET',reason='超出預算',
+        protection=dict(status='AVAILABLE',entry='4000',stop='4010',target='3980',stop_basis='壓力上方',target_basis='前低',reward_risk_ratio='2',conditional=True)))
+    plan=next(f for f in facts if f['id']=='advice.plan')
+    assert '超出使用者預算' in plan['values']['plan_constraint_state']
+    assert next(f for f in facts if f['id']=='advice.protection')['values']['advice_protection_side_state']=='做空'
+
+
+def test_trade_plan_writer_gets_brief_market_meaning_without_a_sample_count_veto(monkeypatch):
+    context=live.build_live_context(snapshot(),now=NOW)
+    context['trade_advice']=dict(action='WAIT',headline='建議先等待',reason_code='INSUFFICIENT_PAIRS',
+        reason='有5組完整配對，方向建議需至少10組。',signal='跌破後收回',signal_code='RECLAIM_LOW',
+        direction={'side':'BUY','reason':'五分鐘末根高於 MA20。'})
+    def provider(*a,**kw):
+        payload=kw['catalog'];facts={f['id']:f for f in payload['facts']}
+        assert 'advice.decision' not in facts
+        assert 'action' not in payload['program_trade_advice']
+        assert 'f5_live_reading_state' in facts['f5.trend']['basis']
+        assert 'f5_structure' not in facts['f5.trend']['text']
+        assert '5組' not in str(payload) and '10組' not in str(payload)
+        assert '不是進場許可' in kw['system_prompt']
+        assert '歷史操作參照' in kw['system_prompt']
+        return dict(status='ok',provider='claude_code',text=json.dumps({'sections':[
+            dict(title='綜合建議',text='優先找回踩後做多的機會，若支撐失效就取消這個計畫。',fact_ids=['f5.levels'])]}))
+    monkeypatch.setattr(live,'explain_context',provider)
+    reply=live.respond_context(context,'現在該做多還是做空？',enabled=True)
+    assert reply['llm_status']=='ok' and reply['trade_advice']['action']=='WAIT'
+    assert any(f['id']=='advice.decision' for f in reply['evidence'])
+
 def test_clock_lead_is_explained_without_relaxing_quote_or_order_checks():
     s=snapshot();s['quote']['source_time_utc']=datetime.fromtimestamp(NOW+.165,timezone.utc).isoformat()
     answer=live.respond_live(s,'分析盤面',now=NOW)
@@ -166,7 +244,7 @@ def test_writer_sees_computed_relationships_but_numbers_are_filled_locally(monke
         encoded=json.dumps(k['catalog'],ensure_ascii=False)
         assert '4120.12' not in encoded and 'SECRET' not in encoded
         trend=next(f for f in k['catalog']['facts'] if f['id']=='f5.trend')
-        assert '高於' in trend['basis']['f5_structure'] and 'f5_structure' in trend['tokens']
+        assert '高於短線均價' in trend['basis']['f5_live_reading_state'] and 'f5_structure' in trend['tokens']
         assert 'values' not in trend
         return dict(status='ok',model='test',text=json.dumps({'sections':[dict(title='五分鐘結構',text='{{f5_structure}}；{{f5_bias}}。這表示價格在兩條均線之上。',fact_ids=['f5.trend'])]}))
     monkeypatch.setattr(live,'explain_context',provider)
@@ -254,7 +332,8 @@ def test_live_quote_below_averages_is_separate_from_last_closed_bullish_structur
     assert '低於 MA20' in trend['f5_live_structure'] and '低於 MA60' in trend['f5_live_structure']
     assert '高於 MA20' in trend['f5_structure']
     narrative=live.writer_facts([next(f for f in context['facts'] if f['id']=='f5.trend')])[0]
-    assert '低於 MA20' in narrative['basis']['f5_live_structure'] and '4000.12' not in str(narrative)
+    assert '低於短線均價' in narrative['basis']['f5_live_reading_state'] and '4000.12' not in str(narrative)
+    assert 'f5_live_structure' not in narrative['basis']
 
 
 @pytest.mark.parametrize('action,reason,side,expected', [

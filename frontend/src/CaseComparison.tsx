@@ -1,8 +1,10 @@
 import {useState} from 'react';
 import ConversationCharts from './ConversationCharts';
 import CaseOperations from './CaseOperations';
+import type {CasePerformanceData} from './CasePerformance';
 
 export type CaseComparisonData={status:string;label:string;reason:string;method:string;side:string;snapshot_id:string|null;query_as_of_utc:number|null;
+ performance?:CasePerformanceData;
  tick_volume?:{enabled:boolean;limit?:string;query_relative?:string|null;query_status?:string;query_reason?:string|null};
  query_state:{event:string;tail_direction:string};counts:{eligible:number|null;passed:number|null;displayed:number};
  cases:{ref:string;case_id?:string;event:string;tail_direction:string;similarities:string[];differences:string[];tick_activity?:{query_relative:string;case_relative:string;multiplier:string;limit:string}|null;representative?:{result:string;profit:string|null;currency:string|null;currency_stated:boolean;side:string;action:string;lot:string|null};metrics:{key:string;label:string;actual:string|null;tolerance:string|null;unit:string;passed:boolean|null}[]}[];

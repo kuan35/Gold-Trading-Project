@@ -3,6 +3,30 @@ from decimal import Decimal
 from scripts.ctrader_account_payloads import close_request_args
 
 
+def pending_order_fingerprint(order):
+    return {k:order.get(k) for k in ('id','side','volume_units','order_type','intent','position_id','limit_price','stop_price','sl','tp','filled_lot')}
+
+
+def cancel_order_args(command,account_id,orders):
+    matches=[o for o in orders if o.get('id')==command.get('order_id')]
+    if len(matches)!=1:raise ValueError('pending order no longer available')
+    pending=matches[0]
+    if pending.get('intent') not in ('OPEN','CLOSE') or pending.get('order_type') not in ('LIMIT','STOP','STOP_LIMIT'):
+        raise ValueError('unsupported pending order')
+    if pending.get('status') not in (None,'ACCEPTED','PARTIALLY_FILLED'):raise ValueError('order no longer pending')
+    if pending_order_fingerprint(pending)!=command.get('expected_order'):raise ValueError('pending order changed')
+    order_id=int(command['order_id'])
+    if order_id<=0:raise ValueError('invalid order id')
+    return dict(ctidTraderAccountId=account_id,orderId=order_id)
+
+
+def cancel_ack(event,command,account_id):
+    result=dict(status='UNKNOWN',order_id=command['order_id'])
+    if int(event.ctidTraderAccountId)!=account_id or not event.HasField('order') or str(event.order.orderId)!=command['order_id']:return result
+    status={5:'CANCELLED',7:'REJECTED',8:'REJECTED'}.get(int(event.executionType),'UNKNOWN')
+    return dict(result,status=status)
+
+
 def price(value,digits):
     p=Decimal(str(value))
     if not p.is_finite() or p<=0 or p%Decimal(1).scaleb(-digits):raise ValueError('invalid price')

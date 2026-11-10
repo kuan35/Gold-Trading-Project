@@ -1,3 +1,64 @@
+## 2026-11-10 — LIVE 隔離版本與新版 8766 介面發布
+
+- 新版前端加入 DEMO／LIVE 切換、獨立聊天與草稿、LIVE 看盤／案例／Agent／帳戶／委託；後端加入獨立 LIVE 連線、風險上限、必填停損、人工確認及持倉保護／掛單取消。LIVE 限價平倉停用，計畫／提醒待獨立實作。LIVE 預設唯讀，真實資金委託未在開發或測試中送出。`docs/PEPPERSTONE_LIVE.md` 說明設定、入金入口及限制。
+- 本機唯讀檢查發現缺 Open API 帳戶 ID，已修連線退出時保留設定錯誤並於新版頂部顯示；實際 API 回 `ACCOUNT_ID_REQUIRED`，`order_connection=false`。使用者須自行填入正確的 LIVE Open API 帳戶 ID，不以券商畫面登入號代替。
+- 修改檔案為本 checkout `backend/`、`scripts/`、`frontend/src/`、`frontend/tests/`、`frontend/e2e/` 對應功能與測試，及 `README.md`、`AGENTS.md`、`API_CONTRACT.md`、`docs/`、`.env.ctrader.live.example`、`PUBLICATION_MANIFEST.json`。產品端同名後端／腳本／文件已同步。指令：後端完整 1002 passed／1 skipped；狀態修正相關 11 passed；前端 235 passed、build／build:pages 成功；委託環境 e2e 31 passed，LIVE 環境 e2e 2 passed；diff、白名單、憑證檢查通過。243 份受保護原件 SHA-256 不變。阻礙：LIVE 本機帳戶 ID 未填，無法驗收真實帳戶同步；不送實單。下一步：GitHub main 發布後由帳戶持有人完成本機設定與唯讀驗收。branch `main`；記錄時 commit N/A。
+
+## 2026-11-10 — 多例草稿500、跳動試算與同快照Agent核對
+
+- 實際讀server-error.log定位`broker_demo_draft → respond_context(enabled=False) → render_sections`：第三至五例可信否定模板被模型機率守衛拒絕，導致非JSON500。獨立案例Agent修正`product/backend/live_assistant.py`為可信fact renderer及summary_contract，主Agent整合百分號與指定否定句、簡化草稿提示。肯定的本次勝率／自行數字仍拒絕。新增`tests/test_assistant_summary_contract.py`（11項）及market_case_brief fixture，真實五展示／六全池分母涵蓋原500。
+- 新版發布frontend：`api.ts`集中解析HTTP／非JSON；`TicketPreview.tsx`改非重疊刷新，背景保留數據及details，不依每tick abort；`AccountScenario.tsx`背景pending不折疊，`experience/integration.css`穩定槽位。新增`agentSummary.ts`共用首個模型摘要；`ConversationWorkspace.tsx`將同draft Agent pending/ready/error/stale同步`ConversationOrderReview.tsx`，不再獨立套程式WAIT；切換聊天取消後同步終止核對pending，過期刷新不偷偷引用舊Agent。`LiveAssistant.tsx`補欄位、`experience/AgentAnswer.tsx`明示缺歷史關聯。原版product/frontend未改。
+- Agent首段要求當時盤面、全池結果及正確有效分母、案例形態、支持／反證。COMPLETE僅為結構與引用，不保證語義。模型省略歷史時明示INCOMPLETE_HISTORY，程式歷史資料標來源；已驗證模型原句才可提升，不能以程式文字冒稱模型結論。舊聊天不重寫，新檢查才適用。
+- 先見新增前端回歸4敗；完整案例API測試重現500後改200；另先重現切換聊天核對永遠pending、否定句誤擋及缺百分號，再修正。指令：產品venv `pytest -q` 九個相關模組（test_assistant_summary_contract/live_assistant/market_case_brief/case_analysis_api/case_scenarios/case_operations/case_statistics/case_context/conversation_api）121 passed；發布frontend `npm test`234 passed，`npm run build`成功。`npm run test:ui -- e2e/draft-assistance.spec.ts`含2.4秒慢預覽、HTML500、同摘要、取消分析及過期等；另`e2e/nonblocking-chat.spec.ts`5 passed。最終委託23項全數通過，合計28項瀏覽器測試通過。測試確認／取消全是攔截合成API。
+- 真實Claude Code3次純合成呼叫：第一回未完整歷史關聯，第二回invalid_response，第三回首段COMPLETE但附加否定句被舊守衛誤擋；修正指定否定句及百分比單位後，重放同份實際回覆為ok／COMPLETE，不再呼叫模型。不是品質／收益驗證，模型仍可能格式或引用失敗，此時明示，不用另一程式WAIT頂替。外傳僅虛構摘要及占位符，無真實行情或交易。
+- IAB實際連8766、讀實際報價帳戶，填0.01手／4080／4050／4150測試草稿、只按檢查，成功顯示風險及核對，未送券商訂單／平倉／取消掛單。截圖與模型診斷留private/coherent_review_20261110。開發中HMR留下舊dependency警告，正式reload後使用新effect。依CIM核對路徑重啟8765（最後PID31448），8766 Vite已載入新版；保留既有成本假設及個人env。
+- 新增`docs/coherent_order_review_20261110.md`、更新API_CONTRACT及market_case_agent_evidence文件；6個後端／測試／文件與發布包逐位元相同。243份原始資料及根附件SHA-256前後一致。未複製private至公開。root codex/candidate-market-retrieval；發布main基線e33acf8，commit N/A，未推送GitHub。後續若發布需更新精確白名單manifest；下一步使用者以新草稿／新提問驗收不同真實盤面的模型敘事，不能宣稱所有bug或模型失敗已消失。
+
+## 2026-11-10 — 已送掛單取消、過期續單、實際持倉ROI與案例敘事整合
+
+- 依使用者更正，「取消」指已送出待成交單。`backend/position_management.py`、`broker_orders.py`、`order_binding.py`與`scripts/position_command_payloads.py`／`stream_ctrader_demo.py`擴充OPEN/CLOSE的LIMIT/STOP/STOP_LIMIT取消，不要求進場前已有position。確認比較同帳戶原單指紋（含stop_price），只有匹配原帳戶/order的ORDER_CANCELLED才取消成功；UNKNOWN不重送。重啟後可用CURRENT同帳戶及原單身分明確歷史終態恢復，原單FILLED/EXPIRED/REJECTED只表示取消失敗，不能冒充取消成功；不靠清單消失判定。防止已取消但尚未同步的第二份草稿重送。新版`BrokerPendingCancel.tsx`及`DeskAccountTray.tsx`／`BrokerAccountPanel.tsx`補核對／取消按鈕，右側待成交卡片避免橫捲。
+- 新版`ConversationOrderReview.tsx`／`ConversationWorkspace.tsx`：原30秒後端有效性保留，過期或明確未送出之stale/服務重啟失效可按「更新報價並繼續」，保留欄位重新建立固定快照與風險、對照後人工確認；刷新失敗保留舊核對可重試，不重跑付費AI。不解除UNKNOWN或已送出鎖。與原清除未送草稿功能分開。
+- 另一Agent建立`account_scenarios.py`與`ctrader_account_payloads.py`補財務欄位；主Agent整合`app.py`與新版`AccountScenario.tsx`、TicketPreview、types/demoMarket/brokerActivity及帳戶畫面。使用者最後明確指定持倉主要用ROI：優先券商usedMargin（position.moneyDigits解碼）與未實現淨損益，缺值才用明示槓桿估算，已知零／無效分母不估算；價格報酬藏詳情。券商成交紀錄用原單實際進出價顯示價格報酬，歷史保證金不捏造。下單前及核對新增固定持倉／價差之淨值歸零情境，不等於強平價；完整USD曝險與新鮮淨值不足拒算。不填SLTP也可看情境。未計潛在平倉佣金，不稱最終實現報酬。
+- 案例證據由獨立Agent處理：`market_case_brief.py`固定事前雙週期三段描述接入`case_analysis.py`；`case_scenarios.py`明列draft.terms方向/單型/SLTP；`case_operations.py`前五例原單敘事；`live_assistant.py`不再因停損問題移除案例形態，要求同快照當前盤面、歷史型態、全池統計及原單結果共同判讀，窄守衛拒絕將BUY草稿直接說成偏空草稿。三段描述在檢索後建立，不更動檢索／盈虧排名，不是離線全庫LLM人工標註。尚未新增真實模型品質／交易績效實證。
+- 文件：API_CONTRACT與`docs/pending_cancel_and_refresh_20261110.md`、`account_scenarios_20261110.md`、`market_case_agent_evidence_20261110.md`。23個後端/測試/文件與發布包逐位元一致。唯讀審查Agent發現UNKNOWN重啟無法恢復、stopPrice漏核對、遺失草稿409無續單，均補回歸修正。
+- 驗證先紅後綠：取消OPEN/競態/回報、過期無入口、實際ROI未主顯等回歸先失敗再修改。產品venv相關17模組`pytest`298 passed（含TestClient合成API）；新版`npm test`228 passed，`npm run build`成功；`npm run test:ui -- e2e/draft-assistance.spec.ts e2e/pending-cancel.spec.ts e2e/position-protection.spec.ts e2e/nonblocking-chat.spec.ts`31 passed，合成ROI畫面已目視。讀取來源的官方API/stopout文件已記在docs，原有Starlette／bundle提示保留。243受保護原件SHA-256全不變。無付費模型推論或真實送單／取消／保護修改。
+- 已核對路徑重啟8765（父PID33016），新版8766首頁200，最後唯讀檢查券商與欄位狀態；保留既有成本環境假設、個人設定優先，未改憑證。原聊天不重寫，新Agent提示需新提問／重新檢查。root `codex/candidate-market-retrieval`；發布`main`基線e33acf8；commit N/A，未推送（本輪未要求）。若後續發布先刷新白名單/manifest，不帶private。未完整改舊版product/frontend，現版主體仍發布checkout的8766。
+
+## 2026-11-10 — 成交後停損停利入口、取消準備中委託與專用助手評估
+
+- 新版 `frontend/src/DeskAccountTray.tsx`／`experience/AgentDrawer.tsx`：右側帳戶改為逐部位卡片，直接顯示幣別損益、停損停利、平倉及修改入口；原完整表也加修改入口。`BrokerPositionActions.tsx`沿用現有PROTECT API及人工確認，預填原設定，KEEP省略／CLEAR傳null，保留高階停損限制與帳戶同步鎖；關閉視窗不丟棄UNKNOWN輪詢。無新增LIVE寫入權限。
+- `ConversationWorkspace.tsx`／`ConversationOrderReview.tsx`／`TicketCheckAction.tsx`：兩份共用表單新增取消準備中委託，未檢查時本機清空，已檢查REVIEW先取消成功才清空；失敗保留草稿，正在送出／回報未明不能藉此解除鎖定。清除方向／單型／手數／限價／SLTP／交易理由，保留風險預算與聊天；遞增版本並中止舊草稿助手。選填方向只改草稿，不自動另發一般分析。一般聊天比較方向不改草稿；檢查委託評估已填欄位。
+- `frontend/src/draftAgent.ts`與`product/backend/live_assistant.py`新增固定草稿專用「這筆委託評估」提示，要求依同份快照的手數、價位、風險及全部歷史匹配池評估本筆，不能改金額、合法性、確認或送單。新增`product/docs/order_controls_20261110.md`、更新API_CONTRACT，後端／測試／文件4檔逐位元同步發布checkout。舊聊天不重寫。
+- 驗證先見新增單元／模型契約與瀏覽器回歸在舊碼失敗後再修改。指令：產品venv `pytest -q backend/tests/test_live_assistant.py backend/tests/test_position_management.py backend/tests/test_position_command_payloads.py backend/tests/test_broker_orders.py backend/tests/test_case_analysis_api.py backend/tests/test_scenario_api.py`（發布包執行）76 passed；前端`npm test`224 passed；`npm run build`成功；`npm run test:ui -- e2e/draft-assistance.spec.ts e2e/position-protection.spec.ts e2e/nonblocking-chat.spec.ts`23 passed，補強送出鎖4 passed及可見持倉同步3 passed。包含取消前後／失敗保留、共用欄位、停止晚到助手、單欄SL保持TP、人工確認、UNKNOWN輪詢、唯讀禁改與聊天背景回覆。修正一項舊文案斷言後全通過。合成畫面已檢視，QA留private；未使用外部模型或真實券商異動。既有大bundle與Starlette提示保留。
+- 243份交易員資料及根目錄受保護原件SHA-256前後一致。已核對8765程序路徑並重啟，backend父PID12152；新版8766首頁HTTP200，原版8765保留。沿用既有暫用成本、個人設定優先，未改憑證。
+- root `codex/candidate-market-retrieval`，發布`main`基線e33acf8；commit N/A／未推送（本輪未要求）。後續若發布須更新精確白名單與manifest，不帶private。提示詞與合成測試不代表實際模型敘事或交易績效已驗證；使用者須重新整理新版頁面與重新檢查草稿以套用新提示。
+
+## 2026-11-10 — 背景回答與全池平均結果
+
+- ConversationWorkspace唯讀回答不鎖導覽，請求依聊天隔離；可切頁／並行聊天／停止回覆，背景結果只回原聊天。切聊天後的遲到解析不改現在草稿，刪除後不復活。實際交易處理鎖定保留。
+- 新增backend/case_statistics.py與CasePerformance，對全部通過並去重的代表單算歷史獲利比例、平均價格報酬／每盎司價差及分幣別平均損益，不只前五例。history.aggregate同快照提供Agent；未知不補零、不混幣別。各例圖表及操作明細加入原單進出時間，與行情參考UTC分開。修正跨週期均價文字換算。
+- 契約與說明見API_CONTRACT及docs/matched_pool_results_20261110.md。相關後端124項通過，最後歷史勝率引用守衛及live助手53項通過；前端224項、背景／委託瀏覽器16項、全池統計及逐案時間focused瀏覽器1項通過，build及diff檢查成功。無真實模型／券商送單；即時停用LLM驗收取得5組案例／全池統計5組／5例原單時間。
+- 主工作區243份保護原件雜湊不變，13個後端／測試／文件已同步。8766已載入；需新提問或更新盤面，舊聊天不重寫。main基線e33acf8，commit N/A、未推送；發布前更新白名單與manifest，勿複製private。
+
+## 2026-11-10 — 1組案例即可納入建議
+
+- `backend/trade_advice.py` MIN_SAMPLES改為1，0組／未成熟後續仍排除，其餘成本、事件、原單反證、風險與人工確認保留。新版AgentAnswer在建議後標實際相似案例數；若多空試算池不同則分開標示，缺值不補0，不以已顯示前五筆或eligible列數代替。QA、契約及兩份說明已更新。
+- pytest相關74項、前端223項、合成瀏覽器數量呈現1項通過，build及diff檢查成功。無外部模型呼叫／真實送單，主工作區243份原件雜湊不變。8766已載入，舊聊天保留當時判定，新提問或更新盤面使用新門檻。
+- main基線e33acf8，commit N/A，未推送；尚未做新門檻績效驗證。發布前更新白名單及manifest。
+
+## 2026-11-09 — 交易計畫與歷史操作首屏摘要
+
+- `backend/live_assistant.py` 改簡短盤面語意及交易計畫提示，不把原始WAIT／組數判定當成Agent指令；程式action、證據、MIN_SAMPLES及下單檢核未改。風險預算、成本、歷史反證仍提供，保護價註明適用方向。`case_operations.py` 增摘要日期與有來源的報表損益／幣別，精確數字在本機填回。
+- `frontend/src/experience/AgentAnswer.tsx` 首屏可讀主計畫與歷史操作解說，Agent漏寫完整原單資料時補同證據的資料列。均線依週期改約多久均價，Bid／Ask改可賣出／買進價，ROI改保證金報酬率，10組門檻解釋留詳細QA。文件見 `docs/clear_agent_plan_20261109.md`，契約更新。
+- 驗證94項相關後端、221項前端、11項委託瀏覽器合成測試通過，build成功、diff檢查通過。無真實模型／券商送單；原件243份雜湊不變。8766已載入、Claude ready。實際模型文字待重新提問試用，舊聊天不重寫。main基線e33acf8，commit N/A、未推送，發布前重建精確白名單與manifest。
+
+## 2026-11-09 — 原單操作解讀與連續委託
+
+- 後端 `case_operations.py`／`case_analysis.py`／`live_assistant.py` 增加成熟首兩例原單日期、方向、進出價與未扣成本價格報酬的本機填值事實；模型只取占位符／定性狀態，不送原始帳戶及精確值。不更改檢索排序，原對帳單時區未知與圖表參考時間分開。回答稱均線，當前進出參考不能搬用歷史絕對價。
+- 新版 `ConversationOrderReview` 與 `conversationState` 在已接受、部分成交或已成交且帳戶CURRENT同步後，可按「準備下一筆委託」清除當次核對，保留原掛單／持倉；UNKNOWN不解鎖。下一筆使用新草稿並再人工確認。具體操作見 `docs/agent_history_and_next_order_20261109.md`，契約已更新。
+- 回歸：相關後端68項、前端218項、委託合成瀏覽器10項通過，本機build成功，diff檢查通過。未執行真實送單或LLM推論。40個固定日期80次查詢61次有案例、19次無；不是相似準確率或收益評估，private逐次結果未複製。主工作區243份原件雜湊一致。
+- main，基線e33acf8，commit N/A、未推送；8766與8765後端已載入。原聊天文字不重寫，需新提問試用。後續發布先更新白名單與manifest，不把private或個人憑證放進repo。
+
 ## 2026-11-07 — Agent 綜合建議與老師回饋整合發布
 
 - 新增 `backend/trade_advice.py`、`trade_protection_advice.py`、`trade_advice_replay.py` 與前端 `TradeAdviceCard.tsx`、`tradeAdvice.ts`。同盤面成本後多空比較、原單價格報酬、草稿風險及結構停損停利隨分析快照保存。案例檢索沿用五分／一小時路徑、事件、末段、波動與來源相容 tick 條件。

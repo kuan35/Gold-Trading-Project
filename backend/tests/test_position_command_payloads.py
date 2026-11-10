@@ -4,6 +4,23 @@ import pytest
 from scripts.position_command_payloads import close_limit_args,protection_args,protection_ack,verify_close_ack
 
 
+def test_pending_cancel_payload_matches_reviewed_order_and_checks_reply_identity():
+    from scripts.position_command_payloads import cancel_order_args,cancel_ack,pending_order_fingerprint
+    order=dict(id='456',side='BUY',volume_units='10',order_type='LIMIT',intent='OPEN',position_id=None,limit_price='2490')
+    cmd=dict(order_id='456',expected_order=pending_order_fingerprint(order))
+    assert cancel_order_args(cmd,7,[order])==dict(ctidTraderAccountId=7,orderId=456)
+    with pytest.raises(ValueError):cancel_order_args(cmd,7,[dict(order,volume_units='5')])
+    event=Message(ctidTraderAccountId=7,order=Message(orderId=456),executionType=5)
+    assert cancel_ack(event,cmd,7)['status']=='CANCELLED'
+    assert cancel_ack(event,cmd,8)['status']=='UNKNOWN'
+    event.order.orderId=999
+    assert cancel_ack(event,cmd,7)['status']=='UNKNOWN'
+    event.order.orderId=456;event.executionType=3
+    assert cancel_ack(event,cmd,7)['status']=='UNKNOWN'
+    event.executionType=8
+    assert cancel_ack(event,cmd,7)['status']=='REJECTED'
+
+
 class Message(NS):
     def HasField(self,key):return hasattr(self,key)
 

@@ -12,7 +12,7 @@ import CaseOutcomePanel from './CaseOutcomePanel';import DraftScenarioRisk from 
 import TradeAdviceCard from './TradeAdviceCard';
 import {adviceMode,adviceSide,type TradeAdvice} from './tradeAdvice';
 
-export type MarketReply={analysis_ref?:string;analysis_history_error?:string;message:string;provider:string;llm_status:string;model:string|null;requested_effort?:string|null;source:string;market_status:string;as_of_utc:string;quote_time_utc:string|null;snapshot_id?:string|null;query_as_of_utc?:number|null;analysis_mode?:string;case_comparison?:CaseComparisonData|null;outcome_analysis?:OutcomeAnalysis|null;trade_advice?:TradeAdvice|null;
+export type MarketReply={summary_evidence_state?:string;summary_evidence_missing?:string[];grounding_failure_code?:string;analysis_ref?:string;analysis_history_error?:string;message:string;provider:string;llm_status:string;model:string|null;requested_effort?:string|null;source:string;market_status:string;as_of_utc:string;quote_time_utc:string|null;snapshot_id?:string|null;query_as_of_utc?:number|null;analysis_mode?:string;case_comparison?:CaseComparisonData|null;outcome_analysis?:OutcomeAnalysis|null;trade_advice?:TradeAdvice|null;
  sections:{title:string;text:string;fact_ids:string[];source?:'program'|'model'}[];followups:string[];evidence:{id:string;text:string;values:Record<string,string>}[];draft:null;macro_context?:MacroSnapshot|null;gold_relation?:GoldRelation|null;knowledge_sources?:string[]};
 const stamp=(value:string|null)=>value?new Date(value).toLocaleString('zh-TW',{hour12:false})+'（台灣）':'未提供';
 const factText=(fact:MarketReply['evidence'][number])=>fact.text.replace(/\{\{([a-z0-9_]+)\}\}/g,(_,key)=>fact.values[key]??'資料不足');

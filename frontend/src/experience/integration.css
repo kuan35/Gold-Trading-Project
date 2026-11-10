@@ -62,3 +62,14 @@
 @media(max-width:720px){.ag-head-tools{gap:6px}.ag-model-settings>summary{font-size:11px;padding:7px}.ag-settings-popover{position:fixed;top:100px;right:12px;left:12px;width:auto}.ag-chart-evidence{padding:6px}.ag-order-bar{white-space:normal!important}.ag-topbar .ag-acct{display:none}}
 @media(max-width:1100px){.ag-with-drawer .ag-body{grid-template-columns:minmax(0,1fr)!important}.ag-drawer{position:fixed;top:76px;bottom:12px;right:12px}.ag-drawer>.cw-resize-width{display:none}.ag-drawer-expanded{inset:76px 12px 12px!important}}
 @media(prefers-reduced-motion:reduce){.ag-orb,.ag-orb::before,.ag-orb::after,.ag-orb i,.ag-orb b,.gx-ambient i,.gx-tick{animation:none!important}.ag-log{scroll-behavior:auto}.gx-cursor{display:none}}
+
+/* Keep holding ROI visible; price-return mechanics stay on demand. */
+.position-returns{display:block;margin-top:6px}.position-returns>strong{display:block;font-size:14px}.position-returns>details{margin-top:6px;font-size:12px}.position-returns small{display:block}
+
+/* Quote polling updates values without collapsing risk blocks or scroll anchors. */
+.ticket-preview-update{display:block;min-block-size:1.4em;font-size:11px;color:var(--muted)}
+.ticket-preview-note .account-zero-estimate{min-block-size:108px}
+.ticket-level strong,.ticket-level span{font-variant-numeric:tabular-nums}
+#ag-order-panel{overflow-anchor:none;scrollbar-gutter:stable}
+.cw-review-assistant{margin-bottom:16px;padding:12px;border:1px solid var(--line);border-radius:10px}
+.cw-review-assistant h3{font-size:15px}.cw-review-assistant p{font-size:14px;line-height:1.65}

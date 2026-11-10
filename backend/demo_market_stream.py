@@ -140,7 +140,10 @@ class DemoMarketStream:
         finally:
             with self._lock:
                 if self._process is process:
-                    self._status = 'DISCONNECTED'
+                    # Preserve a child-reported setup/auth error so the UI can
+                    # explain why reconnecting cannot complete.
+                    if self._status in ('CONNECTING', 'CONNECTED'):
+                        self._status = 'DISCONNECTED'
                     self._process = None
                     self._margin_cache.invalidate()
                     for waiting in self._waiting.values():
@@ -201,7 +204,7 @@ class DemoMarketStream:
         """Schedule a read-only query; never wait for the broker or use order IPC."""
         with self._lock:
             current=self._snapshot_locked();account=current.get('account') or {}
-            if (self.module!='scripts.stream_ctrader_demo' or current['connection_status']!='CONNECTED'
+            if (self.module not in ('scripts.stream_ctrader_demo','scripts.stream_ctrader_live_trade') or current['connection_status']!='CONNECTED'
                 or current['quote']['status']!='CURRENT' or account.get('status')!='CURRENT'
                 or account.get('currency')!='USD' or not account.get('account_key')
                 or _margin_context(snapshot)!=_margin_context(current)

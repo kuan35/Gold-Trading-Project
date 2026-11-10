@@ -1,5 +1,19 @@
 # Frontend API contract v1
 
+## 2026-11-10 cTrader LIVE 獨立工作區
+
+本機 8766 介面可明選 DEMO／LIVE。LIVE 使用獨立的 cTrader 程序、`.env.ctrader.live`、草稿記憶體與 `private/broker_live_orders.sqlite3`；不使用 DEMO 訂單 key 或 journal。所有 LIVE API 只接受 loopback Host 與允許的本機 Origin，GET 回應 `Cache-Control: no-store`；帳戶只回末四碼與本機雜湊識別，不回完整帳號或 token。
+
+- `GET /api/live/market`：LIVE 行情與帳戶快照；交易連線未啟用時讀獨立唯讀程序。`environment=live`、`source=ctrader_live_xauusd`；`read_only`、`order_connection` 明示可否建立委託。帳戶帶 `account_last4`、`account_leverage`，實際 XAU 保證金仍由券商預估回覆，不能直接用帳戶槓桿代算。
+- `GET /api/live/chart-stream?interval=5m|15m|1h`、`GET /api/live/bars`：LIVE 已收 K 棒與僅供繪圖的形成中棒，兩者皆標 `environment=live`。`GET /api/live/cases?side=BUY|SELL&method=...` 用 LIVE 已收盤面檢索同一歷史參考庫；`GET /api/live/cases/{case_id}` 取成熟案例明細。歷史案例事後盈虧不參與排名。
+- `GET /api/live/activity`：LIVE 券商紀錄加本機 LIVE 委託 journal，與 DEMO 分開。`POST /api/live/ticket-preview` 唯讀試算，包含券商預估保證金與條件式帳戶淨值歸零情境；缺資料回不可用，不以 DEMO 1:200 替代。
+- `POST /api/live/assistant/chat`：使用 LIVE 固定盤面、歷史案例與選定模型回答；模型無交易寫入權。LIVE 聊天在前端使用獨立本機保存 key。
+- `POST /api/live/drafts`：只建立 `REVIEW`，新單必有有效停損；要求 `CTRADER_LIVE_TRADING_ENABLED=YES`、交易權限、正數 `GOLD_LIVE_MAX_ORDER_STOP_USD`／`GOLD_LIVE_MAX_GROSS_LOTS`、USD 帳戶、完整持倉與掛單、當前報價和券商預估保證金。回應含本單情境停損、合計手數、預估保證金，不含帳戶全號。
+- `POST /api/live/drafts/{id}/confirm`：由使用者再次按確認，帶 revision 與防重送 key；後端重新核對 LIVE 帳戶、持倉、商品、報價及上限，先持久記錄後只送一次。`GET .../status` 查回報；未知回報禁止盲重送；`POST .../cancel` 只取消未送出的 REVIEW 草稿。
+- `POST /api/live/positions/{id}/close-draft`、`.../protection-draft`、`POST /api/live/pending/{id}/cancel-draft`：LIVE 市價平倉、修改保護與取消已送掛單皆走相同人工確認流程。LIVE 限價平倉拒絕，因 Open API 原生平倉不提供限價；不得用反向新單冒充。
+
+本輪自動測試僅用合成資料，未提交 LIVE 真實委託。帳戶餘額為零或缺本機上限時只能讀取。LIVE 交易計畫與條件提醒尚未接入，畫面不得宣稱已保存或監控；詳見 `docs/PEPPERSTONE_LIVE.md`。
+
 ## 2026-11-04 獨立歷史看盤
 
 - `GET /api/history/metadata`：loopback、no-store，啟動／檢查背景索引，回`{status:AVAILABLE|INDEXING|UNAVAILABLE,indexing,error,sources:[{id,label,first,last,count,quote_side,volume_basis}],first,last,earliest_year,built_at_utc,skipped_rows}`。時間為UTC秒；範圍以M5起點計，非全區間完整保證。不公開檔案路徑、hash或帳戶來源key。
@@ -403,6 +417,14 @@ Results retain the standard case response, add `retrieval_method`, `hour_path_ra
 
 圖表、部位管理與對話上下文的新增契約見 [workspace_expansion_20261031.md](docs/workspace_expansion_20261031.md)。原確認／防重送流程及LIVE唯讀不變。新增PROTECT/CANCEL意圖與APPLIED保護結果；不能當成成交。
 
+2026-11-10 新版操作補齊見 [草稿取消與成交後停損停利](docs/order_controls_20261110.md)：右側持倉直接管理停損／停利，保留欄位省略、移除傳null；確認及回報沿用既有API。取消準備中委託只取消REVIEW草稿並清空兩處共用表單，失敗保留；不代表取消券商已接受掛單。`/assistant/draft-chat`仍綁定原`analysis_snapshot_id`與`analysis_as_of_utc`，新增專用「這筆委託評估」提示，與一般方向分析區分；沒有新增送單權限或改API schema。
+
+本輪續補 [取消已送掛單與更新續單](docs/pending_cancel_and_refresh_20261110.md)：`POST /api/broker/pending/{order_id}/cancel-draft`同時支援黃金進場／平倉LIMIT、STOP、STOP_LIMIT，不要求原進場已有position；回傳`pending_intent,pending_order_type,stop_price`供核對。原`/broker/drafts/{id}/confirm`處理CANCEL意圖、明確CANCELLED與UNKNOWN核對，原單已成交不當作取消成功。30秒檢查未移除，過期草稿可使用原欄位重建及對照後確認，不自動再呼叫AI。
+
+`GET /api/broker/market`每筆position新增`used_margin,used_margin_source,margin_roi_pct,actual_margin_roi_pct,estimated_margin_roi_pct,margin_return_source,return_currency,price_return_pct,return_basis,return_reason`。金額、比例均字串或null；主要持倉ROI優先券商目前占用，無資料時明示估算，已知零不估算。券商平倉deal新增`position_entry_price,original_side,price_return_pct`，pending新增`stop_price`。`POST /api/broker/ticket-preview`及OPEN確認草稿`risk`新增`account_zero`（status、歸零情境價格、方向、參考價、淨數量、淨值及依據），不是強平價格。詳見[計算條件](docs/account_scenarios_20261110.md)。
+
+固定分析新增`history.query_shape,history.shapeN,history.shape_comparisonN,draft.terms`事實及最多五例原單操作；`case_comparison`／charts附固定事前形態。財務占位符仍在本機填回，案例盈虧不參與形態或排序；Agent不具確認／送單權限。詳見[案例證據整合](docs/market_case_agent_evidence_20261110.md)。
+
 ## 下單前建議
 
 本機 `POST /api/assistant/live-chat` 可傳 `advice_mode`。`COMPARE` 比較做多與做空，`SIDE` 檢查指定 `side`。一般盤面問題仍用原欄位。`draft` 可傳 `risk_usd` 或 `equity_pct` 其中一種，DEMO `POST /api/broker/drafts` 則在最外層接收同名欄位。
@@ -413,6 +435,23 @@ Results retain the standard case response, add `retrieval_method`, `hour_path_ra
 
 `trade_advice.protection` 提供建議停損、停利、進場基準、預估報酬／風險與價位依據。突破用區間邊界加緩衝判定失效，目標延伸一個區間高度。收回用最近六根已收棒的極值加緩衝判定失效，目標為區間另一側。等待或調整手數時標為條件式參考。缺有效方向、行情或價格級距時回 `UNAVAILABLE`，附原因。
 
+2026-11-09：固定分析可增加 `history.trade1`／`history.trade2` 證據。只取已選且成熟的首兩筆案例，驗證來源ID一致、原進出日期與正價格後，提供原單方向、進出日期／價格和未扣交易成本的價格報酬。對帳單時間維持時區未知，不替換成圖表參考UTC。模型只取得占位符與定性狀態，精確日期與數值在本機填回；不新增原始帳戶或來源欄位，也不參與檢索排序。缺值不產生該操作事實，保留既有案例／盤面資料。當前價位建議仍取同快照有效的支壓或保護價，不能搬用原單的絕對價格。
+
+新版前端在券商 `ACCEPTED`／`PARTIALLY_FILLED`／`FILLED` 後，等待 `CURRENT` 帳戶的 `updated_at_utc` 晚於 `status_observed_at_utc`，才開放「準備下一筆委託」。此動作只清除已完成的本次核對畫面，保留券商持倉／掛單；下一筆建立新草稿並再次人工確認。`UNKNOWN` 或未知狀態不能藉此解鎖。後端送單／防重送檢查未變更。
+
+2026-11-09 白話交易計畫：對模型以簡短 `*_live_reading_state` 與已收棒 bias 描述均價關係，完整價格仍可透過token取用。模型不再接收原始 `advice.decision` 的WAIT／組數理由作回答指令；本機evidence、`trade_advice.action`、研究門檻與送單檢核保留。另以 `advice.plan` 提供樣本限制、風險預算、成本或方向反證等具體狀態。停損停利事實新增適用方向，不能套到反向計畫。原單事實增加短日期和有來源的原報表損益／幣別，模型只收token與定性結果。
+
+新版摘要顯示主要交易計畫與首例原單操作解說；模型沒有寫齊原單日期、進出價、價格報酬時，介面以同一份本機證據補簡短資料列。詳細統計才展開。均線名稱依token的週期換成約100分鐘／5小時／20小時等均價，Bid／Ask稱可賣出／可買進價，不更改金融計算。詳見 `docs/clear_agent_plan_20261109.md`。
+
+2026-11-10：歷史多空比較的最低完整配對數由10降為1；0組或未成熟資料不能作試算樣本。其他事件、成本、原單反證、風險預算與人工確認維持。新版摘要後方顯示 `case_comparison.counts.passed` 的實際相似案例總數；若與 `trade_advice.simulations.count` 不同，分別標示兩個母體，不使用已顯示案例長度、可比較觀察列或缺值補0。API欄位未變更，舊快照保留當時判定，新請求才使用新門檻。
+
+2026-11-10 全池歷史結果：情境索引在截取前五例之前，對全部通過且去重的代表原單計算 `original_performance`；固定分析以 `case_comparison.performance` 與 `history.aggregate` 保存。含 `total/known_results/wins/losses/flat/unknown_results`、`win_rate_pct`、`price_results_count/mean_price_return_pct/mean_move_per_oz`、`unknown_currency_results` 及 `pnl_by_currency[{currency,count,mean_pnl,mean_win,mean_loss}]`。金額／百分比為十進位字串，缺值null；不混合不同／未知幣別，獲利比例以有效損益為分母，完整匹配池總數另保留。平均價格報酬為未扣成本的原單方向調整價格報酬，不是保證金ROI。沒有全池統計的舊快照不從可見前五例假造平均。
+
+案例圖 `cases[].original_times` 及操作端點 representative／rows 新增 `opened_at/closed_at`（對帳單記載字串或null）。每例各自保存，來源缺值不繼承或填圖表UTC。切換案例仍核對原snapshot_id／case_ref。詳見 `docs/matched_pool_results_20261110.md`。
+
 本機 `.env.local` 提供兩組交易成本假設。依 `.env.local.example` 分別填入點差、佣金與滑價的來回 USD/oz。較高成本總額須大於基準總額，缺設定時建議卡顯示等待。這些欄位為試算假設。
 
 離線重跑在產品根目錄執行 `python -m backend.trade_advice_replay --start 2026-10-01 --end 2026-11-01 --baseline 0.50 --stress 1.00 --output advice_replay/report.json`。日期以 UTC 計，結束日不含在內。輸出留在 private，資料需有已授權的原生行情歸檔及案例側檔。
+
+
+2026-11-10 同快照助手摘要：MarketReply新增可選 `summary_evidence_state`（COMPLETE／INCOMPLETE_HISTORY／MODEL_REJECTED／NOT_REQUIRED／NOT_CHECKED）、`summary_evidence_missing`及受控 `grounding_failure_code`。COMPLETE僅是首段引用與結構檢查，不表示預測正確。新版聊天與確認區共用同draft固定snapshot_id/as_of_utc的首個model section；pending／error／刷新後stale不引用程式WAIT。模型失敗不自動重試或送單。全池平均價格報酬及獲利比例token固定顯示百分號；有效分母與全池總數仍區分。詳見docs/coherent_order_review_20261110.md。

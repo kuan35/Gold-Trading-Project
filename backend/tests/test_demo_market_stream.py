@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
+from io import StringIO
 
 from starlette.requests import Request
 
@@ -70,6 +71,22 @@ def test_disconnected_stream_never_labels_cached_quote_or_bars_current():
     assert stream.snapshot()['quote']['status'] == 'STALE'
     assert stream.snapshot()['account']['status'] == 'STALE'
     assert stream.bars('5m')['status'] == 'STALE'
+
+
+def test_child_configuration_error_survives_process_exit():
+    stream = DemoMarketStream()
+    process = SimpleNamespace(stdout=StringIO('{"kind":"status","data":{"status":"ACCOUNT_ID_REQUIRED"}}\n'))
+    stream._process = process
+    stream._status = 'CONNECTING'
+    stream._consume(process)
+    assert stream._status == 'ACCOUNT_ID_REQUIRED'
+    assert stream._process is None
+
+    process = SimpleNamespace(stdout=StringIO(''))
+    stream._process = process
+    stream._status = 'CONNECTED'
+    stream._consume(process)
+    assert stream._status == 'DISCONNECTED'
 
 
 def test_broker_market_endpoint_is_loopback_only():

@@ -16,6 +16,21 @@ FILES.add('frontend/e2e/interaction-quality.spec.ts')
 FILES.add('frontend/e2e/draft-assistance.spec.ts')
 FILES.update({'frontend/e2e/trader-workflow.spec.ts','docs/TRADER_WORKFLOW.md'})
 FILES.update({'frontend/e2e/history-browser.spec.ts','docs/HISTORY_BROWSER.md'})
+FILES.update({
+ 'frontend/e2e/live-environment.spec.ts',
+ 'frontend/e2e/nonblocking-chat.spec.ts',
+ 'frontend/e2e/pending-cancel.spec.ts',
+ 'frontend/e2e/position-protection.spec.ts',
+ 'docs/PEPPERSTONE_LIVE.md',
+ 'docs/account_scenarios_20261110.md',
+ 'docs/agent_history_and_next_order_20261109.md',
+ 'docs/clear_agent_plan_20261109.md',
+ 'docs/coherent_order_review_20261110.md',
+ 'docs/market_case_agent_evidence_20261110.md',
+ 'docs/matched_pool_results_20261110.md',
+ 'docs/order_controls_20261110.md',
+ 'docs/pending_cancel_and_refresh_20261110.md',
+})
 PUBLIC_DATA={'trader-cases.json','trader-market-index.json','synthetic-query-profiles.json'}
 def public_files(root=ROOT):
  root=Path(root).resolve();out=[]

@@ -47,10 +47,19 @@ def advice_for(monkeypatch, *, count=10, loss=False, costs=COSTS, future=False, 
     return advice.trade_advice(index, {'as_of': 2000}, store, costs, side=side, risk=risk)
 
 
-def test_requires_ten_mature_pairs(monkeypatch):
-    assert advice_for(monkeypatch)['action'] == 'BUY'
-    assert advice_for(monkeypatch, count=9)['reason_code'] == 'INSUFFICIENT_PAIRS'
-    assert advice_for(monkeypatch, future=True)['simulations']['count'] == 0
+def test_one_mature_pair_can_support_advice_but_zero_or_future_pairs_cannot(monkeypatch):
+    assert advice_for(monkeypatch, count=1)['action'] == 'BUY'
+    assert advice_for(monkeypatch, count=1)['simulations']['count'] == 1
+    assert advice_for(monkeypatch, count=9)['action'] == 'BUY'
+    assert advice_for(monkeypatch, count=0)['reason_code'] == 'INSUFFICIENT_PAIRS'
+    future=advice_for(monkeypatch,count=1,future=True)
+    assert future['simulations']['count'] == 0 and future['reason_code']=='INSUFFICIENT_PAIRS'
+
+
+def test_one_pair_still_checks_cost_original_losses_and_risk_budget(monkeypatch):
+    assert advice_for(monkeypatch,count=1,costs=None)['reason_code']=='COST_UNAVAILABLE'
+    assert advice_for(monkeypatch,count=1,loss=True)['reason_code']=='ORIGINAL_CONFLICT'
+    assert advice_for(monkeypatch,count=1,side='BUY',risk={'over_budget':True,'suggested_lot':'.01'})['action']=='ADJUST'
 
 
 def test_waits_for_cost_and_conflicting_original(monkeypatch):

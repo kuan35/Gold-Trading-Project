@@ -1,8 +1,8 @@
+完整歷史看盤與日期跳轉見 [操作說明](docs/HISTORY_BROWSER.md)，新版8766歷史頁預設開啟，原交易演練另保留子頁。
+
+新增交易員功能使用方式見 [交易員工作流程](docs/TRADER_WORKFLOW.md)；新版預覽為 http://127.0.0.1:8766/ ，原版8765保留。
+
 # Gold Desk · 黃金交易工作台
-
-2026-11-07 版加入交易員原則與歷史案例的綜合交易建議。更新盤面或檢查委託後，先看 Agent 的主要建議，再展開支壓、案例後續、停損停利與試算。下載 main 即可取得這版程式。安裝與模型登入任務見 [AI_SETUP.md](AI_SETUP.md)。
-
-本輪新版與可貼給同學agent的安裝任務：[2026-11-04同學安裝入口](docs/TEAM_START_20261104.md)。
 
 可在Windows或macOS本機執行的React＋FastAPI交易討論／歷史案例參考工具。
 保留聊天主入口、即時tick、按需K線、案例前後對照、DEMO草稿與持倉紀錄。
@@ -10,21 +10,15 @@
 詳見[官方事件工具](docs/gold_macro_assistant_20261101.md)。
 聊天可回看完整分析、案例與原K線，切換／重整／本機服務重啟後可還原；
 詳見[聊天保存](docs/conversation_history_20261031.md)。首頁常用問題亦可查近期總經事件。
-另提供帳戶停損風險／反算手數、固定交易計畫與復盤、圖上調整草稿、條件提醒；
-詳見[交易員工作流程](docs/TRADER_WORKFLOW.md)。個人紀錄只存本機。
-歷史頁另有[完整歷史看盤與日期跳轉](docs/HISTORY_BROWSER.md)，與原交易演練獨立。
-
-本分支已採完整同學UI外殼，右側預設下單、案例留聊天，模型選項位於助手設定。
-原版仍保留於 `codex/local-distribution-20261031`；[雙版本預覽與交接](docs/PEER_UI_PREVIEW.md)。
 
 ## 快速開始
 
 先安裝Python3.11與Node.js24 LTS，再clone本repo。
 公開repo根目錄就是產品根目錄，不需要再cd product。
 
-目前 `main` 就是新版，GitHub預設下載與一般clone都會取得這版；舊版另留分支。
+本機完整包以 GitHub `main` 分支為準。
 
-不使用Git也可[下載新版完整程式ZIP](https://github.com/kuan35/Gold-Trading-Project/archive/refs/heads/main.zip)，
+不使用Git也可[下載 main 的完整程式 ZIP](https://github.com/kuan35/Gold-Trading-Project/archive/refs/heads/main.zip)，
 解壓縮後進入同時含backend、frontend與setup.ps1的資料夾，依下表安裝／啟動。
 此包包含相同介面與功能程式；完整案例包另由資料擁有者私下提供，AI與券商設定各自填寫。
 
@@ -58,7 +52,7 @@ cd Gold-Trading-Project
 - 行情／DEMO：使用自己的cTrader帳戶與本機憑證。不同帳戶tick來源可能需要另建索引。
 
 介面相同不代表不同帳戶的即時報價、模型文字及案例來源完全相同。
-歷史結果不是預測。券商委託要由本人核對草稿並確認；LIVE保持唯讀。
+歷史結果不是預測。券商委託要由本人核對草稿並確認。新版本機介面可切換 DEMO／LIVE；LIVE 預設唯讀，只有使用者在本機明確啟用交易權限、設定兩項正數風險上限且帳戶符合券商條件後，才可建立須本人再次確認的真實資金委託。參見 [Pepperstone LIVE 操作與限制](docs/PEPPERSTONE_LIVE.md)。
 
 ## 驗證與授權
 

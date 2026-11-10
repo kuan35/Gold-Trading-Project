@@ -20,3 +20,13 @@ test('unresolved submissions remain locked including unknown status and filled b
 test('side-less stop edit preserves known analysis direction without adding an order side',()=>{
  assert.equal(discussionSide(null,'BUY','SELL'),'BUY');assert.equal(discussionSide('SELL','BUY','BUY'),'SELL');assert.equal(discussionSide(null,null,'SELL'),'SELL');assert.equal(discussionSide(null,null,null),null);
 });
+
+test('known submitted orders release the next draft only after a newer account snapshot',()=>{
+ const at='2026-11-09T01:00:00Z',fresh='2026-11-09T01:00:02Z';
+ for(const status of ['ACCEPTED','PARTIALLY_FILLED','FILLED']){
+  assert.equal(submissionLocked(status,at,fresh),false);
+  assert.equal(submissionLocked(status,at,at),true);
+  assert.equal(submissionLocked(status,at,undefined),true);
+ }
+ for(const status of ['UNKNOWN','UNRECOGNIZED'])assert.equal(submissionLocked(status,at,fresh),true);
+});

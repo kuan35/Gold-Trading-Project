@@ -38,15 +38,75 @@ def test_explicit_clear_is_different_from_keep_and_durable_submit_has_own_intent
     assert s.confirm(d['id'],1,'key')['status']=='APPLIED' and len(s.stream.calls)==1
 
 
-def test_cancel_is_only_a_known_pending_close_order(tmp_path):
+def test_cancel_is_a_known_pending_order_and_does_not_require_an_open_position(tmp_path):
     s=service(tmp_path)
     order=dict(id='456',intent='CLOSE',position_id='123',side='SELL',order_type='LIMIT',volume_units='10.25',limit_price='2505.00')
     s.stream.value['account']['pending_orders']=[order]
     d=s.create_pending_cancel(s.stream.snapshot(),'456')
     s.confirm(d['id'],1,'key')
     assert s.stream.calls[0]['intent']=='CANCEL' and s.stream.calls[0]['order_id']=='456'
-    s=service(tmp_path/'second');s.stream.value['account']['pending_orders']=[dict(order,intent='OPEN')]
-    with pytest.raises(DomainError):s.create_pending_cancel(s.stream.snapshot(),'456')
+    s=service(tmp_path/'second');s.stream.value['account']['positions']=[]
+    s.stream.value['account']['pending_orders']=[dict(order,intent='OPEN',position_id=None)]
+    d=s.create_pending_cancel(s.stream.snapshot(),'456')
+    original=s.stream.place_order
+    def cancelled(cmd):original(cmd);return dict(status='CANCELLED',order_id='456')
+    s.stream.place_order=cancelled
+    assert s.confirm(d['id'],1,'cancel-open')['status']=='CANCELLED'
+    assert s.confirm(d['id'],1,'cancel-open')['status']=='CANCELLED'
+    assert len(s.stream.calls)==1 and s.stream.calls[0]['position_id'] is None
+    assert s.stream.calls[0]['expected_order']['intent']=='OPEN'
+
+
+@pytest.mark.parametrize('change',['filled','quantity','account','live'])
+def test_pending_cancel_rechecks_the_target_and_never_cancels_another_order(tmp_path,change):
+    s=service(tmp_path)
+    s.stream.value['account']['pending_orders']=[dict(id='456',intent='OPEN',side='BUY',order_type='LIMIT',volume_units='10',limit_price='2490')]
+    d=s.create_pending_cancel(s.stream.snapshot(),'456')
+    if change=='filled':s.stream.value['account']['pending_orders']=[]
+    elif change=='quantity':s.stream.value['account']['pending_orders'][0]['volume_units']='5'
+    elif change=='account':s.stream.value['account']['account_key']='different-account'
+    else:s.stream.value['environment']='live'
+    with pytest.raises(DomainError):s.confirm(d['id'],1,'cancel-key')
+    assert not s.stream.calls
+
+def test_a_second_cancellation_waits_for_the_cancelled_order_to_leave_the_account(tmp_path):
+    s=service(tmp_path);s.stream.value['account']['pending_orders']=[dict(id='456',intent='OPEN',side='BUY',order_type='LIMIT',volume_units='10',limit_price='2490')]
+    first=s.create_pending_cancel(s.stream.snapshot(),'456');second=s.create_pending_cancel(s.stream.snapshot(),'456')
+    original=s.stream.place_order
+    def cancelled(cmd):original(cmd);return dict(status='CANCELLED',order_id='456')
+    s.stream.place_order=cancelled;s.confirm(first['id'],1,'one')
+    with pytest.raises(DomainError,match='取消'):
+        s.confirm(second['id'],1,'two')
+    assert len(s.stream.calls)==1
+
+
+def test_a_fill_event_is_not_a_successful_cancellation(tmp_path):
+    s=service(tmp_path)
+    s.stream.value['account']['pending_orders']=[dict(id='456',intent='OPEN',side='BUY',order_type='LIMIT',volume_units='10',limit_price='2490')]
+    d=s.create_pending_cancel(s.stream.snapshot(),'456');s.confirm(d['id'],1,'key')
+    s.stream.order_status=lambda _:dict(status='FILLED',order_id='456')
+    assert s.status(d['id'])['status']=='UNKNOWN'
+
+
+@pytest.mark.parametrize(('original_status','cancel_status'),[('CANCELLED','CANCELLED'),('FILLED','REJECTED'),('EXPIRED','REJECTED'),('REJECTED','REJECTED')])
+def test_unknown_cancel_can_reconcile_original_order_after_worker_restart(tmp_path,original_status,cancel_status):
+    from backend.broker_orders import BrokerOrders
+    s=service(tmp_path);row=dict(id='456',order_id='456',intent='OPEN',position_id=None,side='BUY',order_type='LIMIT',volume_units='10',limit_price='2490')
+    s.stream.value['account']['pending_orders']=[row]
+    d=s.create_pending_cancel(s.stream.snapshot(),'456');s.confirm(d['id'],1,'key')
+    def activity():return dict(account=s.stream.snapshot()['account'],history={'broker_orders':dict(status='CURRENT',items=[dict(row,status=original_status,client_order_id='gd-original')])})
+    s.stream.activity_snapshot=activity
+    restarted=BrokerOrders(s.stream,s.journal)
+    assert restarted.status(d['id'])['status']==cancel_status
+    assert restarted.confirm(d['id'],1,'key')['status']==cancel_status
+    assert len(s.stream.calls)==1
+    s.stream.value['account']['account_key']='different'
+    # Another account must never resolve this account's cancel receipt.
+    with s._db() as db:
+        import json
+        stored=dict(intent='CANCEL',order_id='456',status='UNKNOWN')
+        db.execute('UPDATE submissions SET status=?,result_json=? WHERE draft_id=?',('UNKNOWN',json.dumps(stored),d['id']))
+    assert restarted.status(d['id'])['status']=='UNKNOWN'
 
 
 def test_applied_protection_waits_for_new_account_snapshot_before_another_mutation(tmp_path):

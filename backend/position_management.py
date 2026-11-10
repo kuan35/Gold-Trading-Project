@@ -46,37 +46,56 @@ class PositionManagement:
             return self._public_draft(draft)
 
     def create_pending_cancel(self,snapshot,order_id):
-        from .broker_orders import _checked_snapshot
+        from .broker_orders import _checked_snapshot,_account_signature,_positive_int
+        from scripts.position_command_payloads import pending_order_fingerprint,cancel_order_args
         from .engine import DomainError
         with self.lock:
-            _,account,_=_checked_snapshot(snapshot)
-            pending=next((o for o in account.get('pending_orders',[]) if o.get('id')==order_id and o.get('intent')=='CLOSE' and o.get('order_type')=='LIMIT'),None)
-            if not pending:raise DomainError('找不到此原部位的待成交限價平倉單',409)
-            draft,_,_,_,_=self._management_draft(snapshot,pending['position_id'])
-            draft.update(intent='CANCEL',action='CANCEL',order_type='CANCEL',order_id=order_id,
-                explanation='確認後要求券商取消這筆限價平倉掛單；若已成交則可能無法取消，不會另開反向部位。')
+            quote,account,symbol=_checked_snapshot(snapshot)
+            pending=next((o for o in account.get('pending_orders',[]) if o.get('id')==order_id),None)
+            if not pending:raise DomainError('掛單已成交、取消或變更，請刷新紀錄',409)
+            expected=pending_order_fingerprint(pending)
+            try:cancel_order_args(dict(order_id=order_id,expected_order=expected),0,account.get('pending_orders',[]))
+            except (ValueError,TypeError):raise DomainError('找不到可取消的黃金待成交委託',409)
+            volume=Decimal(pending['volume_units'])*100
+            if not volume.is_finite() or volume<=0 or volume!=volume.to_integral_value() or volume>2**63-1:raise DomainError('掛單數量無效',503)
+            now=datetime.now(timezone.utc);lot_size=_positive_int(symbol.get('lot_size_cents'),'合約大小')
+            draft=dict(id=uuid4().hex,revision=1,status='REVIEW',environment='demo',source='ctrader_demo_xauusd',
+                intent='CANCEL',action='CANCEL',order_type='CANCEL',order_id=order_id,position_id=pending.get('position_id'),
+                side=pending['side'],lot=str(volume/lot_size),volume_cents=int(volume),price=pending.get('limit_price'),
+                limit_price=pending.get('limit_price'),stop_price=pending.get('stop_price'),pending_intent=pending['intent'],pending_order_type=pending['order_type'],sl=pending.get('sl'),tp=pending.get('tp'),expected_order=expected,
+                account_key=account['account_key'],currency=account.get('currency'),account_signature=_account_signature(account),
+                symbol_rules=dict(symbol),created_at_utc=now.isoformat(),expires_at_utc=(now+timedelta(seconds=30)).isoformat(),
+                quote_time_utc=quote['source_time_utc'],
+                explanation='確認後要求券商取消這筆待成交委託；若已有部分成交，只取消剩餘掛單，不會平掉已成交部位。')
             self.drafts[draft['id']]=draft
             return self._public_draft(draft)
 
     def _confirm_management(self,draft,key,quote,account,symbol):
         from .broker_orders import _close_position,_known_result
         from .engine import DomainError
-        position,volume=_close_position(account,draft['position_id'])
-        if volume!=draft['volume_cents'] or position['side']!=draft['side']:raise DomainError('原部位已改變，請重建草稿',409)
         ident='gd-'+uuid4().hex
-        command=dict(client_order_id=ident,intent=draft['intent'],position_id=draft['position_id'],volume_cents=volume)
+        command=dict(client_order_id=ident,intent=draft['intent'],position_id=draft.get('position_id'),volume_cents=draft['volume_cents'])
         if draft['intent']=='PROTECT':
+            position,volume=_close_position(account,draft['position_id'])
+            if volume!=draft['volume_cents'] or position['side']!=draft['side']:raise DomainError('原部位已改變，請重建草稿',409)
             protection_values(position,quote,symbol,{k:draft[k] for k in ('sl','tp')})
             command.update({k:draft[k] for k in ('sl','tp','expected_sl','expected_tp')})
         else:
-            pending=next((o for o in account.get('pending_orders',[]) if o.get('id')==draft['order_id'] and o.get('intent')=='CLOSE' and o.get('position_id')==draft['position_id']),None)
-            if not pending:raise DomainError('掛單已成交、取消或變更，請刷新紀錄',409)
-            command['order_id']=draft['order_id']
+            from scripts.position_command_payloads import cancel_order_args
+            command.update(order_id=draft['order_id'],expected_order=draft['expected_order'])
+            try:cancel_order_args(command,0,account.get('pending_orders',[]))
+            except (ValueError,TypeError):raise DomainError('掛單已成交、取消或變更，請刷新紀錄',409)
         initial=dict(client_order_id=ident,intent=draft['intent'],position_id=draft['position_id'],order_id=draft.get('order_id'),status='UNKNOWN',status_observed_at_utc=datetime.now(timezone.utc).isoformat())
         with self._db() as db:
             db.execute('BEGIN IMMEDIATE');conflict=self._uncertain_submission(db,account)
             if conflict:raise DomainError(conflict,409)
-            context={k:draft.get(k) for k in ('intent','position_id','order_id','side','lot','order_type','sl','tp','account_key','currency')}
+            if draft['intent']=='CANCEL':
+                for raw_result,raw_context in db.execute('SELECT result_json,context_json FROM submissions').fetchall():
+                    prior,ctx=json.loads(raw_result),json.loads(raw_context)
+                    if (ctx.get('account_key')==draft['account_key'] and ctx.get('intent')=='CANCEL' and
+                        ctx.get('order_id')==draft['order_id'] and prior.get('status')=='CANCELLED'):
+                        raise DomainError('取消已回報，等待券商更新待成交清單，請勿重送',409)
+            context={k:draft.get(k) for k in ('intent','position_id','order_id','side','lot','order_type','sl','tp','account_key','currency','expected_order')}
             db.execute('INSERT INTO submissions (draft_id,idempotency_key,client_order_id,status,result_json,created_at_utc,context_json) VALUES (?,?,?,?,?,?,?)',
                 (draft['id'],key,ident,'UNKNOWN',json.dumps(initial),datetime.now(timezone.utc).isoformat(),json.dumps(context)))
         draft['status']='SUBMITTED'

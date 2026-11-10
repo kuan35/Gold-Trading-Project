@@ -23,9 +23,12 @@ mature/nonoverlap/closed5m60+1h20, event/tail/paths/volatility and source-compat
 relative tick activity; stable group dedupe, at most5 and allow0. Do not remove
 the source check to make another account appear ready. Outcomes do not rank.
 
-For broker changes, retain DEMO-only reviewed drafts, version/quantity/account
-revalidation, idempotency and durable UNKNOWN protection. LIVE remains read-only.
-Only the account owner confirms actual orders. Setup/tests must not submit one.
+For broker changes, keep DEMO and LIVE processes, drafts, journals and account
+keys separate. LIVE defaults to read-only; local YES plus positive loss/lot caps
+enable manually confirmed orders with a required stop. Revalidate account,
+version, quote and risk at confirmation; preserve idempotency and durable UNKNOWN
+protection. LIVE limit close stays disabled. Read docs/PEPPERSTONE_LIVE.md for
+LIVE work. Only the account owner confirms actual orders; setup/tests use mocks.
 
 For publication, read DATA_POLICY.md and use scripts/package_local.py. Do not
 git add the entire research workspace. Preserve .env*, private/, auth stores,

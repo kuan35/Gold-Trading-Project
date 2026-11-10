@@ -4,7 +4,7 @@ from backend.tests.test_case_analysis_api import app,setup
 from backend.tests.test_case_operations import case
 
 def test_operations_are_frozen_with_original_analysis_and_never_reread_source(monkeypatch):
-    s,calls,c=setup(monkeypatch);source=case()
+    s,calls,c=setup(monkeypatch);source=case();source.update(opened_at='2023-10-03T08:00:00',closed_at='2023-10-04T09:00:00')
     monkeypatch.setattr(app.engine.cases,'get',lambda ident:deepcopy(source) if ident=='PRIVATE_CASE' else None)
     reply=c.post('/api/assistant/live-chat',json={'message':'做多案例','side':'BUY'}).json()
     sid=reply['snapshot_id'];ref=reply['case_comparison']['cases'][0]['ref']
@@ -16,6 +16,7 @@ def test_operations_are_frozen_with_original_analysis_and_never_reread_source(mo
     value=response.json();assert value['snapshot_id']==sid and value['as_of_utc']==reply['as_of_utc']
     assert value['rows'][0]['profit']=='20' and value['rows'][0]['currency'] is None
     assert value['representative']['profit']=='20'
+    assert value['representative']['opened_at']=='2023-10-03 08:00:00'
     assert 'PRIVATE_ACCOUNT' not in response.text and 'PRIVATE_SOURCE' not in response.text and 'PRIVATE_CASE' not in response.text
     assert calls==['market','retrieve']
     assert c.get(f'/api/assistant/snapshots/{sid}/operations',params={'case_ref':'not-selected'}).status_code==404

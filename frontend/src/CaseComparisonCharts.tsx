@@ -65,6 +65,7 @@ export default function CaseComparisonCharts({data,light,initialCaseRef,initialM
   </div>
   <CaseReviewPanel key={JSON.stringify([data.snapshot_id,caseRef])} snapshotId={data.snapshot_id} caseRef={caseRef||undefined}/>
   <p className="fine">查詢截止 {utc(data.query_as_of_utc)} · 歷史參考 {utc(candidate?.as_of_utc)}</p>
+  <p>原單進場時間：{candidate?.original_times?.opened_at??'未提供'} · 原單平倉時間：{candidate?.original_times?.closed_at??'未提供'} <small>（對帳單記載時間）</small></p>
     <div className="case-chart-navigation" role="group" aria-label="歷史K線定位"><span>歷史圖定位</span>
      <button type="button" aria-pressed={focus==='ENTRY'} disabled={!entryRange} onClick={()=>chooseFocus('ENTRY')}>看進場</button>
      <button type="button" aria-pressed={focus==='CLOSE'} disabled={!exitRange} title={!exitRange?'目前範圍沒有可定位的出場棒；可切換原單進出場查看。':undefined} onClick={()=>chooseFocus('CLOSE')}>看出場</button>

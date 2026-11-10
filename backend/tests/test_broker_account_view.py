@@ -1,6 +1,7 @@
 from datetime import datetime,timedelta,timezone
 from types import SimpleNamespace as N
 from copy import deepcopy
+from decimal import Decimal
 import ast
 from pathlib import Path
 import pytest
@@ -41,12 +42,25 @@ def test_xau_positions_and_pending_use_broker_contract_size_and_whitelisted_fiel
     assert payload.decode_positions([p],8,10000)==[]
 
 
+@pytest.mark.parametrize('raw,digits,expected', [(123456,4,'12.3456'), (0,2,'0.00'),
+    (-100,2,'-1.00'), (123,None,None), (None,2,None), (123,13,None)])
+def test_position_margin_uses_its_own_explicit_precision_never_guesses_cents(raw,digits,expected):
+    p=Proto(positionId=91,tradeData=Proto(symbolId=4,tradeSide=1,volume=100),
+        usedMargin=raw,moneyDigits=digits)
+    row=payload.decode_positions([p],4,10000)[0]
+    assert row['used_margin']==expected
+    assert row['used_margin_source']==('BROKER_POSITION' if expected is not None else 'UNAVAILABLE')
+
+
 def test_history_is_actual_execution_not_requested_volume_and_money_uses_own_precision():
     td=Proto(symbolId=4,tradeSide=1,volume=5000,openTimestamp=1800000000000)
     order=Proto(orderId=7,tradeData=td,orderType=2,orderStatus=2,executedVolume=2500,
         executionPrice=4001.25,clientOrderId='gd-example',utcLastUpdateTimestamp=1800000001000)
     r=payload.decode_order(order,4,10000)
     assert r['lot']=='0.5' and r['filled_lot']=='0.25' and r['status']=='FILLED'
+    assert r['stop_price'] is None
+    order.stopPrice=4010.25
+    assert payload.decode_order(order,4,10000)['stop_price']=='4010.25'
     close=Proto(grossProfit=-12345,swap=10,commission=-50,moneyDigits=3)
     deal=Proto(dealId=8,orderId=7,positionId=9,symbolId=4,tradeSide=2,
         filledVolume=2500,executionPrice=4000.1,executionTimestamp=1800000002000,
@@ -84,6 +98,37 @@ def test_entry_deal_preserves_its_commission():
         filledVolume=1000,dealStatus=2,commission=-123,moneyDigits=2)
     row=payload.decode_deal(deal,4,10000)
     assert row['commission']=='-1.23' and row['realized_gross_pnl'] is None
+
+
+@pytest.mark.parametrize('closing_side,entry,exit,expected', [(2, '4000', '4020', '0.5'), (1, '4000', '3980', '0.5')])
+@pytest.mark.parametrize('status', [2,3])
+def test_closed_deal_return_uses_actual_entry_and_exit_ignoring_commission_and_leverage(closing_side,entry,exit,expected,status):
+    deal=Proto(dealId=8,orderId=7,positionId=9,symbolId=4,tradeSide=closing_side,
+        filledVolume=1000,dealStatus=status,executionPrice=exit,
+        closePositionDetail=Proto(entryPrice=entry,grossProfit=123,commission=-999,moneyDigits=2))
+    row=payload.decode_deal(deal,4,10000)
+    assert row['position_entry_price']==entry
+    assert row['original_side']==('BUY' if closing_side==2 else 'SELL')
+    assert Decimal(row['price_return_pct'])==Decimal(expected)
+    assert 'margin_roi_pct' not in row
+
+
+@pytest.mark.parametrize('entry,exit,status,volume', [(None,'4020',2,1000), ('0','4020',2,1000),
+    ('NaN','4020',2,1000), ('4000',None,2,1000), ('4000','Infinity',2,1000),
+    ('4000','4020',4,1000), ('4000','4020',2,0)])
+def test_invalid_or_unfilled_close_does_not_make_a_historical_return(entry,exit,status,volume):
+    deal=Proto(dealId=8,orderId=7,positionId=9,symbolId=4,tradeSide=2,
+        filledVolume=volume,dealStatus=status,executionPrice=exit,
+        closePositionDetail=Proto(entryPrice=entry,grossProfit=123))
+    assert payload.decode_deal(deal,4,10000)['price_return_pct'] is None
+
+
+def test_open_deal_does_not_claim_a_realized_price_return():
+    deal=Proto(dealId=8,orderId=7,positionId=9,symbolId=4,tradeSide=1,
+        filledVolume=1000,dealStatus=2,executionPrice='4000')
+    row=payload.decode_deal(deal,4,10000)
+    assert row['price_return_pct'] is None and row['position_entry_price'] is None
+    assert row['original_side'] is None
 
 
 def test_old_pnl_reply_is_not_applied_to_a_reconciled_position_volume():

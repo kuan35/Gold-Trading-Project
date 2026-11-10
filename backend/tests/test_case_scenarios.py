@@ -61,3 +61,28 @@ def test_missing_forward_data_is_explicit_and_does_not_disable_draft_risk():
     a=b['context']['outcome_analysis']
     assert a['cases'][0]['horizons']['60']['status']!='AVAILABLE'
     assert a['cases'][0]['horizons']['60']['mae_pct'] is None
+
+
+def test_selected_original_trade_is_available_to_writer_only_as_bound_placeholders(monkeypatch):
+    import json
+    from backend import live_assistant
+    snap=market();source=dict(id='PRIVATE_CASE',side='BUY',entry='1786.51',exit='1788.51',
+        available_at=1700000000,opened_at='2023-10-03T08:00:00',closed_at='2023-10-04T10:00:00',account='PRIVATE_ACCOUNT')
+    b=prepare_analysis(snap,'BUY',retrieval(),dict(as_of=1800000000,pre_entry_bars=snap['bars']),operation_sources={'PRIVATE_CASE':source})
+    fact=next(f for f in b['context']['facts'] if f['id']=='history.trade1')
+    assert fact['values']['hist1_entry']=='1786.51'
+    calls=[]
+    def model(*a,**kwargs):
+        calls.append(kwargs)
+        payload=json.dumps(kwargs['catalog'],ensure_ascii=False)
+        assert all(v not in payload for v in ['1786.51','2023-10-03','PRIVATE_CASE','PRIVATE_ACCOUNT'])
+        assert any(f['id']=='history.trade1' for f in kwargs['catalog']['facts'])
+        return dict(status='ok',model='test',text=json.dumps({'sections':[dict(title='歷史交易怎麼操作',
+            text='案例甲在{{hist1_opened_at}}以{{hist1_entry}}做多，於{{hist1_closed_at}}以{{hist1_exit}}平倉。原單價格報酬{{hist1_price_return}}%，未扣交易成本。',
+            fact_ids=['history.trade1','history.case1'])]},ensure_ascii=False))
+    monkeypatch.setattr(live_assistant,'explain_context',model)
+    reply=respond_context(b['context'],'這筆歷史單怎麼操作？',enabled=True)
+    assert calls and reply['llm_status']=='ok'
+    assert '2023-10-03' in reply['message'] and '1786.51' in reply['message']
+    wrong=prepare_analysis(snap,'BUY',retrieval(),dict(as_of=1800000000),operation_sources={'PRIVATE_CASE':dict(source,id='OTHER')})
+    assert not any(f['id'].startswith('history.trade') for f in wrong['context']['facts'])

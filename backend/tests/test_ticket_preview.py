@@ -28,3 +28,17 @@ def test_wrong_side_missing_stale_and_invalid_values_never_become_valid_profit()
 def test_preview_is_pure_and_does_not_require_or_expose_account():
  s=snapshot();s['account']={'secret':'PRIVATE'};before=deepcopy(s)
  r=ticket_preview(s,draft(),now=NOW);assert s==before and 'PRIVATE' not in str(r)
+
+
+def test_live_preview_uses_live_account_leverage_and_broker_margin_when_fresh():
+ s=snapshot();s['environment']='live'
+ row=draft()
+ estimate=ticket_preview(s,row,now=NOW,leverage='30')
+ assert estimate['status']=='AVAILABLE'
+ assert estimate['margin']['leverage']=='30'
+ assert estimate['margin']['source']=='LEVERAGE_ESTIMATE'
+ expected=dict(status='AVAILABLE',currency='USD',buy='6000',sell='6000',
+               updated_at_utc=datetime.fromtimestamp(NOW,timezone.utc).isoformat())
+ broker=ticket_preview(s,row,now=NOW,leverage='30',expected_margin=expected)
+ assert broker['margin']['source']=='BROKER_EXPECTED'
+ assert broker['margin']['amount_usd']=='6000.00'

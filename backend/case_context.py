@@ -98,6 +98,11 @@ def build_case_context(retrieval,query=None,*,snapshot_id=None):
     tick=comparison.get('tick_volume') or {'enabled':False}
     result['tick_volume']={k:tick[k] for k in ('enabled','limit','query_status','query_reason','query_relative','ruleset') if k in tick}
     def fact(ident,text,values):result['facts'].append(dict(id=ident,text=text,values=values))
+    performance=retrieval.get('original_performance')
+    if status=='PASSED' and isinstance(performance,dict) and performance.get('total')==result['counts']['passed']:
+        from .case_statistics import aggregate_fact
+        result['performance']=performance
+        result['facts'].append(aggregate_fact(performance))
     fact('history.status','歷史案例判定：{{history_status_state}}。{{history_reason_state}}；操作方向{{history_side_state}}，通過{{history_count}}群。',
         dict(history_status_state=label,history_reason_state=reason,history_side_state=result['side'] if result['side'] in ('BUY','SELL') else '未指定',history_count=str(result['counts']['passed']) if result['counts']['passed'] is not None else '資料不足'))
     thresholds=comparison.get('thresholds') or {}

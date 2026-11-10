@@ -22,7 +22,7 @@ export const acceptRevision=(sent:number,current:number)=>sent===current;
 export const discussionSide=(explicit:Side|null,input:Side|null,previous:Side|null):Side|null=>explicit??input??previous;
 export function submissionLocked(status:string,observed?:string,accountUpdated?:string):boolean{
  if(['REJECTED','CANCELLED','EXPIRED','MISSED'].includes(status))return false;
- if(status!=='FILLED')return true;
+ if(!['FILLED','ACCEPTED','PARTIALLY_FILLED'].includes(status))return true;
  const last=Date.parse(observed??''),account=Date.parse(accountUpdated??'');
  return !Number.isFinite(last)||!Number.isFinite(account)||account<=last;
 }

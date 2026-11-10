@@ -5,10 +5,10 @@ from .engine import amount,DomainError
 from .broker_orders import _volume,_price
 from .market_clock import SOURCE_CLOCK_SKEW_SECONDS
 
-def _margin(entry,quantity,side,kind,expected,clock,leverage):
+def _margin(entry,quantity,side,kind,expected,clock,leverage,environment):
  result=dict(source='UNAVAILABLE',amount_usd=None,leverage=None,
              reason='槓桿設定無效，暫不計算保證金ROI。')
- if kind=='MARKET' and expected and expected.get('status')=='AVAILABLE' and expected.get('currency')=='USD':
+ if (kind=='MARKET' or environment=='live') and expected and expected.get('status')=='AVAILABLE' and expected.get('currency')=='USD':
   try:
    age=clock-datetime.fromisoformat(expected['updated_at_utc']).timestamp()
    margin=amount(expected.get('buy' if side=='BUY' else 'sell'),'預估保證金')
@@ -34,7 +34,7 @@ def ticket_preview(snapshot,draft,*,now=None,leverage='200',expected_margin=None
  try:
   clock=datetime.now(timezone.utc).timestamp() if now is None else now
   stamp=datetime.fromisoformat(quote['source_time_utc']).timestamp()
-  if snapshot.get('environment')!='demo' or quote.get('status')!='CURRENT' or not -SOURCE_CLOCK_SKEW_SECONDS<=clock-stamp<=5 or not 0<=quote['age_seconds']<=5:raise ValueError()
+  if snapshot.get('environment') not in ('demo','live') or quote.get('status')!='CURRENT' or not -SOURCE_CLOCK_SKEW_SECONDS<=clock-stamp<=5 or not 0<=quote['age_seconds']<=5:raise ValueError()
  except (KeyError,TypeError,ValueError,OverflowError):return dict(result,status='UNAVAILABLE',reason='報價未就緒或已過期，暫不試算。')
  try:
   lot=amount(draft.get('lot'),'手數');_,units=_volume(lot,symbol)
@@ -42,7 +42,7 @@ def ticket_preview(snapshot,draft,*,now=None,leverage='200',expected_margin=None
   _price(str(entry),'擬進場價',digits)
  except (DomainError,KeyError,TypeError,ValueError,ArithmeticError):return dict(result,reason='手數、進場價格或券商商品規格尚未有效。')
  sign=Decimal(1) if side=='BUY' else Decimal(-1);quantity=lot*units
- margin=_margin(entry,quantity,side,kind,expected_margin,clock,leverage)
+ margin=_margin(entry,quantity,side,kind,expected_margin,clock,leverage,snapshot['environment'])
  margin_amount=margin.pop('_amount',None)
  def level(key):
   row=dict(status='UNSET',reason='尚未設定',price=None,pnl_usd=None,price_return_pct=None,margin_roi_pct=None)

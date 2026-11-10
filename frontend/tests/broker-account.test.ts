@@ -25,6 +25,16 @@ test('broker position panel displays actual deposit-currency pnl and quote side,
  assert.doesNotMatch(html,/本機模擬成交|已實現損益 USD/);
 });
 
+test('broker account displays position and closed-deal price returns without inventing historical margin ROI',()=>{
+ const current=structuredClone(market);Object.assign(current.account!.positions[0],{price_return_pct:'0.2500',estimated_margin_roi_pct:null});
+ const position=renderToStaticMarkup(createElement(BrokerAccountView,{market:current,activity,tab:'positions'}));
+ assert.match(position,/價格報酬率 \+0.2500%/);
+ const records=structuredClone(activity);Object.assign(records.broker_deals.items[0],{price_return_pct:'-0.1250',position_entry_price:'4005'});
+ const history=renderToStaticMarkup(createElement(BrokerAccountView,{market:current,activity:records,tab:'history'}));
+ assert.match(history,/-0.1250%/);assert.match(history,/原進場 4005/);assert.match(history,/價格報酬率（未扣成本）/);
+ assert.doesNotMatch(history,/保證金報酬率/);
+});
+
 test('stale pnl or missing broker fields never become a current zero',()=>{
  const stale=structuredClone(market);stale.account!.pnl_status='STALE';stale.account!.positions[0].net_pnl=null;
  const html=renderToStaticMarkup(createElement(BrokerAccountView,{market:stale,activity,tab:'positions'}));

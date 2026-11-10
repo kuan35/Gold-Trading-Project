@@ -33,14 +33,16 @@ def _positive_int(value, label: str) -> int:
     return number
 
 
-def _checked_snapshot(snapshot: dict) -> tuple[dict, dict, dict]:
-    if snapshot.get('environment') != 'demo' or not snapshot.get('order_connection') or snapshot.get('token_scope') != 'TRADE':
-        raise DomainError('cTrader DEMO 未具備可用交易連線', 503)
+def _checked_snapshot(snapshot: dict, environment: str = 'demo') -> tuple[dict, dict, dict]:
+    if environment not in ('demo', 'live') or snapshot.get('environment') != environment or not snapshot.get('order_connection') or snapshot.get('token_scope') != 'TRADE':
+        raise DomainError(f'cTrader {environment.upper()} 未具備可用交易連線', 503)
+    if environment == 'live' and snapshot.get('source') != 'ctrader_live_xauusd':
+        raise DomainError('LIVE 行情來源無法核對', 503)
     quote, account, symbol = snapshot.get('quote'), snapshot.get('account'), snapshot.get('symbol')
     if not quote or quote.get('status') != 'CURRENT' or not account or account.get('status') != 'CURRENT' or not symbol:
-        raise DomainError('DEMO 報價、帳戶或商品規格尚未就緒', 503)
+        raise DomainError(f'{environment.upper()} 報價、帳戶或商品規格尚未就緒', 503)
     if quote.get('age_seconds') is None or quote['age_seconds'] > 5:
-        raise DomainError('DEMO 報價超過 5 秒，請等待最新 tick', 503)
+        raise DomainError(f'{environment.upper()} 報價超過 5 秒，請等待最新 tick', 503)
     return quote, account, symbol
 
 
@@ -91,11 +93,21 @@ def _close_position(account: dict, position_id: str) -> tuple[dict, int]:
 
 
 class BrokerOrders(PositionManagement):
-    def __init__(self, stream, journal: Path = JOURNAL) -> None:
+    def __init__(self, stream, journal: Path = JOURNAL, *, environment: str = 'demo') -> None:
+        if environment not in ('demo', 'live'):
+            raise ValueError('invalid broker environment')
         self.stream = stream
         self.journal = journal
+        self.environment = environment
         self.lock = RLock()
         self.drafts: dict[str, dict] = {}
+
+    def _check_snapshot(self, snapshot):
+        return _checked_snapshot(snapshot, self.environment)
+
+    def _pre_submit_review(self, snapshot, draft, current_price):
+        """LIVE overrides this inside the final lock before journaling."""
+        return None
 
     @contextmanager
     def _db(self):
@@ -116,6 +128,18 @@ class BrokerOrders(PositionManagement):
 
     def _refresh_result(self, db, draft_id: str, ident: str, stored: dict) -> dict:
         latest = self.stream.order_status(ident)
+        if stored.get('intent')=='CANCEL' and isinstance(latest,dict):
+            # A fill belongs to the original order, never to a successful cancel.
+            if latest.get('status') not in ('CANCELLED','REJECTED') or latest.get('order_id')!=stored.get('order_id'):
+                latest=None
+        if stored.get('intent')=='CANCEL' and not latest:
+            from .order_binding import cancellation_history_result
+            reader=getattr(self.stream,'activity_snapshot',None)
+            if reader:
+                try:
+                    context=json.loads(db.execute('SELECT context_json FROM submissions WHERE draft_id=?',(draft_id,)).fetchone()[0])
+                    latest=cancellation_history_result(stored,context,reader())
+                except (KeyError,TypeError,ValueError,OSError):latest=None
         if isinstance(latest,dict) and latest.get('history_reconciled'):
             from .order_binding import checked_close_history
             context=json.loads(db.execute('SELECT context_json FROM submissions WHERE draft_id=?',(draft_id,)).fetchone()[0])
@@ -182,7 +206,7 @@ class BrokerOrders(PositionManagement):
     def create(self, snapshot: dict, *, side: str, lot: str, order_type: str,
                limit_price: str | None, sl: str | None, tp: str | None,
                retrieval: dict) -> dict:
-        quote, account, symbol = _checked_snapshot(snapshot)
+        quote, account, symbol = self._check_snapshot(snapshot)
         with self.lock:
             with self._db() as db:
                 conflict=self._uncertain_submission(db,account)
@@ -236,8 +260,8 @@ class BrokerOrders(PositionManagement):
         if order_type == 'LIMIT':
             warnings.append('限價單被券商接受後仍待觸價；接受不等於成交。')
         now = datetime.now(timezone.utc)
-        draft = dict(id=uuid4().hex, revision=1, source='ctrader_demo_xauusd',
-                     environment='demo', status='REVIEW', intent='OPEN', side=side, lot=str(qty),
+        draft = dict(id=uuid4().hex, revision=1, source=f'ctrader_{self.environment}_xauusd',
+                     environment=self.environment, status='REVIEW', intent='OPEN', side=side, lot=str(qty),
                      order_type=order_type, limit_price=str(limit) if limit else None,
                      price=str(price), sl=str(stop) if stop else None,
                      tp=str(target) if target else None,
@@ -254,13 +278,13 @@ class BrokerOrders(PositionManagement):
                                reward_risk=money(abs(target - price) / abs(stop - price)) if stop and target else None,
                                scenarios=scenarios, warnings=warnings),
                      retrieval=retrieval,
-                     explanation='此為 cTrader DEMO 草稿。相似案例只比較已收盤面；請核對券商帳戶與風險後親自確認。')
+                     explanation=f'此為 cTrader {self.environment.upper()} 草稿。相似案例只比較已收盤面；請核對券商帳戶與風險後親自確認。')
         with self.lock:
             self.drafts[draft['id']] = draft
         return self._public_draft(draft)
 
     def create_close(self, snapshot: dict, position_id: str, *,order_type='MARKET',limit_price=None) -> dict:
-        quote, account, symbol = _checked_snapshot(snapshot)
+        quote, account, symbol = self._check_snapshot(snapshot)
         position, volume_cents = _close_position(account, position_id)
         lot_size_cents = _positive_int(symbol.get('lot_size_cents'), '合約大小')
         bid, ask = amount(quote['bid'], '賣出價'), amount(quote['ask'], '買進價')
@@ -271,8 +295,8 @@ class BrokerOrders(PositionManagement):
         if order_type=='LIMIT' and (limit is None or (limit<=bid if position['side']=='BUY' else limit>=ask)):
             raise DomainError('限價平倉須設定優於目前平倉報價的目標價')
         now = datetime.now(timezone.utc)
-        draft = dict(id=uuid4().hex, revision=1, source='ctrader_demo_xauusd',
-                     environment='demo', status='REVIEW', intent='CLOSE', action='CLOSE',
+        draft = dict(id=uuid4().hex, revision=1, source=f'ctrader_{self.environment}_xauusd',
+                     environment=self.environment, status='REVIEW', intent='CLOSE', action='CLOSE',
                      position_id=position_id, side=position['side'],
                      lot=str(D(volume_cents) / lot_size_cents), order_type=order_type,
                      price=str(bid if position['side'] == 'BUY' else ask),
@@ -281,7 +305,7 @@ class BrokerOrders(PositionManagement):
                      quote_time_utc=quote['source_time_utc'], account_signature=_account_signature(account),
                      account_key=account['account_key'], currency=account.get('currency'),
                      volume_cents=volume_cents, lot_size_cents=lot_size_cents, symbol_rules=dict(symbol),
-                     explanation='確認後將以市價平倉此 cTrader DEMO 部位的全部剩餘數量；參考報價不等於實際成交價。')
+                     explanation=f'確認後將以市價平倉此 cTrader {self.environment.upper()} 部位的全部剩餘數量；參考報價不等於實際成交價。')
         with self.lock:
             if order_type=='LIMIT':draft['explanation']='確認後掛原部位綁定的反方向限價平倉單，等待指定價或更好價格；可於待成交區取消，實際接受與成交以券商回報為準。'
             with self._db() as db:
@@ -295,7 +319,7 @@ class BrokerOrders(PositionManagement):
     @staticmethod
     def _public_draft(draft: dict) -> dict:
         return {key: value for key, value in draft.items() if key not in (
-            'account_signature', 'account_key', 'volume_cents', 'lot_size_cents', 'symbol_rules')}
+            'account_signature', 'account_key', 'volume_cents', 'lot_size_cents', 'symbol_rules', 'expected_order')}
 
     def cancel(self, draft_id: str) -> dict:
         with self.lock:
@@ -322,7 +346,7 @@ class BrokerOrders(PositionManagement):
             if datetime.now(timezone.utc) >= datetime.fromisoformat(draft['expires_at_utc']):
                 raise DomainError('DEMO 草稿已超過 30 秒，請重新檢查', 409)
             snapshot = self.stream.snapshot()
-            quote, account, symbol = _checked_snapshot(snapshot)
+            quote, account, symbol = self._check_snapshot(snapshot)
             if _account_signature(account) != draft['account_signature'] or symbol != draft['symbol_rules']:
                 raise DomainError('券商帳戶或商品規格已變，請重建草稿', 409)
             if draft.get('intent') in ('PROTECT','CANCEL'):
@@ -343,7 +367,8 @@ class BrokerOrders(PositionManagement):
                 draft['side'] == 'BUY' and D(draft['limit_price']) >= amount(quote['ask'], '買進價') or
                 draft['side'] == 'SELL' and D(draft['limit_price']) <= amount(quote['bid'], '賣出價')):
                 raise DomainError('指定限價與最新報價關係已變，請重建草稿', 409)
-            ident = 'gd-' + uuid4().hex
+            self._pre_submit_review(snapshot, draft, now_price)
+            ident = ('gd-live-' if self.environment == 'live' else 'gd-') + uuid4().hex
             command = {'client_order_id': ident, 'side': draft['side'],
                        'order_type': draft['order_type'], 'volume_cents': draft['volume_cents'],
                        'limit_price': draft['limit_price'], 'sl': draft['sl'], 'tp': draft['tp']}
@@ -422,7 +447,7 @@ class BrokerOrders(PositionManagement):
                     position_id=result.get('position_id') or ctx.get('position_id'),
                     account_scope='CURRENT' if account_key and ctx.get('account_key')==account_key else 'UNKNOWN'))
         history=snapshot.get('history') or {}
-        return dict(source='ctrader_demo_xauusd',environment='demo',
+        return dict(source=f'ctrader_{self.environment}_xauusd',environment=self.environment,
             connection_status=snapshot.get('connection_status','UNAVAILABLE'),
             account_scope='CURRENT' if account_key else 'LOCAL_SAVED',
             submissions=dict(items=rows,total=len(eligible),offset=offset,limit=limit,has_more=len(eligible)>offset+limit),

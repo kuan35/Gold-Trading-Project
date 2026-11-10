@@ -10,13 +10,14 @@ import AssistantSettings from './experience/AssistantSettings';
 import ConversationHistoryActions from './ConversationHistoryActions';
 import type {ComparisonSelection} from './caseComparisonData';
 import {memo,useEffect,useRef,useState,type FormEvent,type RefObject} from 'react';
-import {api} from './api';import type {Side} from './types';import type {DemoMarket} from './demoMarket';import type {MarketReply} from './LiveAssistant';
+import {api,readAPIResponse} from './api';import type {Side} from './types';import type {DemoMarket} from './demoMarket';import type {MarketReply} from './LiveAssistant';
+import type {DraftAssessment} from './agentSummary';
 import ConversationResize from './ConversationResize';import {CHAT_HEIGHT_KEY,savedChatHeight} from './chatSize';
 import ConversationHelp from './ConversationHelp';import {nearChatBottom,turnScrollTarget} from './conversationScroll';
 import TicketCheckAction from './TicketCheckAction';
 import SharedTicket from './SharedTicket';import ConversationReply from './ConversationReply';import ConversationCharts from './ConversationCharts';import ConversationOrderReview,{type CheckedOrder} from './ConversationOrderReview';
 import {emptyInput,patchInput,missingInput,acceptRevision,discussionSide,type InputPatch} from './conversationState';
-import {DESK_HISTORY_KEY,decodeArchive,saveConversationArchive,makeArchiveEntry,mergeArchive,renameConversation,deleteConversation,needsAnalysis,changedFields,type ArchiveTurn,type ArchiveEntry,type ArchiveLoad} from './deskConversations';
+import {DESK_HISTORY_KEY,LIVE_HISTORY_KEY,decodeArchive,saveConversationArchive,makeArchiveEntry,mergeArchive,renameConversation,deleteConversation,needsAnalysis,changedFields,type ArchiveTurn,type ArchiveEntry,type ArchiveLoad} from './deskConversations';
 import {archiveTurn} from './conversationArchive';
 import ArchivedConversationReply from './ArchivedConversationReply';
 import {ConversationSessions,normalizeArchivedChart,type ArchivedChart} from './analysisHistory';
@@ -24,6 +25,7 @@ import {persistConversationDeletion} from './deskConversations';
 import {goldQuestionKind,requestsMacroContext} from './macroEventModel';
 import {DeskRail,DeskMarketHeader,DeskIcon} from './DeskChrome';
 import DeskAccountTray from './DeskAccountTray';
+import BrokerAccountPanel from './BrokerAccountPanel';
 import AssistantControl,{useAssistantSettings} from './AssistantControl';
 import {buildDialogueMemory} from './dialogueMemory';
 import {adviceMode,adviceSide,riskBudgetFields,type AdviceMode,type RiskBudget} from './tradeAdvice';
@@ -45,7 +47,9 @@ const TurnContent=memo(function TurnContent({turn:t,light,revision,locked,action
  </>;
 });
 const newThreadId=()=>`chat-${globalThis.crypto?.randomUUID?.()??Date.now()+'-'+Math.random().toString(36).slice(2)}`;
-export default function ConversationWorkspace({market,light,visible,onHistory,onNavigate,onToggleTheme,onBusyChange}:{market:DemoMarket|null;light:boolean;visible:boolean;onHistory:()=>void;onNavigate?:(view:'replay'|'live')=>void;onToggleTheme?:()=>void;onBusyChange?:(busy:boolean)=>void}){
+export default function ConversationWorkspace({market,light,visible,onHistory,onNavigate,onToggleTheme,onBusyChange,environment='demo',onEnvironment}:{market:DemoMarket|null;light:boolean;visible:boolean;onHistory:()=>void;onNavigate?:(view:'replay'|'live')=>void;onToggleTheme?:()=>void;onBusyChange?:(busy:boolean)=>void;environment?:'demo'|'live';onEnvironment?:(value:'demo'|'live')=>void}){
+ const historyKey=environment==='live'?LIVE_HISTORY_KEY:DESK_HISTORY_KEY;
+ const brokerPath=environment==='live'?'/live':'/broker';
  const assistantSettings=useAssistantSettings();
  const draftAgent=useRef(new DraftAgentSession()),pendingAgent=useRef<number|null>(null);
  const [drawer,setDrawer]=useState(true),[drawerTab,setDrawerTab]=useState<DrawerTab>('order'),[settingsOpen,setSettingsOpen]=useState(false),[chooseCaseSide,setChooseCaseSide]=useState(false);
@@ -54,7 +58,7 @@ export default function ConversationWorkspace({market,light,visible,onHistory,on
  const historyDialog=useRef<HTMLDialogElement>(null),railRef=useRef<(command:string)=>void>(()=>{});
  useEffect(()=>{const rail=(event:Event)=>railRef.current((event as CustomEvent).detail);const settings=()=>setSettingsOpen(true);window.addEventListener(RAIL_EVENT,rail);window.addEventListener('gd:settings',settings);return()=>{window.removeEventListener(RAIL_EVENT,rail);window.removeEventListener('gd:settings',settings);};},[]);
 
- const [archive,setArchive]=useState<ArchiveLoad>(()=>{try{return decodeArchive(typeof localStorage==='undefined'?null:localStorage.getItem(DESK_HISTORY_KEY));}catch{return {items:[],writable:false,error:'此瀏覽器無法保存對話。'};}});
+ const [archive,setArchive]=useState<ArchiveLoad>(()=>{try{return decodeArchive(typeof localStorage==='undefined'?null:localStorage.getItem(historyKey));}catch{return {items:[],writable:false,error:'此瀏覽器無法保存對話。'};}});
  const [threadId,setThreadId]=useState(()=>archive.activeId??archive.items[0]?.id??newThreadId()),[historyError,setHistoryError]=useState(''),[mobileTicket,setMobileTicket]=useState(false);
  const [chatShare,setChatShare]=useState<number|null>(null);const grid=useRef<HTMLDivElement>(null);
  const [chatHeight,setChatHeight]=useState<number|null>(()=>{try{return typeof localStorage==='undefined'?null:savedChatHeight(localStorage.getItem(CHAT_HEIGHT_KEY));}catch{return null;}});
@@ -65,12 +69,14 @@ export default function ConversationWorkspace({market,light,visible,onHistory,on
  const [riskBudget,setRiskBudget]=useState<RiskBudget>({mode:'usd',value:''});
  const budgetRef=useRef(riskBudget);
  const ticketPreview=useTicketPreview(input,market);
- const [busy,setBusy]=useState(false),[checking,setChecking]=useState(false),[locked,setLocked]=useState(false),[error,setError]=useState('');
- useEffect(()=>{onBusyChange?.(busy||checking||locked);},[busy,checking,locked,onBusyChange]);
+ const [busy,setBusy]=useState(false),[checking,setChecking]=useState(false),[clearing,setClearing]=useState(false),[locked,setLocked]=useState(false),[error,setError]=useState('');
+ // Read-only model inference must not lock the application's navigation.
+ useEffect(()=>{onBusyChange?.(checking||clearing||locked);},[checking,clearing,locked,onBusyChange]);
  const [reviewOrigin,setReviewOrigin]=useState<TicketOrigin>('side'),[errorOrigin,setErrorOrigin]=useState<TicketOrigin>('side');
- const [checked,setChecked]=useState<{draft:CheckedOrder;revision:number}|null>(null),[inline,setInline]=useState(false),[chart,setChart]=useState<ArchivedChart|null>(()=>archive.items.find(e=>e.id===threadId)?.chart??null);
+ const [checked,setChecked]=useState<{draft:CheckedOrder;revision:number;previousDraft?:CheckedOrder;assessment?:DraftAssessment}|null>(null),[inline,setInline]=useState(false),[chart,setChart]=useState<ArchivedChart|null>(()=>archive.items.find(e=>e.id===threadId)?.chart??null);
  const sessions=useRef(new ConversationSessions<Turn>()),currentChart=useRef(chart);
- const inputRef=useRef(input),revisionRef=useRef(0),sideRef=useRef<Side|null>(null),lockedRef=useRef(false),working=useRef(false),checkWorking=useRef(false),checkedRef=useRef(checked),sequence=useRef(0),request=useRef<AbortController|null>(null),lastTurn=useRef<HTMLDivElement>(null),chartTrigger=useRef<HTMLElement|null>(null);
+ const inputRef=useRef(input),revisionRef=useRef(0),sideRef=useRef<Side|null>(null),lockedRef=useRef(false),working=useRef(false),checkWorking=useRef(false),checkedRef=useRef(checked),sequence=useRef(0),lastTurn=useRef<HTMLDivElement>(null),chartTrigger=useRef<HTMLElement|null>(null);
+ const activeThread=useRef(threadId),requests=useRef(new Map<string,AbortController>());
  useEffect(()=>{
   if(!turns.length||turns.every(t=>t.record))return;
   const records=turns.map(archiveTurn);
@@ -78,15 +84,16 @@ export default function ConversationWorkspace({market,light,visible,onHistory,on
   const chart=normalizeArchivedChart(currentChart.current,records.flatMap(r=>r.analysis_ref?[r.analysis_ref]:[]));
   setArchive(previous=>({...previous,items:mergeArchive(previous.items,{...makeArchiveEntry(threadId,records,Date.now()),...(chart?{chart}:{})})}));
  },[turns,threadId]);
- useEffect(()=>{if(!archive.writable)return;try{setHistoryError(saveConversationArchive(localStorage,archive.items,threadId).error);}catch{setHistoryError('此瀏覽器無法保存對話；這次變更未儲存。');}},[archive,threadId]);
+ useEffect(()=>{if(!archive.writable)return;try{setHistoryError(saveConversationArchive(localStorage,archive.items,threadId,historyKey).error);}catch{setHistoryError('此瀏覽器無法保存對話；這次變更未儲存。');}},[archive,threadId,historyKey]);
  const openThread=(entry?:ArchiveEntry)=>{
-  if(working.current||checkWorking.current||lockedRef.current)return;
+  if(checkWorking.current||lockedRef.current)return;
   if(entry?.id===threadId)return;
   planNotes.current.set(threadId,planNote);setPlanNote(entry?planNotes.current.get(entry.id)??'':'');
   cancelDraftAgent();sessions.current.save(threadId,turns.map(t=>t.agentPending?{...t,...cancelledDraftAnalysis}:t),currentChart.current);
   const cached=entry?sessions.current.get(entry.id):undefined,nextChart=cached?.chart??entry?.chart??null;
   setTurns(cached?.turns??(entry?entry.turns.map(record=>({id:++sequence.current,question:record.question,at:record.at,record})):[]));
-  setThreadId(entry?.id??newThreadId());setText('');setChart(nextChart);currentChart.current=nextChart;sideRef.current=null;follow.current=true;setShowLatest(false);setChooseCaseSide(false);if(log.current)log.current.scrollTop=0;
+  const nextId=entry?.id??newThreadId();activeThread.current=nextId;working.current=requests.current.has(nextId);setBusy(working.current);
+  setThreadId(nextId);setText('');setChart(nextChart);currentChart.current=nextChart;sideRef.current=null;follow.current=true;setShowLatest(false);setChooseCaseSide(false);if(log.current)log.current.scrollTop=0;
  };
  const rememberChart=(next:ArchivedChart|null,display=true)=>{
   currentChart.current=next;if(display)setChart(next);
@@ -104,84 +111,117 @@ export default function ConversationWorkspace({market,light,visible,onHistory,on
   rememberChart({id:reply.snapshot_id,analysis_ref:reply.analysis_ref,mode,period,selection});
  };
  const removeThread=(id:string)=>{
-  if(working.current||checkWorking.current||lockedRef.current)return;
+  if(checkWorking.current||lockedRef.current)return;
   const activeId=id===threadId?newThreadId():threadId;
   let cleanupRefs:string[]=[];
-  try{if(archive.writable){const saved=persistConversationDeletion(localStorage,archive.items,id,activeId);cleanupRefs=saved.cleanupRefs;if(!saved.ok)setHistoryError(saved.error);}}
+  try{if(archive.writable){const saved=persistConversationDeletion(localStorage,archive.items,id,activeId,historyKey);cleanupRefs=saved.cleanupRefs;if(!saved.ok)setHistoryError(saved.error);}}
   catch{setHistoryError('刪除尚未儲存，原本機分析仍保留。');}
+  const pending=requests.current.get(id);requests.current.delete(id);pending?.abort('deleted');
   sessions.current.delete(id);
   planNotes.current.delete(id);
-  if(id===threadId){cancelDraftAgent();setTurns([]);setThreadId(activeId);setText('');setPlanNote('');setChart(null);currentChart.current=null;sideRef.current=null;}
+  if(id===threadId){cancelDraftAgent();activeThread.current=activeId;working.current=false;setBusy(false);setTurns([]);setThreadId(activeId);setText('');setPlanNote('');setChart(null);currentChart.current=null;sideRef.current=null;}
   setArchive(v=>({...v,items:deleteConversation(v.items,id)}));
   for(const ref of cleanupRefs)void fetch('/api/assistant/analyses/'+ref,{method:'DELETE'}).then(r=>{if(!r.ok)throw Error();}).catch(()=>setError('聊天已移除，但本機分析副本未能刪除；請確認本機服務。'));
  };
  inputRef.current=input;checkedRef.current=checked;
- useEffect(()=>()=>{request.current?.abort();draftAgent.current.cancel();},[]);
+ useEffect(()=>()=>{const pending=[...requests.current.values()];requests.current.clear();pending.forEach(controller=>controller.abort());draftAgent.current.cancel();},[]);
  const setLock=(v:boolean)=>{lockedRef.current=v;setLocked(v);};
  const invalidateCheck=()=>{
   cancelDraftAgent();revisionRef.current+=1;setRevision(revisionRef.current);setError('');
   const previous=checkedRef.current;
-  if(previous){setChecked(null);checkedRef.current=null;void api(`/broker/drafts/${previous.draft.id}/cancel`,{}).catch(()=>{});}
+  if(previous){setChecked(null);checkedRef.current=null;void api(`${brokerPath}/drafts/${previous.draft.id}/cancel`,{}).catch(()=>{});}
  };
  const patch=(p:InputPatch)=>{
-  if(lockedRef.current)return;const next=patchInput(inputRef.current,p);if(JSON.stringify(next)===JSON.stringify(inputRef.current))return;
+  if(lockedRef.current||checkWorking.current)return;const next=patchInput(inputRef.current,p);if(JSON.stringify(next)===JSON.stringify(inputRef.current))return;
   inputRef.current=next;setInput(next);invalidateCheck();
  };
  const changeRiskBudget=(next:RiskBudget)=>{
-  if(lockedRef.current)return;
+  if(lockedRef.current||checkWorking.current)return;
   const previous=budgetRef.current;
   budgetRef.current=next;setRiskBudget(next);
   if(JSON.stringify(riskBudgetFields(previous))!==JSON.stringify(riskBudgetFields(next)))invalidateCheck();
  };
  const annotate=(id:number,part:Partial<Turn>)=>setTurns(items=>items.map(t=>t.id===id?{...t,...part}:t));
- const cancelDraftAgent=()=>{draftAgent.current.cancel();if(pendingAgent.current!==null){annotate(pendingAgent.current,cancelledDraftAnalysis);pendingAgent.current=null;}};
+ const annotateThread=(target:string,id:number,part:Partial<Turn>)=>{
+  if(activeThread.current===target){annotate(id,part);return;}
+  const cached=sessions.current.get(target);if(!cached)return;
+  const updated=cached.turns.map(t=>t.id===id?{...t,...part}:t);
+  sessions.current.save(target,updated,cached.chart);
+  const records=updated.map(archiveTurn);
+  setArchive(previous=>({...previous,items:mergeArchive(previous.items,makeArchiveEntry(target,records,Date.now(),cached.chart??undefined))}));
+ };
+ const cancelDraftAgent=()=>{draftAgent.current.cancel();if(pendingAgent.current!==null){annotate(pendingAgent.current,cancelledDraftAnalysis);pendingAgent.current=null;}
+  if(checkedRef.current?.assessment?.state==='pending'){const updated={...checkedRef.current,assessment:{state:'error',error:'這次助手分析已取消；請重新檢查委託。'} as DraftAssessment};checkedRef.current=updated;setChecked(updated);}
+ };
  const send=async(question:string,forcedSide?:Side)=>{
-  if(working.current||!question.trim())return;working.current=true;setBusy(true);setError('');setText('');
+  if(requests.current.has(threadId)||!question.trim())return;working.current=true;setBusy(true);setError('');setText('');
+  const origin=threadId,initialInput={...inputRef.current},initialBudget={...budgetRef.current},initialSide=sideRef.current;
+  let analysisInput=initialInput,analysisRevision=revisionRef.current;
   const id=++sequence.current,sentRevision=revisionRef.current;setTurns(v=>[...v,{id,question,at:new Date().toISOString()}]);
   const selectedOptions={...assistantSettings.requestOptions};
-  const controller=new AbortController();request.current=controller;const timeout=window.setTimeout(()=>controller.abort(),180000);
-  const post=async<T,>(path:string,body:unknown):Promise<T>=>{const r=await fetch('/api'+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal:controller.signal});const v=await r.json().catch(()=>null);if(!r.ok||v===null)throw Error(typeof v?.detail==='string'?v.detail:'盤面服務暫時無法回覆，請稍後再試。');return v;};
+  const controller=new AbortController();requests.current.set(origin,controller);const timeout=window.setTimeout(()=>controller.abort('timeout'),180000);
+  const receive=(part:Partial<Turn>)=>{if(requests.current.get(origin)===controller)annotateThread(origin,id,part);};
+  const post=async<T,>(path:string,body:unknown):Promise<T>=>{const r=await fetch('/api'+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal:controller.signal});return readAPIResponse<T>(r);};
   const requestAnalysis=async(message:string,side:Side|null,advice_mode?:AdviceMode)=>{
-   const reply=await post<MarketReply>('/assistant/live-chat',{
+   const reply=await post<MarketReply>(environment==='live'?'/live/assistant/chat':'/assistant/live-chat',{
     message,llm_enabled:true,...selectedOptions,conversation_id:threadId,conversation:buildDialogueMemory(turns,threadId),
     previous_questions:turns.slice(-4).map(t=>t.question.slice(0,600)),
     ...(side?{side}:{}),advice_mode,include_cases:Boolean(side),include_macro:requestsMacroContext(question),
-    draft:{...inputRef.current,...riskBudgetFields(budgetRef.current)},input_revision:revisionRef.current,
+    draft:{...analysisInput,...riskBudgetFields(initialBudget)},input_revision:analysisRevision,
    });
-   annotate(id,{reply});
+   receive({reply});
   };
   try{
    const intentMode=adviceMode(question,adviceSide(question));
    if(intentMode==='COMPARE'){
-    await requestAnalysis(question,inputRef.current.side??sideRef.current,'COMPARE');
+    await requestAnalysis(question,initialInput.side??initialSide,'COMPARE');
     return;
    }
    if(!intentMode&&goldQuestionKind(question)){
-    if(import.meta.env.MODE==='pages'){annotate(id,{error:'黃金知識與事件工具需啟動本機後端。'});return;}
+    if(import.meta.env.MODE==='pages'){receive({error:'黃金知識與事件工具需啟動本機後端。'});return;}
     const reply=await post<MarketReply>('/assistant/gold-chat',{message:question,llm_enabled:true,...selectedOptions,conversation_id:threadId,conversation:buildDialogueMemory(turns,threadId)});
-    annotate(id,{reply});return;
+    receive({reply});return;
    }
-   const interpretation=await post<Interpretation>('/assistant/interpret',{message:question,draft:inputRef.current,analysis_side:forcedSide??sideRef.current,input_revision:sentRevision});
-   const stale=!acceptRevision(interpretation.input_revision,revisionRef.current);
-   const before={...inputRef.current};
-   if(!stale&&Object.keys(interpretation.patch).length){patch(interpretation.patch);}
-   annotate(id,{noteImportant:stale||['CLARIFY','UNSUPPORTED','PREPARE','EDIT'].includes(interpretation.intent),note:stale?'欄位已在解析期間變更，本次沒有套用文字修改。':interpretation.message,proposal:!stale&&interpretation.intent==='DISCUSS'&&Object.keys(interpretation.proposal).length?interpretation.proposal:undefined,proposalRevision:revisionRef.current});
+   const interpretation=await post<Interpretation>('/assistant/interpret',{message:question,draft:initialInput,analysis_side:forcedSide??initialSide,input_revision:sentRevision});
+   if(requests.current.get(origin)!==controller)return;
+   const switched=activeThread.current!==origin,stale=switched||!acceptRevision(interpretation.input_revision,revisionRef.current);
+   const before=initialInput;
+   if(!stale&&Object.keys(interpretation.patch).length){patch(interpretation.patch);analysisInput={...inputRef.current};analysisRevision=revisionRef.current;}
+   const staleNote=switched?'已切換對話，本次沒有自動修改委託。':'欄位已在解析期間變更，本次沒有套用文字修改。';
+   receive({noteImportant:stale||['CLARIFY','UNSUPPORTED','PREPARE','EDIT'].includes(interpretation.intent),note:stale?staleNote:interpretation.message,proposal:!stale&&interpretation.intent==='DISCUSS'&&Object.keys(interpretation.proposal).length?interpretation.proposal:undefined,proposalRevision:analysisRevision});
    if(interpretation.intent==='CLARIFY'||interpretation.intent==='UNSUPPORTED')return;
-   const side=discussionSide(forcedSide??interpretation.analysis_side,inputRef.current.side,sideRef.current);sideRef.current=side;
+   const side=discussionSide(forcedSide??interpretation.analysis_side,analysisInput.side,initialSide);if(!switched)sideRef.current=side;
    if(!needsAnalysis(interpretation.intent,interpretation.patch,before.side,side,turns.some(t=>Boolean(t.reply)))){
-    if(interpretation.intent==='EDIT'||interpretation.intent==='PREPARE')annotate(id,{noteImportant:true,note:stale?'欄位已在解析期間變更，本次沒有套用文字修改。':`${changedFields(before,inputRef.current).join('；')||interpretation.message}。請重新檢查委託。`});
+    if(interpretation.intent==='EDIT'||interpretation.intent==='PREPARE')receive({noteImportant:true,note:stale?staleNote:`${changedFields(before,analysisInput).join('；')||interpretation.message}。請重新檢查委託。`});
     return;
    }
    const safeQuestion=['PREPARE','EDIT'].includes(interpretation.intent)?`分析${side==='BUY'?'做多':side==='SELL'?'做空':''}想法的盤面支持、相反訊號與案例差異。`:question;
    await requestAnalysis(safeQuestion,side,adviceMode(question,side));
-  }catch(e){annotate(id,{error:controller.signal.aborted?'分析逾時或已取消，請重試。':e instanceof Error?e.message:'盤面分析失敗。'});}
-  finally{window.clearTimeout(timeout);working.current=false;setBusy(false);}
+  }catch(e){receive({error:controller.signal.aborted?(controller.signal.reason==='user'?'已停止這次回覆，可以繼續提問。':'分析逾時或已取消，請重試。'):e instanceof Error?e.message:'盤面分析失敗。'});}
+  finally{window.clearTimeout(timeout);if(requests.current.get(origin)===controller)requests.current.delete(origin);if(activeThread.current===origin){working.current=requests.current.has(origin);setBusy(working.current);}}
  };
- const edit=(p:InputPatch)=>{const previous=inputRef.current.side;patch(p);if(p.side&&p.side!==previous&&!working.current)void send(p.side==='BUY'?'我想討論做多的盤面與案例':'我想討論做空的盤面與案例',p.side);};
- const check=async(origin:TicketOrigin)=>{
+ // Choosing a ticket side edits only the shared draft. Discussion remains an
+ // explicit chat action; checking evaluates the actual filled order snapshot.
+ const edit=(p:InputPatch)=>patch(p);
+ const resetPreparation=()=>{
+  cancelDraftAgent();revisionRef.current+=1;setRevision(revisionRef.current);
+  const next=emptyInput();inputRef.current=next;setInput(next);sideRef.current=null;
+  setChecked(null);checkedRef.current=null;setPlanNote('');setError('');setLock(false);
+ };
+ const cancelPreparation=async(origin:TicketOrigin)=>{
+  if(checkWorking.current||lockedRef.current)return;
+  checkWorking.current=true;setClearing(true);setErrorOrigin(origin);setError('');
+  try{
+   const previous=checkedRef.current;
+   if(previous)await api(`${brokerPath}/drafts/${previous.draft.id}/cancel`,{});
+   resetPreparation();
+  }catch(e){setError(e instanceof Error?e.message:'取消草稿失敗，請稍後再試。');}
+  finally{checkWorking.current=false;setClearing(false);}
+ };
+ const check=async(origin:TicketOrigin,refresh=false)=>{
   if(checkWorking.current||lockedRef.current)return;
   setErrorOrigin(origin);
-  const sent=revisionRef.current,v={...inputRef.current};const missing=missingInput(v);if(missing.length){setInline(true);setError('請先填寫：'+missing.join('、'));return;}
+  const sent=revisionRef.current,v={...inputRef.current};const missing=[...missingInput(v),...(environment==='live'&&!v.sl.trim()?['停損']:[])];if(missing.length){setInline(true);setError('請先填寫：'+missing.join('、'));return;}
   cancelDraftAgent();
   const configuredProvider=assistantSettings.status?.provider;
   const provider=assistantSettings.selection.provider??(configuredProvider==='program'||configuredProvider==='codex'||configuredProvider==='openai_compatible'?configuredProvider:'claude_code');
@@ -189,21 +229,29 @@ export default function ConversationWorkspace({market,light,visible,onHistory,on
   const explain=provider!=='program';
   checkWorking.current=true;setChecking(true);setError('');
   try{
-   const previous=checkedRef.current;if(previous){await api(`/broker/drafts/${previous.draft.id}/cancel`,{});setChecked(null);checkedRef.current=null;}
-   const draft=await api<CheckedOrder>('/broker/drafts',{...v,...riskBudgetFields(budgetRef.current),limit_price:v.order_type==='LIMIT'?v.limit_price:null,sl:v.sl.trim()||null,tp:v.tp.trim()||null,retrieval_method:'context_contract_v1',input_revision:sent,plan_note:planNote.trim()||turns.filter(t=>t.question!=='檢查目前委託').at(-1)?.question||'',conversation_id:threadId});
-   if(!acceptRevision(sent,revisionRef.current)){await api(`/broker/drafts/${draft.id}/cancel`,{});setError('欄位已變更，舊檢查已取消。請用最新欄位重新檢查。');return;}
-   const next={draft,revision:sent};setChecked(next);checkedRef.current=next;setReviewOrigin(origin);
+   const previous=checkedRef.current;if(previous&&!refresh){await api(`${brokerPath}/drafts/${previous.draft.id}/cancel`,{});setChecked(null);checkedRef.current=null;}
+   const draft=await api<CheckedOrder>(`${brokerPath}/drafts`,{...v,...riskBudgetFields(budgetRef.current),limit_price:v.order_type==='LIMIT'?v.limit_price:null,sl:v.sl.trim()||null,tp:v.tp.trim()||null,retrieval_method:'context_contract_v1',input_revision:sent,plan_note:planNote.trim()||turns.filter(t=>t.question!=='檢查目前委託').at(-1)?.question||'',conversation_id:threadId});
+   if(!acceptRevision(sent,revisionRef.current)){await api(`${brokerPath}/drafts/${draft.id}/cancel`,{});setError('欄位已變更，舊檢查已取消。請用最新欄位重新檢查。');return;}
+   const next={draft,revision:sent,assessment:{state:refresh?'stale':explain?'pending':'disabled'} as DraftAssessment,...(refresh&&previous?{previousDraft:previous.draft}:{})};setChecked(next);checkedRef.current=next;setReviewOrigin(origin);
    if(draft.plan_record_error)setError(draft.plan_record_error);
+   if(refresh){
+    // Only replace the reviewed ticket once a fresh check succeeds. Failed
+    // refreshes retain inputs and the old review, with a retry action.
+    if(previous)void api(`${brokerPath}/drafts/${previous.draft.id}/cancel`,{}).catch(()=>{});
+    return; // Refresh is numerical revalidation, not another paid model call.
+   }
    const id=++sequence.current;setTurns(t=>[...t,{id,question:'檢查目前委託',at:new Date().toISOString(),agentPending:explain,note:explain?undefined:'請在助手設定選擇 AI 助手，再重新檢查委託。'}]);
    if(explain){
     pendingAgent.current=id;
-    void draftAgent.current.start(draft,modelOptions,async(path,body,signal)=>{const response=await fetch('/api'+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal});const value=await response.json();if(!response.ok)throw Error(typeof value?.detail==='string'?value.detail:'助手解讀暫不可用。');return value;},result=>{
+    void draftAgent.current.start(draft,modelOptions,async(path,body,signal)=>{const response=await fetch('/api'+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal});return readAPIResponse<MarketReply>(response);},result=>{
      if(checkedRef.current?.draft.id!==draft.id||revisionRef.current!==sent)return;
      pendingAgent.current=null;
      if(result.status==='done'&&isModelAnalysis(result.reply.provider)){
+      const updated={...checkedRef.current!,assessment:{state:'ready',reply:result.reply} as DraftAssessment};checkedRef.current=updated;setChecked(updated);
       annotate(id,{agentPending:false,reply:result.reply});
      }else{
       const detail=result.status==='error'?result.message:result.reply.llm_status==='invalid_grounding'?'AI 回覆未通過資料核對。':result.reply.llm_status==='market_unavailable'?'這份草稿沒有有效行情，請更新盤面。':'請檢查助手連線。';
+      const updated={...checkedRef.current!,assessment:{state:'error',error:detail} as DraftAssessment};checkedRef.current=updated;setChecked(updated);
       annotate(id,{agentPending:false,error:`助手未能完成這次委託分析。 ${detail} 請重新檢查委託。`});
      }
     });
@@ -214,26 +262,27 @@ export default function ConversationWorkspace({market,light,visible,onHistory,on
  useEffect(()=>{if(!visible||!turns.length)return;const fresh=lastSeen.current!==turns.length;lastSeen.current=turns.length;if(fresh||follow.current)jumpToLatest();else if(!busy)setShowLatest(true);},[turns.length,busy,visible]);
  const latest=[...turns].reverse().find(t=>t.reply)?.reply;
  const quoteTime=Date.parse(market?.quote.source_time_utc??'')/1000,newBar=Boolean(latest?.query_as_of_utc&&Number.isFinite(quoteTime)&&Math.floor(quoteTime/300)*300>latest.query_as_of_utc);
- const ready=Boolean(market?.environment==='demo'&&market.order_connection&&market.quote.status==='CURRENT'&&market.account?.status==='CURRENT');
- const missing=missingInput(input);
- const orderReview=checked&&<ConversationOrderReview key={checked.draft.id} draft={checked.draft} checkedRevision={checked.revision} currentRevision={revision} accountUpdated={market?.account?.updated_at_utc} onClear={()=>{cancelDraftAgent();setChecked(null);checkedRef.current=null;setLock(false);}} onLock={setLock} onHistory={()=>{setToolsTab('broker');setDrawer(true);setDrawerTab('records');}}/>;
- railRef.current=command=>{if(working.current||checkWorking.current||lockedRef.current)return;if(command==='new')openThread();else if(command==='history')historyDialog.current?.showModal();};
+ const ready=Boolean(market?.environment===environment&&market.order_connection&&market.token_scope==='TRADE'&&market.quote.status==='CURRENT'&&market.account?.status==='CURRENT'&&(environment==='demo'||market.account?.currency==='USD'&&Number(market.account.equity)>0));
+ const missing=[...missingInput(input),...(environment==='live'&&!input.sl.trim()?['停損']:[])];
+ const orderReview=checked&&<ConversationOrderReview key={checked.draft.id} draft={checked.draft} checkedRevision={checked.revision} currentRevision={revision} environment={environment} externalBusy={clearing||checking} previousDraft={checked.previousDraft} assessment={checked.assessment} onRefresh={()=>check(reviewOrigin,true)} accountUpdated={market?.account?.status==='CURRENT'?market.account.updated_at_utc:undefined} accountLast4={market?.environment===environment?market.account?.account_last4:null} accountCurrency={market?.environment===environment?market.account?.currency:null} onCancelled={resetPreparation} onClear={()=>{cancelDraftAgent();setChecked(null);checkedRef.current=null;setLock(false);}} onLock={setLock} onHistory={()=>{setToolsTab('broker');setDrawer(true);setDrawerTab('records');}}/>;
+ const cancelAction=(origin:TicketOrigin)=><button type="button" className="cw-cancel-preparation" disabled={checking||clearing||locked||(!checked&&!Object.values(input).some(Boolean)&&!planNote)} onClick={()=>void cancelPreparation(origin)}>{clearing?'取消中…':'取消準備中委託'}</button>;
+ railRef.current=command=>{if(checkWorking.current||lockedRef.current)return;if(command==='new')openThread();else if(command==='history')historyDialog.current?.showModal();};
  const sideLabel=input.side==='BUY'?'做多':input.side==='SELL'?'做空':'尚未選方向';
  const chips=['現在該做多還是做空？','我想做多，現在有哪些支持與相反訊號？','如果做空，有類似案例嗎？','最近有哪些總經事件會影響黃金？'];
  const openHistory=()=>{setToolsTab('broker');setDrawer(true);setDrawerTab('records');};
  const openTools=(tab:'plans'|'alerts'|'broker'='plans')=>{setToolsTab(tab);setDrawer(true);setDrawerTab('records');};
- const openPlanThread=(id:string)=>{if(working.current||checkWorking.current||lockedRef.current)return;const entry=archive.items.find(e=>e.id===id);if(entry)openThread(entry);else setHistoryError('原對話已移除，交易計畫中的固定依據仍保留。');};
- useEffect(()=>{const show=(event:Event)=>{const info=(event as CustomEvent).detail;openTools(info?.tab==='alerts'?'alerts':'plans');if(info?.conversationId)openPlanThread(info.conversationId);};window.addEventListener('gd:trading-tools',show);return()=>window.removeEventListener('gd:trading-tools',show);},[archive.items]);
+ const openPlanThread=(id:string)=>{if(checkWorking.current||lockedRef.current)return;const entry=archive.items.find(e=>e.id===id);if(entry)openThread(entry);else setHistoryError('原對話已移除，交易計畫中的固定依據仍保留。');};
+ useEffect(()=>{const show=(event:Event)=>{const info=(event as CustomEvent).detail;openTools(info?.tab==='alerts'?'alerts':'plans');if(info?.conversationId)openPlanThread(info.conversationId);};window.addEventListener('gd:trading-tools',show);return()=>window.removeEventListener('gd:trading-tools',show);},[archive.items,threadId,turns,planNote]);
  const turnActions=useRef<TurnActions>({chart:showChart,apply:()=>{}});
  turnActions.current={chart:showChart,apply:t=>{patch(t.proposal!);setInline(true);setDrawer(true);setDrawerTab('order');annotate(t.id,{proposal:undefined,noteImportant:true,note:'已套用到準備中委託。'});}};
  const prepareTicket=()=>{setDrawer(true);setDrawerTab('order');requestAnimationFrame(()=>document.querySelector<HTMLButtonElement>('#ag-order-panel button')?.focus());};
  return <main id={visible?'market-workspace':undefined} className={`conversation-workspace ag-desk ${drawer?'ag-with-drawer':''} ${chatHeight!==null?'ag-sized':''}`} hidden={!visible} tabIndex={-1} aria-label="聊天交易工作台">
   <div className="ag-main">
-   <AgentTopbar market={market} light={light} onTheme={()=>onToggleTheme?.()} drawerOpen={drawer} onDrawer={()=>setDrawer(v=>!v)}/>
+   <AgentTopbar market={market} light={light} onTheme={()=>onToggleTheme?.()} drawerOpen={drawer} onDrawer={()=>setDrawer(v=>!v)} environment={environment} onEnvironment={checking||locked?undefined:onEnvironment}/>
    <div className="ag-body" ref={grid} style={drawer&&chatShare!==null?{gridTemplateColumns:`minmax(0,${chatShare}fr) minmax(300px,${100-chatShare}fr)`}:undefined}>
     <section className="ag-center" aria-label="交易對話">
      <div className="ag-agent-head"><AgentOrb busy={busy||checking}/><div className="ag-agent-id"><strong>Gold Desk Agent</strong><small>{busy?'正在整理盤面與案例':checking?'正在核對委託':'交易對話'}</small></div>
-      <div className="ag-head-tools"><AssistantSettings settings={assistantSettings} busy={busy} open={settingsOpen} onOpen={setSettingsOpen}/><button type="button" className="ag-ghost" onClick={()=>openTools('plans')}>計畫</button><button type="button" className="ag-ghost" onClick={()=>openTools('alerts')}>提醒</button><button type="button" className="ag-ghost" disabled={busy} onClick={()=>void send('更新目前盤面與案例')}>{newBar?'有新收盤 · 更新':'更新盤面'}</button></div>
+      <div className="ag-head-tools"><AssistantSettings settings={assistantSettings} busy={checking||locked} open={settingsOpen} onOpen={setSettingsOpen}/>{environment==='demo'&&<><button type="button" className="ag-ghost" onClick={()=>openTools('plans')}>計畫</button><button type="button" className="ag-ghost" onClick={()=>openTools('alerts')}>提醒</button></>}<button type="button" className="ag-ghost" disabled={busy} onClick={()=>void send('更新目前盤面與案例')}>{newBar?'有新收盤 · 更新':'更新盤面'}</button></div>
      </div>
      <div id="conversation-log" className="ag-log" ref={log} style={chatHeight===null?undefined:{height:chatHeight}} role="log" aria-label="聊天紀錄" aria-live="polite" aria-relevant="additions text" tabIndex={0} onScroll={()=>{const el=log.current;if(el){follow.current=nearChatBottom(el.scrollHeight,el.clientHeight,el.scrollTop);setShowLatest(!follow.current&&Boolean(lastTurn.current&&lastTurn.current.getBoundingClientRect().top>el.getBoundingClientRect().top+32));}}}>
       {!turns.length&&<div className="ag-welcome"><AgentOrb busy={false} size={72}/><h2>今天想怎麼交易黃金？</h2><p>聊盤面、找案例，或準備一筆待確認委託。</p><div className="ag-starters">
@@ -243,23 +292,23 @@ export default function ConversationWorkspace({market,light,visible,onHistory,on
        <button type="button" onClick={prepareTicket}><strong>準備一筆委託</strong><span>在右側填寫方向、單型與手數</span></button>
       </div>{chooseCaseSide&&<div className="ag-case-direction" role="group" aria-label="選擇案例比較方向"><p>只用於查案例，不更改委託草稿。</p>{(['BUY','SELL'] as const).map(side=><button type="button" key={side} onClick={()=>{setChooseCaseSide(false);void send(side==='BUY'?'如果做多，有類似案例嗎？':'如果做空，有類似案例嗎？',side);}}>{side==='BUY'?'比較做多案例':'比較做空案例'}</button>)}</div>}</div>}
       {turns.map((t,i)=><div key={t.id} ref={i===turns.length-1?lastTurn:undefined} className="ag-turn"><TurnContent turn={t} light={light} revision={revision} locked={locked} actions={turnActions}/></div>)}
-      {busy&&<div className="ag-thinking" role="status"><AgentOrb busy size={28}/><p>正在整理這次盤面、案例與回覆…</p></div>}
+      {busy&&<div className="ag-thinking" role="status"><AgentOrb busy size={28}/><p>正在整理這次盤面、案例與回覆…</p><button type="button" onClick={()=>requests.current.get(threadId)?.abort('user')}>停止回覆</button></div>}
       {chart&&<div className="ag-chart-evidence"><ConversationCharts key={chart.id+chart.mode+chart.period+JSON.stringify(chart.selection)} selection={chart.selection} initialPeriod={chart.period} analysisRef={chart.analysis_ref} reference={input} onViewChange={view=>{if(currentChart.current)rememberChart({...currentChart.current,...view},false);}} snapshotId={chart.id} mode={chart.mode} light={light} onClose={()=>{rememberChart(null);chartTrigger.current?.focus();}}/></div>}
      </div>
      {showLatest&&<button type="button" className="ag-latest" onClick={jumpToLatest}>回到最新對話 ↓</button>}
      <div className="ag-size-row"><ConversationResize axis="height" value={chatHeight} target={log} onChange={setChatHeight}/><button type="button" onClick={()=>{setChatHeight(null);setChatShare(null);}}>還原大小</button></div>
-     <div className="ag-dock"><details className="cw-inline" open={inline||(reviewOrigin==='inline'&&Boolean(checked))} onToggle={e=>setInline(e.currentTarget.open)}><summary><strong>準備中委託</strong>{sideLabel} · {input.lot?input.lot+' 手':'手數未填'} · {input.order_type==='LIMIT'?'限價 '+(input.limit_price||'未填'):input.order_type==='MARKET'?'市價':'單型未選'}<small>編輯委託</small></summary><div className="ag-inline-ticket"><SharedTicket preview={ticketPreview} id="chat-ticket" value={input} onPatch={edit} disabled={locked} riskBudget={riskBudget} onRiskBudgetChange={changeRiskBudget}/><TicketCheckAction id="chat-ticket-check" ready={ready} checking={checking} locked={locked} missing={missing} error={errorOrigin==='inline'?error:undefined} onCheck={()=>void check('inline')}/>{reviewOrigin==='inline'&&orderReview}</div></details>
+     <div className="ag-dock"><details className="cw-inline" open={inline||(reviewOrigin==='inline'&&Boolean(checked))} onToggle={e=>setInline(e.currentTarget.open)}><summary><strong>準備中委託</strong>{sideLabel} · {input.lot?input.lot+' 手':'手數未填'} · {input.order_type==='LIMIT'?'限價 '+(input.limit_price||'未填'):input.order_type==='MARKET'?'市價':'單型未選'}<small>編輯委託</small></summary><div className="ag-inline-ticket"><SharedTicket environment={environment} preview={ticketPreview} id="chat-ticket" value={input} onPatch={edit} disabled={locked||checking||clearing} riskBudget={riskBudget} onRiskBudgetChange={changeRiskBudget}/><TicketCheckAction environment={environment} id="chat-ticket-check" ready={ready} checking={checking||clearing} locked={locked} missing={missing} error={errorOrigin==='inline'?error:undefined} onCheck={()=>void check('inline')}/>{cancelAction('inline')}{reviewOrigin==='inline'&&orderReview}</div></details>
       <div className="ag-chips">{chips.map(q=><button type="button" key={q} disabled={busy} onClick={()=>void send(q)}>{q}</button>)}</div>
       <form className="ag-composer" onSubmit={(e:FormEvent)=>{e.preventDefault();void send(text);}}><label className="sr-only" htmlFor="conversation-message">輸入交易想法或委託條件</label><textarea id="conversation-message" rows={1} maxLength={1500} value={text} onChange={e=>setText(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing){e.preventDefault();void send(text);}}} placeholder="和 Agent 說你的想法，例如「買進 0.02 手，停損 4020」"/><button className="ag-send" aria-label="送出對話" disabled={busy||!text.trim()}><DeskIcon name="arrow"/></button></form>
       {(historyError||archive.error)&&<p className="ag-error" role="alert">{historyError||archive.error}</p>}
      </div>
     </section>
-    <AgentDrawer resizer={<ConversationResize axis="width" value={chatShare} target={grid} onChange={setChatShare}/>} open={drawer&&visible} tab={drawerTab} onTab={tab=>{if(tab==='records')setToolsTab('plans');setDrawerTab(tab);}} onClose={()=>setDrawer(false)} light={light} market={market}
+    <AgentDrawer resizer={<ConversationResize axis="width" value={chatShare} target={grid} onChange={setChatShare}/>} open={drawer&&visible} tab={drawerTab} onTab={tab=>{if(tab==='records')setToolsTab('plans');setDrawerTab(tab);}} onClose={()=>setDrawer(false)} light={light} market={market} environment={environment}
      draft={{...input,entry_price:input.order_type==='LIMIT'?input.limit_price:input.side==='BUY'?market?.quote.ask:market?.quote.bid,digits:market?.symbol?.digits??2,disabled:locked||market?.quote.status!=='CURRENT'||(market?.quote.age_seconds??Infinity)>5,onPatch:edit}}
-     tools={<TradingToolsPanel active={drawer&&visible&&drawerTab==='records'} initialTab={toolsTab} market={market} conversationId={threadId} light={light} onOpenThread={openPlanThread}/>}
-     order={<><h2 className="ag-ticket-title">準備中委託 <small>cTrader DEMO</small></h2><SharedTicket preview={ticketPreview} id="side-ticket" value={input} onPatch={edit} disabled={locked} riskBudget={riskBudget} onRiskBudgetChange={changeRiskBudget}/><details className="ticket-plan-note"><summary>這筆交易的理由</summary><textarea aria-label="交易計畫理由" rows={2} maxLength={2000} value={planNote} disabled={locked||checking} onChange={e=>setPlanNote(e.target.value)} placeholder="選填；空白時保存最近一次討論問題"/><small>檢查委託時保存當時草稿與分析。</small></details><TicketCheckAction id="side-ticket-check" ready={ready} checking={checking} locked={locked} missing={missing} error={errorOrigin==='side'?error:undefined} onCheck={()=>void check('side')}/>{reviewOrigin==='side'&&orderReview}<p className="fine">先檢查，再核對本筆委託與風險。</p></>}/>
+     tools={environment==='live'?<BrokerAccountPanel market={market} environment={environment} initialTab="history" idPrefix="live-records-"/>:<TradingToolsPanel active={drawer&&visible&&drawerTab==='records'} initialTab={toolsTab} market={market} conversationId={threadId} light={light} onOpenThread={openPlanThread}/>}
+     order={<><h2 className="ag-ticket-title">準備中委託 <small>cTrader {environment.toUpperCase()}</small></h2>{environment==='live'&&<p className="ag-live-warning" role="status">LIVE 為真實資金；新單必填停損。帳戶淨值 {market?.account?.equity??'未取得'} {market?.account?.currency??''}、槓桿 {market?.account?.account_leverage?`1:${market.account.account_leverage}`:'未確認'}；目前需有正數 USD 淨值、交易權限與本機風險上限才能核對。最後仍由你手動確認。</p>}<SharedTicket environment={environment} preview={ticketPreview} id="side-ticket" value={input} onPatch={edit} disabled={locked||checking||clearing} riskBudget={riskBudget} onRiskBudgetChange={changeRiskBudget}/>{environment==='demo'&&<details className="ticket-plan-note"><summary>這筆交易的理由</summary><textarea aria-label="交易計畫理由" rows={2} maxLength={2000} value={planNote} disabled={locked||checking||clearing} onChange={e=>setPlanNote(e.target.value)} placeholder="選填；空白時保存最近一次討論問題"/><small>檢查委託時保存當時草稿與分析。</small></details>}<TicketCheckAction environment={environment} id="side-ticket-check" ready={ready} checking={checking||clearing} locked={locked} missing={missing} error={errorOrigin==='side'?error:undefined} onCheck={()=>void check('side')}/>{cancelAction('side')}{reviewOrigin==='side'&&orderReview}<p className="fine">先檢查，再核對本筆委託與風險。</p></>}/>
    </div>
   </div>
-  <dialog ref={historyDialog} className="ag-history-dialog" aria-labelledby="ag-history-heading"><header><h2 id="ag-history-heading">對話紀錄</h2><button type="button" aria-label="關閉對話紀錄" onClick={()=>historyDialog.current?.close()}>×</button></header><div className="pd-history">{archive.items.length?archive.items.map(entry=><div className="pd-history-entry" key={entry.id}><button className="pd-history-open" type="button" disabled={busy||checking||locked} aria-pressed={entry.id===threadId} onClick={()=>{openThread(entry);historyDialog.current?.close();}}>{entry.title}<small>{new Date(entry.updatedAt).toLocaleString('zh-TW')}</small></button><ConversationHistoryActions entry={entry} busy={busy||checking||locked} onRename={(id,title)=>setArchive(v=>({...v,items:renameConversation(v.items,id,title)}))} onDelete={removeThread}/></div>):<p className="ag-empty">完成對話後會保存在這裡。</p>}</div><ConversationHelp/></dialog>
+  <dialog ref={historyDialog} className="ag-history-dialog" aria-labelledby="ag-history-heading"><header><h2 id="ag-history-heading">對話紀錄</h2><button type="button" aria-label="關閉對話紀錄" onClick={()=>historyDialog.current?.close()}>×</button></header><div className="pd-history">{archive.items.length?archive.items.map(entry=><div className="pd-history-entry" key={entry.id}><button className="pd-history-open" type="button" disabled={checking||locked} aria-pressed={entry.id===threadId} onClick={()=>{openThread(entry);historyDialog.current?.close();}}>{entry.title}<small>{new Date(entry.updatedAt).toLocaleString('zh-TW')}</small></button><ConversationHistoryActions entry={entry} busy={checking||locked} onRename={(id,title)=>setArchive(v=>({...v,items:renameConversation(v.items,id,title)}))} onDelete={removeThread}/></div>):<p className="ag-empty">完成對話後會保存在這裡。</p>}</div><ConversationHelp/></dialog>
  </main>;
 }

@@ -8,7 +8,7 @@ from .forward_outcomes import _measure
 from .trade_result import text, trade_result
 
 SIDES = ('BUY', 'SELL')
-MIN_SAMPLES = 10
+MIN_SAMPLES = 1
 SIGNALS = {
     'ABOVE': ('BUY', '向上突破'),
     'BELOW': ('SELL', '向下跌破'),

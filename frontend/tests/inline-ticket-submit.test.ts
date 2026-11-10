@@ -22,7 +22,7 @@ test('review action preserves connection, checking and unresolved submission loc
 test('ready fields expose review step, associated feedback and local error without requiring chat text',()=>{
  let calls=0;const html=renderToStaticMarkup(createElement(TicketCheckAction,{id:'inline-action',ready:true,checking:false,locked:false,missing:[],error:'停損位置不符',onCheck:()=>{calls++;}}));
  assert.match(html,/aria-describedby="inline-action-hint"/);assert.doesNotMatch(html,/<button[^>]*disabled/);
- assert.match(html,/檢查後核對風險，再由你確認送出/);assert.match(html,/role="alert"[^>]*>停損位置不符/);assert.equal(calls,0);
+ assert.match(html,/核對這筆草稿的價位與風險，再請所選助手評估；尚未送單/);assert.match(html,/role="alert"[^>]*>停損位置不符/);assert.equal(calls,0);
 });
 test('missing order type stays actionable for validation and is not silently set to market',()=>{
  const html=renderToStaticMarkup(createElement(TicketCheckAction,{id:'inline-action',ready:true,checking:false,locked:false,missing:['單型'],onCheck:()=>{}}));

@@ -22,10 +22,13 @@ from .personal_rules import validate_rules, evaluate_rules
 from .technical import analyze as technical_analysis
 from .demo_market_stream import stream as demo_market_stream
 from .live_readonly import stream as live_readonly_stream
+from .live_trade_stream import stream as live_trade_stream
+from .live_orders import LiveBrokerOrders
 from .execution_store import ExecutionStore
 from .case_review import review_cases,selected_charts
 from .tick_volume import tick_frame
 from .ticket_preview import ticket_preview
+from .account_scenarios import enrich_position_returns,equity_zero_scenario
 from .trade_risk import risk_summary,size_for_risk
 from .trade_advice import signal_for_query, trade_advice
 from .trade_protection_advice import protection_advice
@@ -58,6 +61,7 @@ async def _local_lifespan(_app):
 app=FastAPI(title='Gold Trading Project',version='0.1.0',lifespan=_local_lifespan)
 engine=Engine()
 broker_orders=BrokerOrders(demo_market_stream)
+live_broker_orders=LiveBrokerOrders(live_trade_stream)
 analysis_snapshots=SnapshotStore()
 analysis_history=AnalysisHistory(ROOT/'private'/'analysis_history')
 case_forward_store=HistoricalOutcomeStore(ROOT/'private')
@@ -300,7 +304,7 @@ async def domain_error(request:Request,exc:DomainError):
 async def local_origin(request:Request,call_next):
     origin=request.headers.get('origin')
     if request.method not in ('GET','HEAD','OPTIONS') and origin and origin not in (
-        'http://127.0.0.1:8765','http://localhost:8765','http://127.0.0.1:5173','http://localhost:5173'):
+        'http://127.0.0.1:8765','http://localhost:8765','http://127.0.0.1:8766','http://localhost:8766','http://127.0.0.1:5173','http://localhost:5173'):
         return JSONResponse(status_code=403,content={'detail':'此初版只接受本機交易台請求'})
     return await call_next(request)
 
@@ -337,6 +341,7 @@ def _local_broker_access(request: Request) -> bool:
         return False
     origin = request.headers.get('origin')
     return not origin or origin in ('http://127.0.0.1:8765', 'http://localhost:8765',
+                                    'http://127.0.0.1:8766', 'http://localhost:8766',
                                     'http://127.0.0.1:5173', 'http://localhost:5173')
 
 
@@ -348,11 +353,61 @@ def live_readonly_market(request:Request):
     return JSONResponse(content=value,headers={'Cache-Control':'no-store'})
 
 
+def _live_read_snapshot(*, query=False):
+    """Prefer the separately enabled trading connection; otherwise keep LIVE read-only."""
+    getter='query_snapshot' if query else 'snapshot'
+    trading=getattr(live_trade_stream,getter)()
+    if trading.get('connection_status')=='CONNECTED':
+        return trading
+    return getattr(live_readonly_stream,getter)()
+
+
+@app.get('/api/live/market')
+def live_market(request:Request):
+    if not _local_broker_access(request):raise HTTPException(403,'LIVE帳戶僅供本機查看')
+    snapshot=_live_read_snapshot()
+    leverage=(snapshot.get('account') or {}).get('account_leverage')
+    value=enrich_position_returns(snapshot,leverage=leverage)
+    value['read_only']=not bool(value.get('order_connection'))
+    return JSONResponse(content=value,headers={'Cache-Control':'no-store'})
+
+
+@app.get('/api/live/activity')
+def live_activity(request:Request,limit:int=100,offset:int=0):
+    if not _local_broker_access(request):raise HTTPException(403,'LIVE紀錄僅供本機查看')
+    snapshot=live_trade_stream.activity_snapshot()
+    if snapshot.get('connection_status')!='CONNECTED':snapshot=live_readonly_stream.activity_snapshot()
+    return JSONResponse(content=live_broker_orders.activity(snapshot,limit,offset),headers={'Cache-Control':'no-store'})
+
+
+@app.get('/api/live/bars')
+def live_bars(request:Request,interval:Literal['5m','15m','1h']='5m'):
+    if not _local_broker_access(request):raise HTTPException(403,'LIVE行情僅供本機查看')
+    stream=live_trade_stream if live_trade_stream.snapshot().get('connection_status')=='CONNECTED' else live_readonly_stream
+    return JSONResponse(content=stream.bars(interval),headers={'Cache-Control':'no-store'})
+
+
+@app.post('/api/live/ticket-preview')
+def live_ticket_preview(request:Request,body:TicketPreviewInput):
+    if not _local_broker_access(request):raise HTTPException(403,'LIVE委託試算僅供本機查看')
+    snapshot=_live_read_snapshot()
+    leverage=(snapshot.get('account') or {}).get('account_leverage')
+    values=body.model_dump()
+    preview=ticket_preview(snapshot,values,leverage=leverage)
+    if preview['status']=='AVAILABLE' and snapshot.get('order_connection'):
+        volume=int(Decimal(preview['quantity_oz'])*100)
+        broker_margin=live_trade_stream.expected_margin(snapshot,volume)
+        preview=ticket_preview(snapshot,values,leverage=leverage,expected_margin=broker_margin)
+    preview['risk']=risk_summary(snapshot,values,preview)
+    preview['account_zero']=equity_zero_scenario(snapshot,values,preview)
+    return JSONResponse(content=preview,headers={'Cache-Control':'no-store'})
+
+
 @app.get('/api/broker/market')
 def broker_demo_market(request: Request):
     if not _local_broker_access(request):
         return JSONResponse(status_code=403, content={'detail': 'DEMO 帳戶資料僅供本機查看'})
-    return JSONResponse(content=demo_market_stream.snapshot(),
+    return JSONResponse(content=enrich_position_returns(demo_market_stream.snapshot(),leverage=os.environ.get('GOLD_PREVIEW_LEVERAGE','200')),
                         headers={'Cache-Control': 'no-store'})
 
 
@@ -372,10 +427,10 @@ def broker_demo_bars(request: Request, interval: Literal['5m', '15m', '1h'] = '5
                         headers={'Cache-Control': 'no-store'})
 
 
-async def broker_chart_events(request:Request,interval:str):
+async def broker_chart_events(request:Request,interval:str,market_stream=None):
     previous=None
     while not await request.is_disconnected():
-        data=demo_market_stream.chart_snapshot(interval)
+        data=(market_stream or demo_market_stream).chart_snapshot(interval)
         encoded=json.dumps(data,separators=(',',':'),allow_nan=False)
         if encoded!=previous:
             yield 'data: '+encoded+'\n\n'
@@ -393,6 +448,14 @@ def broker_demo_chart_stream(request:Request,interval:Literal['5m','15m','1h']='
         headers={'Cache-Control':'no-store','X-Accel-Buffering':'no'})
 
 
+@app.get('/api/live/chart-stream')
+def broker_live_chart_stream(request:Request,interval:Literal['5m','15m','1h']='5m'):
+    if not _local_broker_access(request):raise HTTPException(403,'LIVE行情僅供本機查看')
+    stream=live_trade_stream if live_trade_stream.snapshot().get('connection_status')=='CONNECTED' else live_readonly_stream
+    return StreamingResponse(broker_chart_events(request,interval,stream),media_type='text/event-stream',
+        headers={'Cache-Control':'no-store','X-Accel-Buffering':'no'})
+
+
 @app.get('/api/broker/cases')
 def broker_demo_cases(request: Request, side: Literal['BUY', 'SELL'] = 'BUY',
                       method:Literal['context_contract_v1','dual_path_structure_v1','path_indicator_pattern_v1']='context_contract_v1'):
@@ -400,6 +463,19 @@ def broker_demo_cases(request: Request, side: Literal['BUY', 'SELL'] = 'BUY',
         return JSONResponse(status_code=403, content={'detail': 'DEMO 案例查詢僅供本機查看'})
     result, query = _live_retrieval(demo_market_stream.query_snapshot(), side, method)
     result['query_source'] = 'ctrader_demo_xauusd'
+    result['query_as_of_utc'] = query.get('as_of')
+    result.setdefault('query_status', query['status'])
+    result.setdefault('query_reason', query.get('reason'))
+    return JSONResponse(content=result, headers={'Cache-Control': 'no-store'})
+
+
+@app.get('/api/live/cases')
+def broker_live_cases(request: Request, side: Literal['BUY', 'SELL'] = 'BUY',
+                      method:Literal['context_contract_v1','dual_path_structure_v1','path_indicator_pattern_v1']='context_contract_v1'):
+    if not _local_broker_access(request):
+        raise HTTPException(403, 'LIVE 案例查詢僅供本機查看')
+    result, query = _live_retrieval(_live_read_snapshot(query=True), side, method)
+    result['query_source'] = 'ctrader_live_xauusd'
     result['query_as_of_utc'] = query.get('as_of')
     result.setdefault('query_status', query['status'])
     result.setdefault('query_reason', query.get('reason'))
@@ -492,6 +568,7 @@ def broker_ticket_preview(request:Request,body:TicketPreviewInput):
         margin=demo_market_stream.expected_margin(snapshot,volume)
         preview=ticket_preview(snapshot,draft,leverage=leverage,expected_margin=margin)
     preview['risk']=risk_summary(snapshot,draft,preview)
+    preview['account_zero']=equity_zero_scenario(snapshot,draft,preview)
     return JSONResponse(content=preview,headers={'Cache-Control':'no-store'})
 
 
@@ -656,10 +733,74 @@ def broker_demo_draft(request: Request, body: BrokerDraftInput):
     try:
         key=snapshot['account']['account_key']
         preview=ticket_preview(snapshot,body.model_dump(),leverage=os.environ.get('GOLD_PREVIEW_LEVERAGE','200'))
+        draft['risk']['account_zero']=equity_zero_scenario(snapshot,body.model_dump(),preview)
         plan=trade_plans.capture(key,draft,reply,note=body.plan_note,conversation_id=body.conversation_id,risk=risk_summary(snapshot,body.model_dump(),preview),snapshot_bundle=saved)
         recording['plan_id']=plan['id']
     except (OSError,sqlite3.Error,ValueError,TypeError,KeyError,DomainError):recording['plan_record_error']='本次交易計畫未能保存，請確認本機儲存空間。'
     return JSONResponse(content=dict(draft,analysis_snapshot_id=saved['snapshot_id'],analysis_as_of_utc=saved['context']['as_of_utc'],analysis_reply=reply,**recording),headers={'Cache-Control':'no-store'})
+
+
+@app.post('/api/live/drafts')
+def broker_live_draft(request:Request,body:BrokerDraftInput):
+    if not _local_broker_access(request):raise HTTPException(403,'LIVE委託僅供本機確認')
+    snapshot=live_trade_stream.query_snapshot()
+    captured_at=datetime.now(timezone.utc).timestamp()
+    retrieval,query=_live_retrieval(snapshot,body.side,body.retrieval_method)
+    draft=live_broker_orders.create(snapshot,side=body.side,lot=body.lot,
+        order_type=body.order_type,limit_price=body.limit_price,sl=body.sl,tp=body.tp,retrieval=retrieval)
+    values=body.model_dump(exclude={'plan_note','conversation_id'})
+    advice=_frozen_trade_advice(snapshot,query,body.side,values,captured_at) if body.retrieval_method==CONTEXT_METHOD else None
+    bundle=prepare_analysis(snapshot,body.side,retrieval,query,
+        profiles=getattr(engine.cases,'candidate_profiles',{}),now=captured_at,
+        operation_sources=_analysis_operation_sources(retrieval),draft=values,
+        input_revision=body.input_revision,forward_store=case_forward_store,
+        execution_store=case_execution_store,advice=advice)
+    saved=analysis_snapshots.put(bundle,draft_id=draft['id'])
+    reply=respond_context(saved['context'],'說明LIVE草稿建立時的盤面、歷史案例與相反依據',enabled=False,frozen=True)
+    reply=_save_analysis_reply(reply,saved)
+    return JSONResponse(content=dict(draft,analysis_snapshot_id=saved['snapshot_id'],
+        analysis_as_of_utc=saved['context']['as_of_utc'],analysis_reply=reply),
+        headers={'Cache-Control':'no-store'})
+
+
+@app.post('/api/live/drafts/{draft_id}/confirm')
+def broker_live_confirm(request:Request,draft_id:str,body:BrokerConfirmInput):
+    if not _local_broker_access(request):raise HTTPException(403,'LIVE委託僅供本機確認')
+    return JSONResponse(content=live_broker_orders.confirm(draft_id,body.revision,body.idempotency_key),
+        headers={'Cache-Control':'no-store'})
+
+
+@app.get('/api/live/drafts/{draft_id}/status')
+def broker_live_status(request:Request,draft_id:str):
+    if not _local_broker_access(request):raise HTTPException(403,'LIVE委託僅供本機查看')
+    return JSONResponse(content=live_broker_orders.status(draft_id),headers={'Cache-Control':'no-store'})
+
+
+@app.post('/api/live/drafts/{draft_id}/cancel')
+def broker_live_cancel_draft(request:Request,draft_id:str):
+    if not _local_broker_access(request):raise HTTPException(403,'LIVE草稿僅供本機取消')
+    return JSONResponse(content=live_broker_orders.cancel(draft_id),headers={'Cache-Control':'no-store'})
+
+
+@app.post('/api/live/positions/{position_id}/close-draft')
+def broker_live_close_draft(request:Request,position_id:str,body:BrokerCloseInput|None=None):
+    if not _local_broker_access(request):raise HTTPException(403,'LIVE平倉僅供本機確認')
+    return JSONResponse(content=live_broker_orders.create_close(live_trade_stream.snapshot(),position_id,
+        **(body.model_dump() if body else {})),headers={'Cache-Control':'no-store'})
+
+
+@app.post('/api/live/positions/{position_id}/protection-draft')
+def broker_live_protection_draft(request:Request,position_id:str,body:ProtectionInput):
+    if not _local_broker_access(request):raise HTTPException(403,'LIVE保護修改僅供本機確認')
+    return JSONResponse(content=live_broker_orders.create_protection(live_trade_stream.snapshot(),position_id,
+        body.model_dump(exclude_unset=True)),headers={'Cache-Control':'no-store'})
+
+
+@app.post('/api/live/pending/{order_id}/cancel-draft')
+def broker_live_pending_cancel_draft(request:Request,order_id:str):
+    if not _local_broker_access(request):raise HTTPException(403,'LIVE掛單取消僅供本機確認')
+    return JSONResponse(content=live_broker_orders.create_pending_cancel(live_trade_stream.snapshot(),order_id),
+        headers={'Cache-Control':'no-store'})
 
 
 @app.post('/api/broker/drafts/{draft_id}/confirm')
@@ -795,8 +936,18 @@ def assistant_status(request:Request,provider:Literal['claude_code','codex','ope
 def live_chat(request:Request,body:LiveChatInput):
     if not _local_broker_access(request):
         return JSONResponse(status_code=403,content={'detail':'即時盤面對話僅供本機使用'})
+    return _answer_market_chat(demo_market_stream.query_snapshot(),body)
+
+
+@app.post('/api/live/assistant/chat')
+def live_account_chat(request:Request,body:LiveChatInput):
+    if not _local_broker_access(request):
+        raise HTTPException(403,'LIVE盤面對話僅供本機使用')
+    return _answer_market_chat(_live_read_snapshot(query=True),body)
+
+
+def _answer_market_chat(snapshot,body):
     macro=select_context(macro_calendar.snapshot(refresh=True),body.message) if body.include_macro else None
-    snapshot=demo_market_stream.query_snapshot()
     now=_analysis_capture_time(snapshot);retrieval=None;query={}
     mode=body.advice_mode
     analysis_side=body.side
@@ -842,7 +993,9 @@ def _analysis_clock_wait(seconds):
     timing.sleep(seconds)
 
 
-MAX_ANALYSIS_SOURCE_LEAD_SECONDS = 0.75
+# The DEMO tick clock can lead this host by about 2 seconds. Wait for the
+# already received tick to become current; build_live_context stays strict.
+MAX_ANALYSIS_SOURCE_LEAD_SECONDS = 3.0
 ANALYSIS_CLOCK_SETTLE_SECONDS = 0.005
 
 
@@ -989,6 +1142,21 @@ def broker_demo_case(request: Request, case_id: str):
     return JSONResponse(content=dict(value, match_reasons=[],
                                      differences=['參考盤面依來源時間模型定位；券商時鐘尚未獨立核實']),
                         headers={'Cache-Control': 'no-store'})
+
+
+@app.get('/api/live/cases/{case_id}')
+def broker_live_case(request: Request, case_id: str):
+    if not _local_broker_access(request):
+        raise HTTPException(403, 'LIVE 案例僅供本機查看')
+    # The reference library is shared historical evidence; the LIVE query and
+    # account stream remain separate from DEMO.
+    with engine.lock:
+        value = engine.cases.get_candidate_detail(case_id, int(datetime.now(timezone.utc).timestamp()))
+    if not value:
+        raise DomainError('案例不存在或尚未成熟', 404)
+    return JSONResponse(content=dict(value, match_reasons=[],
+        differences=['參考盤面依來源時間模型定位；券商時鐘尚未獨立核實']),
+        headers={'Cache-Control': 'no-store'})
 
 
 @app.get('/api/audit')

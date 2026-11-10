@@ -3,6 +3,7 @@ import type {DraftInputState,InputPatch} from './conversationState';
 import {validAnalysisRef,normalizeArchivedChart,type ArchivedChart} from './analysisHistory';
 
 export const DESK_HISTORY_KEY='gold-desk-conversations-v1';
+export const LIVE_HISTORY_KEY='gold-desk-live-conversations-v1';
 export type ArchiveTurn={question:string;answer:string;at:string;analysis_ref?:string};
 export type ArchiveEntry={id:string;title:string;updatedAt:number;turns:ArchiveTurn[];customTitle?:boolean;chart?:ArchivedChart};
 export type ArchiveLoad={items:ArchiveEntry[];writable:boolean;error:string;activeId?:string};
@@ -52,12 +53,12 @@ export function encodeArchive(items:ArchiveEntry[],activeId?:string):string{
  if(value.length>MAX_ARCHIVE_CHARS)throw Error('對話儲存空間不足，本次變更未儲存；請先備份或刪除不需要的紀錄。');
  return value;
 }
-export function saveConversationArchive(storage:Pick<Storage,'setItem'>,items:ArchiveEntry[],activeId:string):{ok:boolean;error:string}{
- try{storage.setItem(DESK_HISTORY_KEY,encodeArchive(items,activeId));return {ok:true,error:''};}
+export function saveConversationArchive(storage:Pick<Storage,'setItem'>,items:ArchiveEntry[],activeId:string,storageKey=DESK_HISTORY_KEY):{ok:boolean;error:string}{
+ try{storage.setItem(storageKey,encodeArchive(items,activeId));return {ok:true,error:''};}
  catch{return {ok:false,error:'這次變更未儲存，先前已保存的紀錄仍保留。請確認瀏覽器允許儲存，或備份後刪除不需要的紀錄。'};}
 }
-export function persistConversationDeletion(storage:Pick<Storage,'setItem'>,items:ArchiveEntry[],id:string,activeId:string){
- const remaining=deleteConversation(items,id),result=saveConversationArchive(storage,remaining,activeId);
+export function persistConversationDeletion(storage:Pick<Storage,'setItem'>,items:ArchiveEntry[],id:string,activeId:string,storageKey=DESK_HISTORY_KEY){
+ const remaining=deleteConversation(items,id),result=saveConversationArchive(storage,remaining,activeId,storageKey);
  const keep=new Set(remaining.flatMap(e=>e.turns.flatMap(t=>t.analysis_ref?[t.analysis_ref]:[])));
  const refs=[...new Set(items.find(e=>e.id===id)?.turns.flatMap(t=>t.analysis_ref?[t.analysis_ref]:[])??[])];
  return {...result,items:remaining,cleanupRefs:result.ok?refs.filter(ref=>!keep.has(ref)):[]};
