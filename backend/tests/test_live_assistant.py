@@ -24,7 +24,7 @@ def test_frozen_draft_writer_assesses_this_order_instead_of_a_generic_direction_
 def test_presented_moving_average_names_are_plain_language_after_local_substitution():
     facts=[dict(id='f5.trend',text='{{f5_structure}}',values={'f5_structure':'高於 MA20、低於 MA60'})]
     result=live.render_sections([dict(title='均線位置',text='{{f5_structure}}。',fact_ids=['f5.trend'])],facts)
-    assert result[0]['text']=='高於 最近100分鐘均價、低於 最近5小時均價。'
+    assert result[0]['text']=='高於最近100分鐘均價、低於最近5小時均價。'
     assert facts[0]['values']['f5_structure']=='高於 MA20、低於 MA60'
 
 

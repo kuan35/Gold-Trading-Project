@@ -50,8 +50,8 @@
       "sha256": "89cd7a1982b1bf9419a05a7519423d0d82409eb7c9e2341add813f0a871b1c2f"
     },
     "HANDOFF.md": {
-      "bytes": 53446,
-      "sha256": "0ad59c2910272f866c226a87fef61e3835261c2f819aa39972e7822e2c0fade0"
+      "bytes": 54195,
+      "sha256": "3620862a50a744f4f5bb885d28906e47c4b0a64de68bde119b7a6cfd70e3ba61"
     },
     "LICENSE": {
       "bytes": 1304,
@@ -222,8 +222,8 @@
       "sha256": "38b023516eb342a1cc1793e5ac8cfbd1c5ca076463fa5163ac64a3d39d54c74d"
     },
     "backend/live_assistant.py": {
-      "bytes": 59405,
-      "sha256": "da114d678a467bfd53834a6730fc17b8d29f6c2f4a71b5d7ef56af25f178e760"
+      "bytes": 59864,
+      "sha256": "91bc9fede12340d09d796718e2c70c4f9af6bcdd1887897c6677995ef1e3136a"
     },
     "backend/live_candidate_profile.py": {
       "bytes": 4782,
@@ -360,6 +360,10 @@
     "backend/tests/test_assistant_summary_contract.py": {
       "bytes": 10298,
       "sha256": "9cb8192de0c8fc5f76a21267ae4c8b8880c7f1a507d15f354e4bd65a95a2e758"
+    },
+    "backend/tests/test_assistant_text_tidy.py": {
+      "bytes": 2076,
+      "sha256": "b7444d559f4957a4edbe7c0be041dee663dec3039bc61095f680c8700a90448b"
     },
     "backend/tests/test_broker_account_view.py": {
       "bytes": 7697,
@@ -550,8 +554,8 @@
       "sha256": "3ef279d3956a93252fb408c167201a3e41f5f77fe59fc499b9e5d6f2a55218e1"
     },
     "backend/tests/test_live_assistant.py": {
-      "bytes": 23158,
-      "sha256": "734eb980d527e8474a31db7bc7b167e7ea579ea9df73b771fc4b8bc1cee8fb12"
+      "bytes": 23156,
+      "sha256": "b93b0c2c7ac08567f861b6918edbea9a20980eae89cfb5885192145b479e919c"
     },
     "backend/tests/test_live_assistant_api.py": {
       "bytes": 3277,
@@ -830,8 +834,8 @@
       "sha256": "28c4869e59b7229877eb71d44d723972a246867ec1b31fb516876ef7d0cfc567"
     },
     "docs/PEPPERSTONE_LIVE.md": {
-      "bytes": 3928,
-      "sha256": "6beabaa8e277c3710f6d2e088ddc753d5c25fb869dc82ede4c04d45adaad446b"
+      "bytes": 4421,
+      "sha256": "9b1fa38edba4c092a14f21a5e72dbc58cd0a45553a7fac8ed8096e13210f3bea"
     },
     "docs/TEAM_START_20261104.md": {
       "bytes": 5270,

@@ -4,7 +4,9 @@
 
 ## 本機設定
 
-1. 先由帳戶持有人在 Pepperstone／cTrader 完成官方授權。把 `product/.env.ctrader.live.example` 複製為本機的 `.env.ctrader.live`；只在本機填 cTrader Open API 憑證、`trading` scope 的 access token，以及明確的 LIVE Open API 帳戶 ID。瀏覽器不輸入 token，設定檔不可提交 GitHub。
+1. 先由帳戶持有人在 Pepperstone／cTrader 完成官方授權。把產品根目錄的 `.env.ctrader.live.example`（clone 下來的 repo 根目錄；原研究工作區則在 `product/` 底下）複製為同一層的 `.env.ctrader.live`；只在本機填 cTrader Open API 憑證、`trading` scope 的 access token，以及明確的 LIVE Open API 帳戶 ID。瀏覽器不輸入 token，設定檔不可提交 GitHub。
+   - Open API 帳戶 ID（`ctidTraderAccountId`）不是券商客戶區顯示的登入號；可在 cTrader Open API 應用的 Playground 帳戶清單看到，清單會同時列出登入號與是否為 LIVE。
+   - 同一個 cTrader ID 的 DEMO 授權 token 若已涵蓋該 LIVE 帳戶，可沿用同一組 App 憑證與 token；兩邊共用時，token 到期或撤銷會同時影響 DEMO 與 LIVE。
 2. `CTRADER_LIVE_TRADING_ENABLED=NO` 是預設。維持此值仍可用獨立唯讀 LIVE 連線查行情、帳戶與案例。
 3. 若帳戶持有人日後要自行啟用真實資金委託，先設定正數 `GOLD_LIVE_MAX_ORDER_STOP_USD`（單筆停損情境損失上限）及 `GOLD_LIVE_MAX_GROSS_LOTS`（黃金持倉加掛單總手數上限），再明確設 `CTRADER_LIVE_TRADING_ENABLED=YES` 並重啟後端。設定空白、權限不足、非 USD、淨值不足、報價或保證金未就緒都不能送新單。
 4. 每筆新 LIVE 單必填停損，先檢查草稿，核對帳戶末四碼、預估保證金、情境損失與累計手數，再由本人按「確認送出 LIVE 委託」。已接受不等於成交，回報不明時先到 cTrader 核對，勿重送。

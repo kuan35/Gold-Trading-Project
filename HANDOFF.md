@@ -1,3 +1,7 @@
+## 2026-11-10 — 綜合建議文字整理
+
+- 修正助手「綜合建議」把方向詞與句號重複拼接的問題，例如「偏多，優先找做多機會，偏多；」與「判讀。。」，也移除替換均價名稱後留在兩個中文字之間的空格。`backend/live_assistant.py` 新增 `tidy_text`，在模型段落與程式段落填值後執行；不改數值、引用檢查或下單。新增 `backend/tests/test_assistant_text_tidy.py`，`backend/tests/test_live_assistant.py` 一項舊斷言改為不含多餘空格。`docs/PEPPERSTONE_LIVE.md` 的設定檔路徑改為 clone 根目錄，並補充 Open API 帳戶 ID 與共用 token 的說明。後端完整 1012 passed、1 skipped。branch `main`；記錄時 commit N/A。
+
 ## 2026-11-10 — LIVE 交易計畫、條件提醒與風險反算
 
 - LIVE 補上與 DEMO 相同的交易計畫、復盤、計畫回顧、條件提醒與「依風險反算手數」。新增 `/api/live/trading/*`，LIVE 計畫與提醒存在獨立的 `private/live_trade_plans.sqlite`、`private/live_trade_alerts.sqlite`；檢查 LIVE 委託時保存草稿、分析與交易理由，確認／狀態回報只附加到 LIVE 計畫。修正 LIVE 委託欄的風險反算原本呼叫 DEMO 端點、用 DEMO 淨值計算的問題。LIVE 提醒只在 LIVE 環境被選取時輪詢通知，監控只評估 LIVE 快照，觸發不送單、不呼叫模型。

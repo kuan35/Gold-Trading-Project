@@ -199,6 +199,14 @@ def plain_market_language(text,interval=None):
     return text
 
 
+def tidy_text(text):
+    """Clean joins left when filled values already end in punctuation or repeat the direction."""
+    text=re.sub(r'(?<=[\u3400-\u9fff])[ \t]+(?=[\u3400-\u9fff])','',text)
+    text=re.sub(r'(偏多|偏空)(，優先找做[多空]機會)[，；、]\1(?=[，；。：]|$)',r'\1\2',text)
+    text=re.sub(r'[，；、]*。[。，；、]*','。',text)
+    return re.sub(r'([，；、])[，；、]+',r'\1',text)
+
+
 def render_sections(raw,facts):
     by_id={f['id']:f for f in facts}
     if not isinstance(raw,list) or not 1<=len(raw)<=8:raise ValueError('invalid sections')
@@ -231,7 +239,7 @@ def render_sections(raw,facts):
         for k in placeholders:
             token_interval={'f5':'5m','f15':'15m','f1':'1h'}.get(k.split('_')[0],interval)
             text=text.replace('{{'+k+'}}',plain_market_language(str(values[k]),token_interval))
-        result.append(dict(title=plain_market_language(title,interval),text=plain_market_language(scrub(text),interval),fact_ids=ids))
+        result.append(dict(title=plain_market_language(title,interval),text=tidy_text(plain_market_language(scrub(text),interval)),fact_ids=ids))
     if sum(len(s['text']) for s in result)>2200:raise ValueError('too long')
     return result
 
@@ -256,7 +264,7 @@ def render_program_sections(groups,facts):
             return plain_market_language(str(values.get(key,'資料不足')),token_interval)
         text=re.sub(r'\{\{([a-z0-9_]+)\}\}',fill,text)
         result.append(dict(title=plain_market_language(str(group.get('title','程式證據')),interval),
-            text=plain_market_language(scrub(text),interval),fact_ids=ids,source='program'))
+            text=tidy_text(plain_market_language(scrub(text),interval)),fact_ids=ids,source='program'))
     return result
 
 
