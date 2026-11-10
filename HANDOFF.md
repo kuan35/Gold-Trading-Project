@@ -1,3 +1,8 @@
+## 2026-11-10 — Windows CI 失敗根因：非 ASCII 的 strftime
+
+- GitHub Windows 工作的後端測試 15 項失敗，訊息為 `UnicodeEncodeError: 'locale' codec can't encode character '年'`。`backend/case_operations.py` 用 `strftime('%Y年%m月%d日')`，Windows 會用系統語系編碼 format，英文 Windows 無法編碼「年」；繁中 Windows 與 macOS 不會發生，所以本機無法重現。英文 Windows 使用者查看案例詳情也會遇到。
+- 改用 f-string 組年月日，新增 `backend/tests/test_locale_safe_dates.py` 檢查 backend／scripts／research 的 strftime format 只用 ASCII。以英文語系（cp1252）重現原錯誤並確認修正後相關測試通過。branch `main`；記錄時 commit N/A。
+
 ## 2026-11-10 — 綜合建議文字整理
 
 - 修正助手「綜合建議」把方向詞與句號重複拼接的問題，例如「偏多，優先找做多機會，偏多；」與「判讀。。」，也移除替換均價名稱後留在兩個中文字之間的空格。`backend/live_assistant.py` 新增 `tidy_text`，在模型段落與程式段落填值後執行；不改數值、引用檢查或下單。新增 `backend/tests/test_assistant_text_tidy.py`，`backend/tests/test_live_assistant.py` 一項舊斷言改為不含多餘空格。`docs/PEPPERSTONE_LIVE.md` 的設定檔路徑改為 clone 根目錄，並補充 Open API 帳戶 ID 與共用 token 的說明。後端完整 1012 passed、1 skipped。branch `main`；記錄時 commit N/A。

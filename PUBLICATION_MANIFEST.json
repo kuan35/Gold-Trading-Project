@@ -50,8 +50,8 @@
       "sha256": "89cd7a1982b1bf9419a05a7519423d0d82409eb7c9e2341add813f0a871b1c2f"
     },
     "HANDOFF.md": {
-      "bytes": 54195,
-      "sha256": "3620862a50a744f4f5bb885d28906e47c4b0a64de68bde119b7a6cfd70e3ba61"
+      "bytes": 54946,
+      "sha256": "d5ca029bee498eabc902c1b57a1414755950710896c359c0737c4ffdcdf3e520"
     },
     "LICENSE": {
       "bytes": 1304,
@@ -126,8 +126,8 @@
       "sha256": "c0c1ba361c92b9036ce07358865240dca22846c3e94fbb429a8f8caf6ffbdbe5"
     },
     "backend/case_operations.py": {
-      "bytes": 5461,
-      "sha256": "d4823ddf944ab9e89a7b63a10723fe62966b4af2aee8270e147f4a64c47ca24d"
+      "bytes": 5636,
+      "sha256": "ae1bce8ba497a96c3ec72b77095db803a5177267d4cfe90cd69cf0afb1287447"
     },
     "backend/case_review.py": {
       "bytes": 12015,
@@ -604,6 +604,10 @@
     "backend/tests/test_local_app.py": {
       "bytes": 1301,
       "sha256": "68c1813f097965ed36c2f49d2f83ce4fb0a795ccb3a61e2bc6a4cc592927a11a"
+    },
+    "backend/tests/test_locale_safe_dates.py": {
+      "bytes": 923,
+      "sha256": "29c5f017418551b1f05d00550fffd80d4661fd3dfa8974bcac0bc68012b04bdd"
     },
     "backend/tests/test_macro_api.py": {
       "bytes": 1591,

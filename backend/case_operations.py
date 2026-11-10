@@ -33,7 +33,9 @@ def historical_trade_fact(source,ref,number,cutoff):
     except (KeyError,TypeError,ValueError,AttributeError):return None
     p=f'hist{number}_'
     values={p+'opened_at':opened.strftime('%Y-%m-%d %H:%M:%S'),p+'closed_at':closed.strftime('%Y-%m-%d %H:%M:%S'),
-        p+'opened_day':opened.strftime('%Y年%m月%d日'),p+'closed_day':closed.strftime('%Y年%m月%d日'),
+        # Not strftime: Windows encodes its format with the system locale, so 年 fails on English Windows.
+        p+'opened_day':f'{opened.year:04d}年{opened.month:02d}月{opened.day:02d}日',
+        p+'closed_day':f'{closed.year:04d}年{closed.month:02d}月{closed.day:02d}日',
         p+'entry':result['entry_price'],p+'exit':result['exit_price'],
         p+'price_return':format(Decimal(result['price_return_pct']),'.4f'),
         p+'side_state':'做多' if source['side']=='BUY' else '做空',
