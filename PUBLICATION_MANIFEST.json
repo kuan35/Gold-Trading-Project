@@ -14,8 +14,8 @@
       "sha256": "3c5708592e56d7d12ab7eb669b255897f58d4019aee23bd1c86047bee85f15e0"
     },
     ".github/workflows/local-ci.yml": {
-      "bytes": 1084,
-      "sha256": "12dae6e3d1d6dd4f54af31b39b80a0b5072e05271944a421d1070718f1e54e1f"
+      "bytes": 1288,
+      "sha256": "2c96cef00ee15bfca4aa6bd6eddb674ff8f08cb3ce48f2a03f5263e6afd7f0ba"
     },
     ".github/workflows/pages.yml": {
       "bytes": 1212,
@@ -50,8 +50,8 @@
       "sha256": "89cd7a1982b1bf9419a05a7519423d0d82409eb7c9e2341add813f0a871b1c2f"
     },
     "HANDOFF.md": {
-      "bytes": 51180,
-      "sha256": "cd137119b210edd273d72123e1e371ac600c3d35500b3d1ea413b6fa12f03456"
+      "bytes": 51894,
+      "sha256": "52dd02135c706f8e6ceea64f157ebdcb65001448da4977fa598f4138cf5b1126"
     },
     "LICENSE": {
       "bytes": 1304,

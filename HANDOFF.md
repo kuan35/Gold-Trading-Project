@@ -1,3 +1,7 @@
+## 2026-11-10 — Windows CI 診斷與 UTF-8 輸出
+
+- 前次 `190308d` 的 GitHub Windows 工作在「Backend without credentials」步驟失敗，但 macOS、Pages 與產品檢查成功；公開註解只有 exit 1，未取得工作日誌，因此原因未證實。公開 checkout 的全新 Python venv 跑 1005 項全通過；乾淨 git archive 重跑亦 1005 項通過，`doctor` 回 exit 0。為縮小故障範圍，`.github/workflows/local-ci.yml` 將 pytest 與 doctor 拆成獨立步驟，並固定 Python UTF-8 輸出。下一次遠端執行需觀察結果。修改檔案：該 workflow、`HANDOFF.md`、`PUBLICATION_MANIFEST.json`；本次未改交易邏輯。branch `main`；記錄時 commit N/A。
+
 ## 2026-11-10 — LIVE 隔離版本與新版 8766 介面發布
 
 - 新版前端加入 DEMO／LIVE 切換、獨立聊天與草稿、LIVE 看盤／案例／Agent／帳戶／委託；後端加入獨立 LIVE 連線、風險上限、必填停損、人工確認及持倉保護／掛單取消。LIVE 限價平倉停用，計畫／提醒待獨立實作。LIVE 預設唯讀，真實資金委託未在開發或測試中送出。`docs/PEPPERSTONE_LIVE.md` 說明設定、入金入口及限制。
