@@ -9,7 +9,7 @@
 - 新增 `python -m scripts.history_bootstrap plan|probe|download|build|verify|activate|all`：以同學本人在本機設定的 cTrader Open API（DEMO，或 LIVE 加 `--read-only`）唯讀下載案例需要的 5 分／1 小時 K 線與 tick 量，在 `private/personal_history/<來源指紋>/` 建立案例盤面、量能、後續走勢與進出場參考，驗證雜湊與來源後才寫入 `.env.local` 啟用。沿用同一份公開交易員案例與 `context_contract_v1` 規則；不同帳戶的覆蓋與配對可能不同。不送委託、不上傳行情、不印憑證。
 - 公開 `frontend/public/data/trader-case-reference-times.json`：10,887 個已公開案例 ID 的候選進出場 UTC 時點，只含 10 個欄位，時區 UNKNOWN、PROJECT_REFERENCE；不含券商行情或帳戶資料。
 - `doctor` 回報公開參考與個人歷史狀態及下一步指令。個人索引啟用時，檢索結果第一行說明案例盤面由本機 Pepperstone 帳戶自建、配對可能與作者不同；持倉期間觀察改顯示實際價格來源，不再固定標 HistData。量能視窗沿用原規則：休市缺口只記錄、不判不可用。
-- 驗證：後端完整測試、合成資料端到端（同來源建置、換帳戶拒絕混用、片段被改即驗證失敗）。尚未以真實 API 實測下載。branch `main`；記錄時 commit N/A。
+- 驗證：後端完整測試 1018 passed、1 skipped，合成資料端到端（同來源建置、換帳戶拒絕混用、片段被改即驗證失敗）。另以專案作者本人的 Pepperstone DEMO 帳戶實測 `probe`：6 個週片段（5 分與 1 小時各取 2018、2023、2026 一週）全部有資料、0 個空片段、共 4,481 根 K 線，tick 量皆為正整數，每週缺口只有每日休盤與週末，`orders_sent=0`；下載檔不含帳號。完整 492 片段下載與建置未在本次執行。branch `main`；記錄時 commit N/A。
 
 ## 2026-11-10 — Windows CI 失敗根因：非 ASCII 的 strftime
 
