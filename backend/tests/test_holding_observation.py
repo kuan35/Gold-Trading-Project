@@ -64,3 +64,10 @@ def test_prepared_observation_is_frozen_and_review_does_not_reload_market():
     assert old['charts']['cases'][0]['holding_observation']['observed_mae_pct']=='5'
     result=review_cases(old,enabled=False)
     assert result['provider']=='program' and '已知K棒' in result['message']
+
+
+def test_observation_keeps_the_execution_price_source_label():
+    assert summarize(execution(),'BUY',cutoff=1200)['source']=='HistData BID'
+    personal=dict(execution(),price_source='Pepperstone cTrader DEMO BID')
+    assert summarize(personal,'BUY',cutoff=1200)['source']=='Pepperstone cTrader DEMO BID'
+    assert summarize(dict(personal,status='UNAVAILABLE'),'BUY',cutoff=1200)['source']=='Pepperstone cTrader DEMO BID'

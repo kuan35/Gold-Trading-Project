@@ -32,6 +32,17 @@ class HistoryLibrary:
     def __init__(self,private):
         self.root=Path(private).resolve();self.path=self.root/'history_library.sqlite'
         self._lock=threading.RLock();self._building=False;self._error=None;self._checked=0
+        self.personal_source=None
+        status=self.root/'personal_history_status.json'
+        if status.is_file():
+            try:self.personal_source=json.loads(status.read_text(encoding='utf-8')).get('source')
+            except (OSError,ValueError):pass
+
+    def source_label(self,source):
+        return self.personal_source+' 個人歷史行情' if source=='reference' and self.personal_source else LABELS[source]
+
+    def volume_label(self,source):
+        return '券商 tick 量' if source=='ctrader_demo' or (source=='reference' and self.personal_source) else '來源量欄位（非全球成交量）'
     @contextmanager
     def _read(self):
         db=sqlite3.connect(f'{self.path.as_uri()}?mode=ro',uri=True,timeout=3)
@@ -134,7 +145,7 @@ class HistoryLibrary:
                 ranges=json.loads(values['ranges']) if 'ranges' in values else [dict(id=s,interval=iv,first=lo,last=hi,count=n) for s,iv,lo,hi,n in db.execute('SELECT source,interval,MIN(time),MAX(time),COUNT(*) FROM bars GROUP BY source,interval')]
                 for r in ranges:
                     source=r['id']
-                    if r['interval']=='5m':result['sources'].append(dict(id=source,label=LABELS[source],first=r['first'],last=r['last'],count=r['count'],quote_side='BID',volume_basis='券商 tick 量' if source=='ctrader_demo' else '來源量欄位（非全球成交量）'))
+                    if r['interval']=='5m':result['sources'].append(dict(id=source,label=self.source_label(source),first=r['first'],last=r['last'],count=r['count'],quote_side='BID',volume_basis=self.volume_label(source)))
                 result.update(built_at_utc=values.get('built_at_utc'),skipped_rows=int(values.get('skipped','0')))
             if result['sources']:result.update(status='AVAILABLE',first=min(s['first'] for s in result['sources']),last=max(s['last'] for s in result['sources']))
         except sqlite3.Error:result['error']='歷史索引尚未就緒。'
@@ -165,4 +176,4 @@ class HistoryLibrary:
                 right=db.execute(f'SELECT {fields} FROM bars WHERE source=? AND interval=? AND time>=? ORDER BY time LIMIT ?',(*args,anchor,limit-len(left))).fetchall();rows=left+right
             bars=[dict(time=r[0],open=float(r[1]),high=float(r[2]),low=float(r[3]),close=float(r[4]),**({'volume':float(r[5])} if r[5] is not None else {})) for r in rows]
             gaps=[dict(from_time=a['time']+span,to_time=b['time'],seconds=b['time']-a['time']-span) for a,b in zip(bars,bars[1:]) if b['time']-a['time']>span]
-            return dict(result,status='AVAILABLE' if bars else 'EMPTY',bars=bars,source=source,source_label=LABELS[source],quote_side='BID',volume_basis='券商 tick 量' if source=='ctrader_demo' else '來源量欄位（非全球成交量）',available_range=dict(first=row['first'],last=row['last']),anchor_time=anchor,shifted=direction=='around' and anchor!=point,gaps=gaps,has_before=bool(rows and row['first']<rows[0][0]),has_after=bool(rows and row['last']>rows[-1][0]))
+            return dict(result,status='AVAILABLE' if bars else 'EMPTY',bars=bars,source=source,source_label=self.source_label(source),quote_side='BID',volume_basis=self.volume_label(source),available_range=dict(first=row['first'],last=row['last']),anchor_time=anchor,shifted=direction=='around' and anchor!=point,gaps=gaps,has_before=bool(rows and row['first']<rows[0][0]),has_after=bool(rows and row['last']>rows[-1][0]))

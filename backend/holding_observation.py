@@ -7,9 +7,11 @@ from .execution_store import MAX_HOLDING_SLOTS
 
 
 def summarize(execution,side,*,cutoff):
+    # A classmate's own Pepperstone index carries its own label; never relabel it HistData.
+    label=execution.get('price_source') if isinstance(execution,dict) and isinstance(execution.get('price_source'),str) else 'HistData BID'
     base=dict(status='UNAVAILABLE',reason='未載入完整持倉參考資料，不能從首尾推算過程。',
         basis='REFERENCE_COMPLETE_BARS_WITHIN_HOLDING',scope='OBSERVED_REFERENCE_BARS_ONLY',
-        source='HistData BID',clock_status='UNKNOWN',alignment='PROJECT_REFERENCE',side=side,
+        source=label,clock_status='UNKNOWN',alignment='PROJECT_REFERENCE',side=side,
         anchor_time=None,anchor_price=None,last_bar_end=None,bars_used=0,expected_closed_slots=None,
         missing_closed_slots=None,reference_return_pct=None,observed_mae_pct=None,observed_mfe_pct=None,
         observed_mae_per_oz=None,observed_mfe_per_oz=None)

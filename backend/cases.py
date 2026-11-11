@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 from .tick_volume import NativeTickStore
+from .case_paths import case_data_root
 
 ROOT = Path(__file__).resolve().parents[1]
 D = Decimal
@@ -22,13 +23,14 @@ LABELS = {'NO_OBSERVED_POSITION':'可見初始單','ADD_ADVERSE':'價格不利�
 
 class CaseStore:
     def __init__(self) -> None:
-        self.tick_volume_store=NativeTickStore(ROOT/'private')
-        path = ROOT/'private'/'cases.json'
+        self.data_root=case_data_root(ROOT)
+        self.tick_volume_store=NativeTickStore(self.data_root)
+        path = self.data_root/'cases.json'
         self.source = 'trader_history' if path.exists() else 'synthetic_demo'
         payload=json.loads(path.read_text(encoding='utf-8')) if path.exists() else {}
         self.items = payload['cases'] if path.exists() else self._demo()
         self.group_sequences=payload.get('group_sequences',{})
-        profiles_path = ROOT/'private'/'case_size_profiles.json'
+        profiles_path = self.data_root/'case_size_profiles.json'
         self.profile_status = 'MISSING'
         if path.exists() and profiles_path.exists():
             import hashlib
@@ -42,7 +44,7 @@ class CaseStore:
             profiles = build_size_profiles([dict(record_id=c['id'],source='synthetic',lot=c['lot'],open_time=c['opened_at']) for c in self.items])
             for item in self.items:
                 item['size_profile'] = profiles.get(item['id'])
-        profiles,self.market_profile_status=load_sidecar(path,ROOT/'private'/'case_market_profiles.json',ROOT/'private') if path.exists() else ({},'MISSING')
+        profiles,self.market_profile_status=load_sidecar(path,self.data_root/'case_market_profiles.json',self.data_root) if path.exists() else ({},'MISSING')
         for item in self.items:
             item['market_profile']=profiles.get(item['id'])
         self.candidate_profiles={}
@@ -50,7 +52,7 @@ class CaseStore:
 
     def ensure_candidate_profiles(self) -> None:
         if self.candidate_profile_status == 'NOT_LOADED':
-            private=ROOT/'private'
+            private=self.data_root
             self.candidate_profiles,self.candidate_profile_status=load_candidate_sidecar(
                 private/'cases.json',private/'case_candidate_market_profiles.json',private)
 
@@ -136,6 +138,19 @@ class CaseStore:
                 result.append(c)
         return result
 
+    def _label_personal(self, result: dict) -> dict:
+        """State on screen that a classmate-built index came from their own broker history."""
+        if getattr(self,'data_root',(ROOT/'private').resolve()) == (ROOT/'private').resolve():
+            return result
+        try:
+            source=json.loads((self.data_root/'personal_history_status.json').read_text(encoding='utf-8')).get('source')
+        except (OSError,ValueError):
+            source=None
+        source=source if isinstance(source,str) and source else '本機券商帳戶'
+        note=(f'案例盤面由本機 {source} 帳戶的歷史行情自建；參考時點為 PROJECT_REFERENCE，'
+              '原交易時鐘未知；配對可能與作者本機不同。')
+        return dict(result,case_data_source=source,limitations=[note,*result.get('limitations',[])])
+
     def retrieve(self, side: str, action: str, lot: D, clock: int, **kwargs) -> dict:
         self.clock = clock
         method=kwargs.get('retrieval_method') or (CONTEXT_METHOD if self.source=='trader_history' else None)
@@ -150,16 +165,20 @@ class CaseStore:
             status = getattr(self,'candidate_profile_status','MISSING')
             if status != 'READY' or not query or query.get('status') != 'candidate_only' or query.get('as_of') != clock:
                 return unavailable(status if status != 'READY' else 'QUERY_UNAVAILABLE')
+            if getattr(self,'data_root',(ROOT/'private').resolve()) != (ROOT/'private').resolve():
+                personal=json.loads((self.data_root/'personal_history_status.json').read_text(encoding='utf-8'))
+                if query.get('market_source_key')!=personal.get('source_key'):
+                    return self._label_personal(unavailable('SOURCE_MISMATCH'))
             if method == CONTEXT_METHOD:
                 if not hasattr(self,'context_index'):
                     self.context_index=ContextIndex(self.items,self.candidate_profiles,tick_volume_store=getattr(self,'tick_volume_store',None))
-                return self.context_index.retrieve(query,side)
+                return self._label_personal(self.context_index.retrieve(query,side))
             if method == DUAL_METHOD:
                 if not hasattr(self,'dual_path_index'):
                     self.dual_path_index=DualPathIndex(self.items,self.candidate_profiles)
-                return self.dual_path_index.retrieve(query,side)
+                return self._label_personal(self.dual_path_index.retrieve(query,side))
             tiers = rank_hybrid_candidates(self.items,self.candidate_profiles,query,side,clock)
-            return candidate_response(tiers,self.items)
+            return self._label_personal(candidate_response(tiers,self.items))
         kwargs.pop('query_candidate',None)
         ranked = self.rank(side,action,lot,clock,**kwargs)
         context=self.market_context(side,action,clock,kwargs.get('query_market'))

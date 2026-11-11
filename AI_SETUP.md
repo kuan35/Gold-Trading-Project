@@ -19,18 +19,30 @@ AGENTS.md、DATA_POLICY.md、docs/LOCAL_INSTALL.md。沿用現有React/FastAPI�
    同學應沿用完整frontend／backend，不重寫介面。驗收新增兩個測試聊天，先選程式解讀，
    A開圖→B→A→重整，核對原分析時間及K線仍在；不要為驗收消耗模型額度或送單。
    更新保留private/analysis_history及使用者原瀏覽器資料，不匯入作者聊天或分析快取。
-5. 已公開的整理後交易員逐筆案例在 `frontend/public/data/trader-cases.json`；
-   未取得完整參考 K 線與量能包時，本機後端仍維持明示合成回放。
-   setup 不會自動抓取第三方行情；請用 doctor 回報資料狀態，不可宣稱檢索與作者相同。
-   若本人取得授權包，先停止網站，再依 data_bundle import/verify 流程導入；
+5. 已公開的整理後交易員逐筆案例在 `frontend/public/data/trader-cases.json`，
+   候選進出場 UTC 對照在 `trader-case-reference-times.json`。先執行
+   `python -m scripts.history_bootstrap plan`，回報預計下載週片段數與各年份候選數。
+   setup 只裝依賴，不會在未授權時連券商。未建個人歷史資料前，doctor 會提示下一步，
+   本機後端仍明示合成回放，不可宣稱案例配對與作者相同。
+6. 若本人要啟用完整案例功能，請由本人在本機完成 Pepperstone cTrader Open API
+   唯讀授權，並在本機設定 DEMO 帳戶 Open API ID；不要在聊天貼任何 secret 或 token。
+   先執行 `python -m scripts.history_bootstrap probe` 查不同年份樣本覆蓋，
+   再由本人明確執行 `python -m scripts.history_bootstrap download`。
+   下載可重跑續傳；完成後執行 `python -m scripts.history_bootstrap build`、
+   `verify`、`activate`，再重啟網站。也可在本人同意下載後執行單一 `all`。
+   僅有 LIVE 帳戶時加 `--environment live --read-only`，絕不啟用交易。
+   若某些年份不足，保留 PARTIAL／缺棒原因，絕不補零或借用作者行情。
+   最後回報使用來源、可用案例數、缺片段與量能覆蓋；不把券商行情上傳 GitHub。
+   同一份案例與 `context_contract_v1` 規則會沿用，但不同帳戶配對可能不同。
+   若本人另取得作者授權資料包，仍可依 data_bundle import/verify 流程導入；
    不得擅自取得其他私人資料。
-6. 使用者自行在官方CLI登入Codex或Claude Code。不要讀取／複製auth.json、
+7. 使用者自行在官方CLI登入Codex或Claude Code。不要讀取／複製auth.json、
    OAuth token或接管開發聊天。介面可切供應商；不自動執行付費合成測試。
-7. cTrader先保持未設定；依本人意願啟用DEMO，詳讀安裝文件。需要登入或貼
+8. cTrader先保持未設定；依本人意願啟用DEMO，詳讀安裝文件。需要登入或貼
    secret時請本人在終端操作，不把憑證貼聊天。不得複製作者.env.ctrader。
-8. 依OS啟動start-local，確認http://127.0.0.1:8765/回應。不要開0.0.0.0、
+9. 依OS啟動start-local，確認http://127.0.0.1:8765/回應。不要開0.0.0.0、
    多worker或在未知埠衝突時停止其他程序。
-9. 只做必要修復及相關測試。交付URL、commit、資料／AI／券商各自是否就緒。
+10. 只做必要修復及相關測試。交付URL、commit、資料／AI／券商各自是否就緒。
    不以成功開首頁冒充完整案例／模型推論／券商委託已驗收。
 
 安裝或驗收不可以自動送單、平倉、修改保護、消耗模型額度、公開資料或push。

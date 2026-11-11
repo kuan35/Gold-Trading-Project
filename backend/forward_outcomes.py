@@ -46,9 +46,9 @@ def _horizon(status,minutes,anchor_time=None):
         bars=[],change_pct=None,mae_pct=None,mfe_pct=None)
 
 
-def _unavailable(status,*,case_as_of=None,side=None,anchor_time=None):
+def _unavailable(status,*,case_as_of=None,side=None,anchor_time=None,source=SOURCE):
     return dict(status=status,reason=REASONS[status],case_as_of=case_as_of,
-        anchor_time=anchor_time,anchor_price=None,side=side,source=SOURCE,basis=BASIS,
+        anchor_time=anchor_time,anchor_price=None,side=side,source=source,basis=BASIS,
         horizons={str(n):_horizon(status,n,anchor_time) for n in HORIZONS})
 
 
@@ -80,22 +80,22 @@ def _measure(side,anchor_time,rows,minutes):
         change_pct=_text(change),mae_pct=_text(mae),mfe_pct=_text(mfe))
 
 
-def build_case_outcome(side,case_as_of,rows):
+def build_case_outcome(side,case_as_of,rows,*,source=SOURCE):
     """Measure fixed horizons from the first full five-minute bar after entry.
 
     Rows may include surrounding market data; no entry partial bar is included.
     Percentages are side-adjusted, with MAE/MFE reported as nonnegative sizes.
     """
     if side not in ('BUY','SELL') or type(case_as_of) is not int or case_as_of<0:
-        return _unavailable('INVALID_REFERENCE')
+        return _unavailable('INVALID_REFERENCE',source=source)
     anchor=(case_as_of+299)//300*300
-    value=_unavailable('GAPPED_WINDOW',case_as_of=case_as_of,side=side,anchor_time=anchor)
+    value=_unavailable('GAPPED_WINDOW',case_as_of=case_as_of,side=side,anchor_time=anchor,source=source)
     if not isinstance(rows,list) or any(not isinstance(b,dict) for b in rows):
-        return _unavailable('INVALID_OHLC',case_as_of=case_as_of,side=side,anchor_time=anchor)
+        return _unavailable('INVALID_OHLC',case_as_of=case_as_of,side=side,anchor_time=anchor,source=source)
     selected=[b for b in rows if type(b.get('time')) is int and anchor<=b['time']<anchor+3600]
     selected.sort(key=lambda b:b['time'])
     if len({b['time'] for b in selected})!=len(selected):
-        return _unavailable('INVALID_OHLC',case_as_of=case_as_of,side=side,anchor_time=anchor)
+        return _unavailable('INVALID_OHLC',case_as_of=case_as_of,side=side,anchor_time=anchor,source=source)
     try:
         if selected and selected[0]['time']==anchor:value['anchor_price']=_text(_prices(selected[0])['open'])
     except (InvalidOperation,TypeError,ValueError,KeyError):pass
@@ -128,7 +128,7 @@ def build_sidecar(private_root,output_path=None):
     cases=json.loads(casepath.read_text(encoding='utf8'))['cases'];sides={c['id']:c.get('side') for c in cases}
     anchors={case_id:(p['as_of']+299)//300*300 for case_id,p in profiles.items()}
     wanted={anchor+i*300 for anchor in anchors.values() for i in range(12)}
-    selected={};previous=-1;row_count=0
+    selected={};previous=-1;row_count=0;source=None
     with barpath.open(encoding='utf-8-sig',newline='') as stream:
         for row in csv.DictReader(stream):
             dt=datetime.fromisoformat(row['timestamp'].replace('Z','+00:00'))
@@ -139,13 +139,17 @@ def build_sidecar(private_root,output_path=None):
             if stamp not in wanted:continue
             try:observed=int(row['observed_minutes'])
             except (ValueError,TypeError,KeyError):observed=None
-            if row.get('source')!='HistData' or row.get('quote_side')!='BID':raise ValueError('SOURCE_PRICE_BASIS_CHANGED')
+            if row.get('source') not in ('HistData','Pepperstone cTrader DEMO','Pepperstone cTrader LIVE') or row.get('quote_side')!='BID':
+                raise ValueError('SOURCE_PRICE_BASIS_CHANGED')
+            if source is None:source=row['source']
+            elif source!=row['source']:raise ValueError('MIXED_PRICE_SOURCE')
             selected[stamp]=dict(time=stamp,observed_minutes=observed,**{k:row.get(k) for k in PRICES})
+    label=(source or 'HistData')+' BID'
     records={case_id:build_case_outcome(sides[case_id],p['as_of'],
-        [selected[t] for t in range(anchors[case_id],anchors[case_id]+3600,300) if t in selected])
+        [selected[t] for t in range(anchors[case_id],anchors[case_id]+3600,300) if t in selected],source=label)
         for case_id,p in sorted(profiles.items())}
     counts={str(n):dict(Counter(r['horizons'][str(n)]['status'] for r in records.values())) for n in HORIZONS}
-    payload=dict(method=METHOD,source=SOURCE,basis=BASIS,alignment='PROJECT_REFERENCE',clock_status='UNKNOWN',
+    payload=dict(method=METHOD,source=label,basis=BASIS,alignment='PROJECT_REFERENCE',clock_status='UNKNOWN',
         inputs={'cases':_reference(root,casepath),'profiles':_reference(root,profilepath),'bars':_reference(root,barpath)},
         counts=counts,total_cases=len(records),source_rows=row_count,profiles=records)
     destination=Path(output_path).resolve() if output_path else root/'case_forward_outcomes.json'
@@ -161,7 +165,7 @@ class HistoricalOutcomeStore:
     def __init__(self,private_root):
         self.root=Path(private_root).resolve();self.path=self.root/'case_forward_outcomes.json'
         self._paths=[self.path,self.root/'cases.json',self.root/'case_candidate_market_profiles.json']
-        self._signature=None;self._records={};self._meta={};self._status='MISSING';self._lock=RLock()
+        self._signature=None;self._records={};self._meta={};self._source=SOURCE;self._status='MISSING';self._lock=RLock()
 
     def _stat(self):
         values=[]
@@ -171,11 +175,12 @@ class HistoricalOutcomeStore:
         return tuple(values)
 
     def _load(self):
-        self._records={};self._meta={};self._status='INVALID'
+        self._records={};self._meta={};self._source=SOURCE;self._status='INVALID'
         if not self.path.is_file():self._status='MISSING';return
         try:
             payload=json.loads(self.path.read_text(encoding='utf8'))
             if payload.get('method')!=METHOD or set(payload['inputs'])!={'cases','profiles','bars'}:return
+            if payload.get('source',SOURCE) not in (SOURCE,'Pepperstone cTrader DEMO BID','Pepperstone cTrader LIVE BID'):return
             paths={}
             for name,ref in payload['inputs'].items():
                 if not isinstance(ref,dict) or set(ref)!={'path','sha256'} or not isinstance(ref['path'],str):return
@@ -196,14 +201,14 @@ class HistoricalOutcomeStore:
             self._meta={k:(sides[k],v['as_of']) for k,v in profiles['profiles'].items() if k in sides}
             records=payload['profiles']
             if not isinstance(records,dict) or not set(records)<=set(self._meta):return
-            self._records=records;self._status='READY'
+            self._records=records;self._source=payload.get('source',SOURCE);self._status='READY'
         except (OSError,KeyError,ValueError,TypeError,AttributeError):return
 
     def _valid_record(self,case_id,record):
         try:
             side,as_of=self._meta[case_id]
             if (record['side']!=side or record['case_as_of']!=as_of or type(as_of) is not int or as_of<0
-                or record['anchor_time']!=(as_of+299)//300*300 or record['basis']!=BASIS or record['source']!=SOURCE
+                or record['anchor_time']!=(as_of+299)//300*300 or record['basis']!=BASIS or record['source']!=self._source
                 or set(record['horizons'])!={str(n) for n in HORIZONS}):return False
             if record['anchor_price'] is not None:
                 p=Decimal(record['anchor_price'])

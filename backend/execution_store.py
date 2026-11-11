@@ -35,7 +35,7 @@ def build(root):
         stamps,close,mode=_window(a,b,full=True)
         records[ident]={'times':stamps,'close_times':close,'mode':mode}
         wanted.update(stamps);wanted.update(close)
-    bars={};previous=-1
+    bars={};previous=-1;price_source=None
     with bp.open(encoding='utf-8-sig',newline='') as f:
         for r in csv.DictReader(f):
             date=datetime.fromisoformat(r['timestamp'].replace('Z','+00:00'))
@@ -44,7 +44,10 @@ def build(root):
             if t<=previous or t%300:raise ValueError('INVALID_SOURCE_TIME')
             previous=t
             if t not in wanted:continue
-            if r.get('source')!='HistData' or r.get('quote_side')!='BID':raise ValueError('WRONG_PRICE_SOURCE')
+            if r.get('source') not in ('HistData','Pepperstone cTrader DEMO','Pepperstone cTrader LIVE') or r.get('quote_side')!='BID':
+                raise ValueError('WRONG_PRICE_SOURCE')
+            if price_source is None:price_source=r['source']
+            elif price_source!=r['source']:raise ValueError('MIXED_PRICE_SOURCE')
             try:
                 prices=_prices(r)
                 if int(r['observed_minutes'])!=5:continue
@@ -53,7 +56,8 @@ def build(root):
     paths={'cases':cp,'profiles':pp,'bars':bp,'alignment':(root/meta['inputs']['alignment']['path']).resolve()}
     if any(not p.is_relative_to(root) for p in paths.values()):raise ValueError('PRIVATE_SOURCE_REQUIRED')
     inputs={k:{'path':str(p.relative_to(root)),'sha256':hashlib.sha256(p.read_bytes()).hexdigest()} for k,p in paths.items()}
-    value={'method':'execution_reference_v2','max_holding_slots':MAX_HOLDING_SLOTS,'inputs':inputs,'records':records,'bars':bars}
+    value={'method':'execution_reference_v2','max_holding_slots':MAX_HOLDING_SLOTS,
+           'price_source':(price_source or 'HistData')+' BID','inputs':inputs,'records':records,'bars':bars}
     target=root/'case_execution_bars_v2.json';temp=target.with_suffix('.tmp')
     temp.write_text(json.dumps(value,separators=(',',':'),allow_nan=False),encoding='utf-8');temp.replace(target)
     return {'profiles':len(records),'unique_bars':len(bars),'full_holding_records':sum(r['mode']=='FULL_HOLDING' for r in records.values()),
@@ -106,7 +110,7 @@ class ExecutionStore:
                 available={row['time'] for row in rows+closes}
                 if a not in available or b not in available:return missing
                 overlay=execution_overlay(source,profile,rows+closes,cutoff=cutoff)
-                result=dict(overlay,bars=rows,close_bars=closes,mode=mode)
+                result=dict(overlay,bars=rows,close_bars=closes,mode=mode,price_source=v.get('price_source','HistData BID'))
                 if full:
                     slots=(b-a)//300+1
                     result['coverage']=dict(scope='WHOLE_REFERENCE_HOLDING' if mode=='FULL_HOLDING' else 'ENDPOINT_WINDOWS',

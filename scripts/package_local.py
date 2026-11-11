@@ -31,7 +31,7 @@ FILES.update({
  'docs/order_controls_20261110.md',
  'docs/pending_cancel_and_refresh_20261110.md',
 })
-PUBLIC_DATA={'trader-cases.json','trader-market-index.json','synthetic-query-profiles.json'}
+PUBLIC_DATA={'trader-cases.json','trader-market-index.json','trader-case-reference-times.json','synthetic-query-profiles.json'}
 def public_files(root=ROOT):
  root=Path(root).resolve();out=[]
  excluded={'private','.venv','node_modules','__pycache__','.pytest_cache','.git','qa','dist','dist-pages'}

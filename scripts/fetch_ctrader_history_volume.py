@@ -8,6 +8,7 @@ from collections import Counter
 from datetime import datetime,timezone
 from pathlib import Path
 from scripts.check_ctrader_demo import load_local_config
+from scripts.live_readonly_policy import load_live_config, ReadOnlyClient
 from scripts.fetch_ctrader_review_days import decode_closed
 from backend.volume_paths import volume_folder
 
@@ -51,17 +52,20 @@ def next_cursor(page,cursor):
     return result
 
 
-def fetch(tasks,*,max_chunks=None,output_folder=None):
-    config=load_local_config()
+def fetch(tasks,*,max_chunks=None,output_folder=None,environment='demo'):
+    if environment not in ('demo','live'):raise ValueError('INVALID_ENVIRONMENT')
+    config=load_local_config() if environment=='demo' else load_live_config()
     from ctrader_open_api import Client,EndPoints,Protobuf,TcpProtocol
     from ctrader_open_api.messages.OpenApiMessages_pb2 import (
       ProtoOAApplicationAuthReq,ProtoOAApplicationAuthRes,ProtoOAGetAccountListByAccessTokenReq,ProtoOAGetAccountListByAccessTokenRes,
       ProtoOAAccountAuthReq,ProtoOAAccountAuthRes,ProtoOASymbolsListReq,ProtoOASymbolsListRes,ProtoOAGetTrendbarsReq,ProtoOAGetTrendbarsRes)
     from ctrader_open_api.messages.OpenApiCommonMessages_pb2 import ProtoHeartbeatEvent
     from twisted.internet import reactor
-    client=Client(EndPoints.PROTOBUF_DEMO_HOST,EndPoints.PROTOBUF_PORT,TcpProtocol)
+    host=EndPoints.PROTOBUF_DEMO_HOST if environment=='demo' else EndPoints.PROTOBUF_LIVE_HOST
+    client=ReadOnlyClient(Client(host,EndPoints.PROTOBUF_PORT,TcpProtocol))
     output=Path(output_folder) if output_folder is not None else volume_folder(ROOT/'private');output.mkdir(parents=True,exist_ok=True)
-    state=dict(status='CONNECTING',source='ctrader_demo_native',volume_basis='broker_native_tick_count',orders_sent=0,
+    source='ctrader_'+environment+'_native'
+    state=dict(status='CONNECTING',source=source,environment=environment,volume_basis='broker_native_tick_count',orders_sent=0,
       requested_chunks=len(tasks),requests_sent=0,completed_chunks=0,empty_chunks=0,rows=0,failures=[])
     queue=[];active=None;bars={};cursor=None;account=None;symbol=None;stopping=False;identity=None;processed=0
     def save():
@@ -111,7 +115,7 @@ def fetch(tasks,*,max_chunks=None,output_folder=None):
             cursor=next_cursor(page,cursor)
             if cursor>=active['start']*1000:reactor.callLater(.55,request_page);return
         values=sorted(bars.values(),key=lambda b:b['time'])
-        payload=dict(**active,source_key=identity,source='ctrader_demo_native',volume_basis='broker_native_tick_count',
+        payload=dict(**active,source_key=identity,source=source,volume_basis='broker_native_tick_count',
           status='AVAILABLE' if values else 'EMPTY',bars=values)
         path=output/(task_key(active)+'.json');temp=path.with_suffix('.tmp')
         temp.write_text(json.dumps(payload,separators=(',',':')),encoding='utf-8');temp.replace(path)
@@ -123,7 +127,7 @@ def fetch(tasks,*,max_chunks=None,output_folder=None):
         nonlocal symbol,identity,queue
         item=next((s for s in response.symbol if s.enabled and s.symbolName.upper()=='XAUUSD'),None)
         if item is None:finish('XAUUSD_MISSING');return
-        symbol=item.symbolId;identity=hashlib.sha256(f'ctrader-demo:{account}:{symbol}'.encode()).hexdigest()
+        symbol=item.symbolId;identity=hashlib.sha256(f'ctrader-{environment}:{account}:{symbol}'.encode()).hexdigest()
         state['source_key']=identity
         for task in tasks:
             path=output/(task_key(task)+'.json')
@@ -137,9 +141,9 @@ def fetch(tasks,*,max_chunks=None,output_folder=None):
     def authorized(_):send(ProtoOASymbolsListReq(ctidTraderAccountId=account),ProtoOASymbolsListRes,symbols)
     def accounts(response):
         nonlocal account
-        requested=config.get('CTRADER_ACCOUNT_ID');choices=[a for a in response.ctidTraderAccount if not a.isLive]
+        requested=config.get('CTRADER_ACCOUNT_ID');choices=[a for a in response.ctidTraderAccount if bool(a.isLive)==(environment=='live')]
         item=next((a for a in choices if str(a.ctidTraderAccountId)==requested),None) if requested else next(iter(choices),None)
-        if item is None:finish('DEMO_ACCOUNT_UNAVAILABLE');return
+        if item is None:finish('ACCOUNT_UNAVAILABLE');return
         account=item.ctidTraderAccountId
         send(ProtoOAAccountAuthReq(ctidTraderAccountId=account,accessToken=config['CTRADER_ACCESS_TOKEN']),ProtoOAAccountAuthRes,authorized)
     def app_authorized(_):send(ProtoOAGetAccountListByAccessTokenReq(accessToken=config['CTRADER_ACCESS_TOKEN']),ProtoOAGetAccountListByAccessTokenRes,accounts)
@@ -155,16 +159,21 @@ def fetch(tasks,*,max_chunks=None,output_folder=None):
 
 
 if __name__=='__main__':
-    parser=argparse.ArgumentParser();parser.add_argument('--max-chunks',type=int);parser.add_argument('--pilot',action='store_true');args=parser.parse_args()
-    data=json.loads((ROOT/'private/case_candidate_market_profiles.json').read_text(encoding='utf-8'))
-    tasks=plan(data['profiles'])
+    parser=argparse.ArgumentParser();parser.add_argument('--max-chunks',type=int);parser.add_argument('--pilot',action='store_true')
+    parser.add_argument('--plan-file',type=Path);parser.add_argument('--output-folder',type=Path)
+    parser.add_argument('--environment',choices=('demo','live'),default='demo');args=parser.parse_args()
+    if args.plan_file:
+        tasks=json.loads(args.plan_file.read_text(encoding='utf-8'))['tasks']
+    else:
+        data=json.loads((ROOT/'private/case_candidate_market_profiles.json').read_text(encoding='utf-8'))
+        tasks=plan(data['profiles'])
     if args.pilot:
         chosen=[]
         for iv in PERIODS:
             group=[t for t in tasks if t['interval']==iv]
             chosen.extend(group[i] for i in sorted({0,len(group)//2,len(group)-1}))
         tasks=chosen
-    try:result=fetch(tasks,max_chunks=args.max_chunks)
+    try:result=fetch(tasks,max_chunks=args.max_chunks,output_folder=args.output_folder,environment=args.environment)
     except Exception:
         print('FETCH_FAILED (credentials and raw errors suppressed)');raise SystemExit(1)
     raise SystemExit(0 if result['status'] in ('COMPLETE','CHECKPOINT') else 1)

@@ -4,6 +4,13 @@
 - 修改 `README.md`、`AI_SETUP.md`、`docs/LOCAL_INSTALL.md`、`docs/TEAM_START_20261104.md`：已公開的逐筆交易員案例與完整本機盤面檢索資料分開說明；setup 不自動下載第三方行情，無資料包時 `doctor` 為 `synthetic_demo`。
 - 驗證：前端 `npm test` 237 passed；`npm run build` 與 `npm run build:pages` 成功；產品 `pytest -q backend/tests/test_package_local.py` 1 passed；`git diff --check` 通過。完整參考 K 線／券商量能仍未公開，須先核實再散布權利。未讀取憑證或送出委託。下一步：確認資料授權後再設計同學端取得方式。branch `main`，記錄時 commit N/A。
 
+## 2026-11-11 — 同學用自己的 Pepperstone 歷史行情自建案例索引
+
+- 新增 `python -m scripts.history_bootstrap plan|probe|download|build|verify|activate|all`：以同學本人在本機設定的 cTrader Open API（DEMO，或 LIVE 加 `--read-only`）唯讀下載案例需要的 5 分／1 小時 K 線與 tick 量，在 `private/personal_history/<來源指紋>/` 建立案例盤面、量能、後續走勢與進出場參考，驗證雜湊與來源後才寫入 `.env.local` 啟用。沿用同一份公開交易員案例與 `context_contract_v1` 規則；不同帳戶的覆蓋與配對可能不同。不送委託、不上傳行情、不印憑證。
+- 公開 `frontend/public/data/trader-case-reference-times.json`：10,887 個已公開案例 ID 的候選進出場 UTC 時點，只含 10 個欄位，時區 UNKNOWN、PROJECT_REFERENCE；不含券商行情或帳戶資料。
+- `doctor` 回報公開參考與個人歷史狀態及下一步指令。個人索引啟用時，檢索結果第一行說明案例盤面由本機 Pepperstone 帳戶自建、配對可能與作者不同；持倉期間觀察改顯示實際價格來源，不再固定標 HistData。量能視窗沿用原規則：休市缺口只記錄、不判不可用。
+- 驗證：後端完整測試、合成資料端到端（同來源建置、換帳戶拒絕混用、片段被改即驗證失敗）。尚未以真實 API 實測下載。branch `main`；記錄時 commit N/A。
+
 ## 2026-11-10 — Windows CI 失敗根因：非 ASCII 的 strftime
 
 - GitHub Windows 工作的後端測試 15 項失敗，訊息為 `UnicodeEncodeError: 'locale' codec can't encode character '年'`。`backend/case_operations.py` 用 `strftime('%Y年%m月%d日')`，Windows 會用系統語系編碼 format，英文 Windows 無法編碼「年」；繁中 Windows 與 macOS 不會發生，所以本機無法重現。英文 Windows 使用者查看案例詳情也會遇到。

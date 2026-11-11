@@ -10,7 +10,8 @@ git rev-parse HEAD
 ```
 
 新版已整合到預設main，直接clone或按Code／Download ZIP即可取得這版。
-完整本機盤面比對仍須授權參考行情與量能資料包；AI 與 DEMO 由本人設定。原版另留分支供回復。
+完整本機盤面比對可用本人 Pepperstone 帳戶的唯讀歷史行情自建；AI 與 DEMO
+由本人設定。不同帳戶歷史覆蓋與配對可能不同。原版另留分支供回復。
 
 Windows PowerShell：
 
@@ -55,10 +56,10 @@ Codex接頭以乾淨暫存工作目錄、忽略使用者自訂、ephemeral及rea
 
 整理後的 11,902 筆交易員逐筆案例已隨 GitHub `main` 提供，檔案在
 `frontend/public/data/trader-cases.json`，GitHub Pages 的合成查詢可用它查看真實歷史操作。
-這不等於本機後端已有完整盤面索引；下方資料包另含參考 K 線、進出場對照與量能側檔。
-`setup.ps1`／`setup.sh` 只安裝程式依賴，不會自動下載或重建這些第三方行情。
-沒有完整資料包時，`doctor` 會顯示 `synthetic_demo`；本機案例檢索與作者畫面不同。
-下方個人量能重建指令只能在匯入案例包後執行，且不同券商來源不保證產生相同配對。
+公開包另有 10,887 筆案例的候選進出場 UTC 對照，但不含第三方 K 線或量能。
+`setup.ps1`／`setup.sh` 只安裝依賴；沒有個人歷史行情時，`doctor` 明示
+`synthetic_demo` 及 `personal_history.UNAVAILABLE`。依下節可自行取得行情並重建。
+候選時點是 `PROJECT_REFERENCE`；交易員原始券商時鐘仍是 `UNKNOWN`。
 
 向資料擁有者取得授權的最新私人包，勿上傳公開repo或AI聊天。先停止網站。
 
@@ -89,20 +90,34 @@ python -m scripts.data_bundle verify
 都當開發者；共用app需另外妥善保護secret，不在這個版本建置共用雲端代理。
 不要共用作者帳戶，避免同學彼此修改同一組持倉。DEMO寫入仍須本人確認草稿。
 
-### tick來源不同
+### 同學用自己的帳戶建立完整案例盤面與 tick 量
 
-歷史原生量索引綁定來源帳戶／商品，換帳戶不一定可比。不要刪除量門檻來假裝
-成功；用自己的資料源另建資料夾：
+先依上一節由本人完成 cTrader Open API 授權。DEMO 設定檔中的
+`CTRADER_ACCOUNT_ID` 必須是正確的 Open API 帳戶 ID。以下命令只讀取行情，
+不會送單或使用 LLM 額度。請在網站停止時建索引；`probe` 只抓三個時段的
+5 分鐘與 1 小時樣本，`download` 抓所有可請求的週片段，已抓片段可續傳。
 
 ```sh
-python -m scripts.rebuild_personal_volume                   # 只預覽，不連券商
-python -m scripts.rebuild_personal_volume --execute --max-chunks 10
-python -m scripts.rebuild_personal_volume --execute           # 斷點續抓直到完整
-python -m scripts.rebuild_personal_volume --activate          # 完整後啟用並重啟網站
+python -m scripts.history_bootstrap plan
+python -m scripts.history_bootstrap probe
+python -m scripts.history_bootstrap download --max-chunks 10
+python -m scripts.history_bootstrap download
+python -m scripts.history_bootstrap build
+python -m scripts.history_bootstrap verify
+python -m scripts.history_bootstrap activate
 ```
 
-可能需數百次唯讀行情請求，歷史權限／缺棒／休市仍可能不足；不是一鍵保證所有
-歷史棒都有量。不能把不同來源資料混寫，換帳戶時用新的 `--folder`。
+Windows 把 `python` 換成 `.\.venv\Scripts\python.exe`；
+macOS 換成 `.venv/bin/python`。若本人已完成授權並願意一次跑完下載至啟用，
+可用 `python -m scripts.history_bootstrap all`。只有 LIVE 帳戶時，每項命令都加
+`--environment live --read-only`；LIVE 歷史連線仍只允許讀取資料。
+
+`doctor` 會回報 READY／PARTIAL／UNAVAILABLE。PARTIAL 表示有可用案例，但
+某些年份、時段或量能缺失；網站只用同一帳戶的原生 K 線與 tick 量，保留
+`context_contract_v1` 相同門檻及排序，不混入作者 HistData。歷史量是券商
+tick 次數，不是全市場成交量。由於券商資料保留、交易時鐘候選與缺棒不同，
+同學和作者看到的配對不保證逐筆相同。建置期間應保留 `private/`，不要用
+`git clean -fdx` 清除下載片段。
 
 ## 更新、測試與移除
 

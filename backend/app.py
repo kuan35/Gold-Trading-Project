@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field, ConfigDict
 from .engine import Engine, DomainError, amount
 from .market import ROOT
 from .cases import LABELS, candidate_unavailable
+from .case_paths import case_data_root
 from .live_candidate_profile import profile_from_live_snapshot
 from .dual_path_retrieval import profile_from_live_dual_snapshot, METHOD as DUAL_METHOD, unavailable as dual_unavailable
 from .context_retrieval import METHOD as CONTEXT_METHOD, unavailable as context_unavailable
@@ -60,12 +61,13 @@ async def _local_lifespan(_app):
 
 app=FastAPI(title='Gold Trading Project',version='0.1.0',lifespan=_local_lifespan)
 engine=Engine()
+CASE_DATA_ROOT=case_data_root()
 broker_orders=BrokerOrders(demo_market_stream)
 live_broker_orders=LiveBrokerOrders(live_trade_stream)
 analysis_snapshots=SnapshotStore()
 analysis_history=AnalysisHistory(ROOT/'private'/'analysis_history')
-case_forward_store=HistoricalOutcomeStore(ROOT/'private')
-case_execution_store=ExecutionStore(ROOT/'private')
+case_forward_store=HistoricalOutcomeStore(CASE_DATA_ROOT)
+case_execution_store=ExecutionStore(CASE_DATA_ROOT)
 macro_calendar=MacroCalendar(ROOT/'private'/'macro')
 trade_plans=TradePlanStore(ROOT/'private'/'trade_plans.sqlite')
 trade_alerts=LocalAlerts(ROOT/'private'/'trade_alerts.sqlite')
@@ -76,7 +78,7 @@ live_trade_plans=TradePlanStore(ROOT/'private'/'live_trade_plans.sqlite')
 live_trade_alerts=LocalAlerts(ROOT/'private'/'live_trade_alerts.sqlite',environment='live')
 live_alert_monitor=AlertMonitor(live_trade_alerts,lambda:_live_read_snapshot(query=True) if live_trade_alerts.has_active() else {})
 atexit.register(live_alert_monitor.stop)
-history_library=HistoryLibrary(ROOT/'private')
+history_library=HistoryLibrary(CASE_DATA_ROOT)
 
 def _save_analysis_reply(reply,bundle=None):
     try:return analysis_history.save(reply,bundle)
@@ -489,6 +491,7 @@ def broker_live_cases(request: Request, side: Literal['BUY', 'SELL'] = 'BUY',
 
 def _live_retrieval(snapshot: dict, side: str, method: str = CONTEXT_METHOD) -> tuple[dict, dict]:
     query = profile_from_live_dual_snapshot(snapshot) if method in (CONTEXT_METHOD,DUAL_METHOD) else profile_from_live_snapshot(snapshot)
+    query['market_source_key']=snapshot.get('tick_volume_source_key')
     if query['status'] != 'candidate_only':
         unavailable=context_unavailable if method==CONTEXT_METHOD else dual_unavailable if method==DUAL_METHOD else candidate_unavailable
         result = unavailable(query.get('reason', 'QUERY_UNAVAILABLE'))

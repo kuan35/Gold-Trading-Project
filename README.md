@@ -20,7 +20,8 @@
 
 不使用Git也可[下載 main 的完整程式 ZIP](https://github.com/kuan35/Gold-Trading-Project/archive/refs/heads/main.zip)，
 解壓縮後進入同時含backend、frontend與setup.ps1的資料夾，依下表安裝／啟動。
-此包包含相同介面與功能程式，以及已公開的[11,902 筆整理後交易員逐筆案例](frontend/public/data/trader-cases.json)。
+此包包含相同介面與功能程式、[11,902 筆整理後交易員逐筆案例](frontend/public/data/trader-cases.json)
+及候選參考時點。可用自己的 Pepperstone cTrader 帳戶在本機下載歷史 K 線與 tick 量並建索引。
 本機完整盤面比對另需參考 K 線與量能資料包；AI 與券商設定各自填寫。
 
 ```sh
@@ -49,7 +50,8 @@ cd Gold-Trading-Project
 ## 三種設定分開
 
 - AI：可選Codex／Claude Code及個人可用模型／思考程度；本人完成官方CLI登入。
-- 案例：整理後逐筆交易紀錄已在本 repo；完整本機盤面比對仍需另匯入參考 K 線與量能資料包。
+- 案例：整理後逐筆交易紀錄與候選時點已在本 repo；本機盤面比對可依
+  [安裝指南](docs/LOCAL_INSTALL.md)用本人 Pepperstone 帳戶重建。歷史覆蓋與配對可能不同。
 - 行情／DEMO：使用自己的cTrader帳戶與本機憑證。不同帳戶tick來源可能需要另建索引。
 
 介面相同不代表不同帳戶的即時報價、模型文字及案例來源完全相同。

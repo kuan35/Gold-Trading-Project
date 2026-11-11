@@ -4,6 +4,7 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
 ALLOWED={'GOLD_ENABLE_LLM','GOLD_LLM_PROVIDER','GOLD_LLM_API_KEY','GOLD_LLM_BASE_URL','GOLD_LLM_MODEL','GOLD_LLM_TOKEN_FIELD','GOLD_LLM_MAX_TOKENS','GOLD_LLM_REASONING_EFFORT','GOLD_LLM_TIMEOUT_SECONDS','GOLD_CLAUDE_MODEL','GOLD_CLAUDE_EFFORT','GOLD_CLAUDE_TIMEOUT_SECONDS','GOLD_CLAUDE_EXECUTABLE','GOLD_CODEX_EXECUTABLE','GOLD_CODEX_TIMEOUT_SECONDS'}
 ALLOWED.add('GOLD_NATIVE_VOLUME_FOLDER')
+ALLOWED.add('GOLD_CASE_DATA_FOLDER')
 ALLOWED.add('GOLD_PREVIEW_LEVERAGE')
 ALLOWED.update(f'GOLD_ADVICE_{level}_{kind}_USD_PER_OZ'
                for level in ('BASELINE','STRESS') for kind in ('SPREAD','COMMISSION','SLIPPAGE'))
@@ -57,6 +58,19 @@ def doctor(root=ROOT,check_ai=False):
    from scripts.data_bundle import validate_runtime
    result['runtime']=validate_runtime(root/'private');result['data']='private_runtime_ready'
   except (ValueError,OSError):result['data']='private_runtime_incomplete_or_invalid'
+ from scripts.personal_history import public_reference_status
+ result['public_references']=public_reference_status(root)
+ selected=settings.get('GOLD_CASE_DATA_FOLDER','')
+ if selected:
+  try:
+   folder=(root/'private'/selected).resolve()
+   if not folder.is_relative_to((root/'private/personal_history').resolve()):raise ValueError('INVALID_PERSONAL_FOLDER')
+   from scripts.history_bootstrap import verify
+   result['personal_history']=verify(folder)
+   result['data']='personal_history_'+result['personal_history']['status'].lower()
+  except (OSError,ValueError,KeyError,TypeError):result['personal_history']={'status':'UNAVAILABLE','next':'python -m scripts.history_bootstrap verify'}
+ else:
+  result['personal_history']={'status':'UNAVAILABLE','next':'python -m scripts.history_bootstrap plan'}
  result['ctrader']='not_configured'
  try:
   from scripts.check_ctrader_demo import load_local_config
