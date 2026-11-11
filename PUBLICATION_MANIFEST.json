@@ -34,8 +34,8 @@
       "sha256": "31573645e4043a56a92f662b5f44dc4226c6004cea9fb1d8e50ba1c56113b73f"
     },
     "AI_SETUP.md": {
-      "bytes": 2890,
-      "sha256": "725c3693fc05fe613ea0a7beaa9946d317cb1dafef78fdbfb4c11b1ba43f31be"
+      "bytes": 3130,
+      "sha256": "1777e9883b935b27cce0cc38614753163ee066ada5aa91591d46cd56b00d5eb9"
     },
     "API_CONTRACT.md": {
       "bytes": 80939,
@@ -50,16 +50,16 @@
       "sha256": "89cd7a1982b1bf9419a05a7519423d0d82409eb7c9e2341add813f0a871b1c2f"
     },
     "HANDOFF.md": {
-      "bytes": 54946,
-      "sha256": "d5ca029bee498eabc902c1b57a1414755950710896c359c0737c4ffdcdf3e520"
+      "bytes": 55886,
+      "sha256": "3b5b4cead1fe69797099e8c5d0a1c55df09977a65c0fbaacbb1062a1f8934417"
     },
     "LICENSE": {
       "bytes": 1304,
       "sha256": "e1ae634b38bf8fddc1de328916f4789749bc337ed6bba465836c89d3f79f5c4c"
     },
     "README.md": {
-      "bytes": 3676,
-      "sha256": "cc5178ae695b43203bd59ddaf61682ddbdda828c2f24c6b85bed40b9b3ede9b6"
+      "bytes": 3802,
+      "sha256": "f2507aa67488a2c91eeb5342909b0ea57c1a3570ec5d7db3dbfb2c659c3e9e7a"
     },
     "TEAM_HANDOFF.md": {
       "bytes": 10521,
@@ -826,8 +826,8 @@
       "sha256": "c9055f3c6136e0b9eaacf7cd937400bee15f60f221aa0f007f6ffc15abb8597d"
     },
     "docs/LOCAL_INSTALL.md": {
-      "bytes": 6195,
-      "sha256": "52551a5770debc01b76332a8ce4bfe050dac3ead02b467b73f72df4c611d8ac2"
+      "bytes": 6876,
+      "sha256": "bd41b7c5d59200f8f464aa2a59058e4ec94bde8866bb28044b64073e7ec24893"
     },
     "docs/LOCAL_RELEASE_CHECK.md": {
       "bytes": 2033,
@@ -842,8 +842,8 @@
       "sha256": "9b1fa38edba4c092a14f21a5e72dbc58cd0a45553a7fac8ed8096e13210f3bea"
     },
     "docs/TEAM_START_20261104.md": {
-      "bytes": 5270,
-      "sha256": "2f77395851d42d24c6524dd3d1ef86703784d05de5ceb360cba73e685a85b557"
+      "bytes": 5381,
+      "sha256": "6fcf224a195949321c71173df7065478fdc55c5c118fde521582af77c0d7742d"
     },
     "docs/TRADER_WORKFLOW.md": {
       "bytes": 4443,
@@ -1146,8 +1146,8 @@
       "sha256": "b67314f3b253a3361c2ac66a3a8e4b41d2279d6c59132206931f2bc02c758702"
     },
     "frontend/src/ReminderNotifications.tsx": {
-      "bytes": 2523,
-      "sha256": "23b2290b9308fd965655b2daaeee6a38586428327bd95f071077e5f97f8e3fc5"
+      "bytes": 2488,
+      "sha256": "15dadf6f125025400f5db17be277043a7b7f3d3a71c5299ac49810abda7b3e97"
     },
     "frontend/src/ReplayAccountSummary.tsx": {
       "bytes": 1469,
@@ -1662,8 +1662,8 @@
       "sha256": "dc5606cd027759119ca84b9a3d7d6fabe3715dcd3db6cdea4f017d94d37404d9"
     },
     "frontend/tests/reminder-notifications.test.ts": {
-      "bytes": 1073,
-      "sha256": "fde66a3fe44049ff929cb210e0ef84b559021d87b3dc565aff89599aa157e9a3"
+      "bytes": 1127,
+      "sha256": "48906426ec0bfa0d08f12d3eaf367ddf1879deaf7a038849f9d2c12bfdee7c79"
     },
     "frontend/tests/replay-account.test.ts": {
       "bytes": 1260,

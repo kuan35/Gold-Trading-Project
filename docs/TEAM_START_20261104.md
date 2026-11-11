@@ -31,9 +31,10 @@ cd Gold-Trading-Project
 
 ## 要還原到什麼程度
 
-下載可還原相同介面和功能程式。完整案例與行情runtime包需由資料擁有者另行受控提供，
+下載可還原相同介面和功能程式，並取得已公開的 11,902 筆整理後交易員逐筆案例。
+完整本機盤面與量能 runtime 包仍需由資料擁有者另行提供，
 依 [安裝指南](LOCAL_INSTALL.md) 的data_bundle import／verify匯入。
-只有公開程式與示範資料時，不會自動取得作者完整本機案例、聊天、AI登入或券商帳戶。
+只有公開程式與案例逐筆檔時，不會自動取得作者完整本機盤面索引、聊天、AI登入或券商帳戶。
 
 每人自行登入Claude Code或Codex，使用自己的cTrader DEMO憑證。
 換券商／帳戶的tick來源可能不同，需按安裝指南重建本人原生量索引，否則會明示資料不可比較。
@@ -65,7 +66,7 @@ Repo: https://github.com/kuan35/Gold-Trading-Project
 沿用完整前後端，不重新生成介面；clone預設main並記錄commit。
 檢查Python與Node，依Windows/macOS執行setup與start-local。
 先用程式解讀驗收首頁、三分頁、聊天A→B→A→重整及案例K線還原。
-未匯入完整runtime包時，回報只有示範資料，不冒稱完整案例就緒。
+未匯入完整runtime包時，回報有公開逐筆案例與靜態示範，但本機完整盤面比對尚未就緒。
 若我提供授權案例包，停止服務後用data_bundle匯入並verify；保留原private及.env。
 AI官方登入及cTrader憑證由我自行填寫，不讀或複製其他人的認證。
 按我的帳戶設定.env.local中GOLD_PREVIEW_LEVERAGE；這只是ROI備援假設。

@@ -6,8 +6,9 @@ test('notifications only show recent new durable events and reject duplicate, fu
  assert.deepEqual(result.map(r=>r.id),['new']);
 });
 import {reminderSources} from '../src/ReminderNotifications';
-test('LIVE reminders poll only while LIVE is selected and keep a separate seen list',()=>{
+test('only the selected account environment polls reminders and each keeps a separate seen list',()=>{
  assert.deepEqual(reminderSources('demo').map(s=>s.enabled),[true,false]);
- const live=reminderSources('live');assert.deepEqual(live.map(s=>s.enabled),[true,true]);
- assert.equal(live[1].path,'/api/live/trading/alerts');assert.equal(live[1].label,'LIVE · ');assert.notEqual(live[0].key,live[1].key);
+ const live=reminderSources('live');assert.deepEqual(live.map(s=>s.enabled),[false,true]);
+ assert.equal(live[0].label,'DEMO · ');assert.equal(live[1].path,'/api/live/trading/alerts');assert.equal(live[1].label,'LIVE · ');
+ assert.notEqual(live[0].key,live[1].key);
 });

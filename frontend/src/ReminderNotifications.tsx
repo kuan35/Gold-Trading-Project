@@ -7,9 +7,9 @@ type View=(conversationId?:string)=>void;
 export function freshReminderEvents(rows:ReminderEvent[],seen:Set<string>,now=Date.now()){
  const selected=new Set<string>();return rows.filter(row=>{const time=Date.parse(row.created_at_utc);if(!row.id||seen.has(row.id)||selected.has(row.id)||!Number.isFinite(time)||time>now||now-time>600000)return false;selected.add(row.id);return true;}).slice(0,5);
 }
-/** DEMO reminders always notify; LIVE is polled only while LIVE is selected, so DEMO use never opens a LIVE connection. */
+/** Only poll reminders for the selected trading environment. */
 export function reminderSources(environment:'demo'|'live'='demo'){
- return [{path:'/api/trading/alerts',key:KEY,label:'',enabled:true},
+ return [{path:'/api/trading/alerts',key:KEY,label:'DEMO · ',enabled:environment==='demo'},
   {path:'/api/live/trading/alerts',key:LIVE_KEY,label:'LIVE · ',enabled:environment==='live'}];
 }
 function useReminderSource({path,key,label,enabled}:ReturnType<typeof reminderSources>[number],callback:RefObject<View>){

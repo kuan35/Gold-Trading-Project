@@ -20,7 +20,8 @@
 
 不使用Git也可[下載 main 的完整程式 ZIP](https://github.com/kuan35/Gold-Trading-Project/archive/refs/heads/main.zip)，
 解壓縮後進入同時含backend、frontend與setup.ps1的資料夾，依下表安裝／啟動。
-此包包含相同介面與功能程式；完整案例包另由資料擁有者私下提供，AI與券商設定各自填寫。
+此包包含相同介面與功能程式，以及已公開的[11,902 筆整理後交易員逐筆案例](frontend/public/data/trader-cases.json)。
+本機完整盤面比對另需參考 K 線與量能資料包；AI 與券商設定各自填寫。
 
 ```sh
 git clone https://github.com/kuan35/Gold-Trading-Project.git
@@ -48,7 +49,7 @@ cd Gold-Trading-Project
 ## 三種設定分開
 
 - AI：可選Codex／Claude Code及個人可用模型／思考程度；本人完成官方CLI登入。
-- 案例：完整私人資料包另向資料擁有者取得，匯入並驗證後才能重現完整真實案例功能。
+- 案例：整理後逐筆交易紀錄已在本 repo；完整本機盤面比對仍需另匯入參考 K 線與量能資料包。
 - 行情／DEMO：使用自己的cTrader帳戶與本機憑證。不同帳戶tick來源可能需要另建索引。
 
 介面相同不代表不同帳戶的即時報價、模型文字及案例來源完全相同。

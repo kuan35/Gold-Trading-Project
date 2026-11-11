@@ -19,8 +19,11 @@ AGENTS.md、DATA_POLICY.md、docs/LOCAL_INSTALL.md。沿用現有React/FastAPI�
    同學應沿用完整frontend／backend，不重寫介面。驗收新增兩個測試聊天，先選程式解讀，
    A開圖→B→A→重整，核對原分析時間及K線仍在；不要為驗收消耗模型額度或送單。
    更新保留private/analysis_history及使用者原瀏覽器資料，不匯入作者聊天或分析快取。
-5. 未取得私人包時維持明示合成回放。若本人取得授權包，先停止網站，再依
-   data_bundle import/verify流程導入；不得從別人電腦或公開網路擅取私人資料。
+5. 已公開的整理後交易員逐筆案例在 `frontend/public/data/trader-cases.json`；
+   未取得完整參考 K 線與量能包時，本機後端仍維持明示合成回放。
+   setup 不會自動抓取第三方行情；請用 doctor 回報資料狀態，不可宣稱檢索與作者相同。
+   若本人取得授權包，先停止網站，再依 data_bundle import/verify 流程導入；
+   不得擅自取得其他私人資料。
 6. 使用者自行在官方CLI登入Codex或Claude Code。不要讀取／複製auth.json、
    OAuth token或接管開發聊天。介面可切供應商；不自動執行付費合成測試。
 7. cTrader先保持未設定；依本人意願啟用DEMO，詳讀安裝文件。需要登入或貼

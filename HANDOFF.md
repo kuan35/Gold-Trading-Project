@@ -1,3 +1,9 @@
+## 2026-11-11 — 提醒環境隔離與案例資料安裝說明
+
+- 修改 `frontend/src/ReminderNotifications.tsx` 與對應測試：只輪詢目前選取的 DEMO 或 LIVE 提醒，通知明標環境，避免在 LIVE 畫面收到未標示來源的 DEMO 提醒。
+- 修改 `README.md`、`AI_SETUP.md`、`docs/LOCAL_INSTALL.md`、`docs/TEAM_START_20261104.md`：已公開的逐筆交易員案例與完整本機盤面檢索資料分開說明；setup 不自動下載第三方行情，無資料包時 `doctor` 為 `synthetic_demo`。
+- 驗證：前端 `npm test` 237 passed；`npm run build` 與 `npm run build:pages` 成功；產品 `pytest -q backend/tests/test_package_local.py` 1 passed；`git diff --check` 通過。完整參考 K 線／券商量能仍未公開，須先核實再散布權利。未讀取憑證或送出委託。下一步：確認資料授權後再設計同學端取得方式。branch `main`，記錄時 commit N/A。
+
 ## 2026-11-10 — Windows CI 失敗根因：非 ASCII 的 strftime
 
 - GitHub Windows 工作的後端測試 15 項失敗，訊息為 `UnicodeEncodeError: 'locale' codec can't encode character '年'`。`backend/case_operations.py` 用 `strftime('%Y年%m月%d日')`，Windows 會用系統語系編碼 format，英文 Windows 無法編碼「年」；繁中 Windows 與 macOS 不會發生，所以本機無法重現。英文 Windows 使用者查看案例詳情也會遇到。
